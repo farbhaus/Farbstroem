@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Stream — Admin</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg:      #0e0e0e;
+    --surface: #141414;
+    --surface2:#1c1c1c;
+    --border:  #2a2a2a;
+    --text:    #eeeeee;
+    --dim:     #777777;
+    --faint:   #444444;
+    --accent:  #FFAA00;
+    --green:   #1A9B5A;
+    --danger:  #E53935;
+    --nav-h:   62px;
+}
+
+html, body { height: 100%; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 15.4px; }
+
+/* ---- Login ---- */
+#login-screen {
+    position: fixed; inset: 0; background: var(--bg);
+    display: flex; align-items: center; justify-content: center; z-index: 200;
+}
+.login-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 52px; width: 400px; }
+.login-box h1 { font-size: 15px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 32px; color: var(--text); }
+.login-box input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 10px 14px; font: inherit; font-size: 14px; width: 100%; outline: none; }
+.login-box input:focus { border-color: var(--dim); }
+.login-box input::placeholder { color: var(--faint); }
+.login-error { color: var(--danger); font-size: 12px; margin-top: 12px; min-height: 16px; }
+
+/* ---- Nav ---- */
+nav {
+    height: var(--nav-h); background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 32px; position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+}
+.brand { font-weight: 700; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+.nav-right { display: flex; gap: 8px; align-items: center; }
+.nav-tabs { display: flex; gap: 4px; }
+
+/* ---- Main ---- */
+main { margin-top: var(--nav-h); padding: 32px; }
+.content-wrap { max-width: 70%; margin: 0 auto; }
+
+/* ---- Buttons ---- */
+.btn {
+    padding: 8px 16px; border: 1px solid var(--border); background: var(--surface);
+    font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    letter-spacing: 0.03em; color: var(--text); transition: background 0.15s; white-space: nowrap;
+    border-radius: 6px;
+}
+.btn:hover { background: var(--surface2); }
+.btn-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+.btn-primary:hover { background: #ccc; }
+.btn-danger { color: var(--danger); border-color: var(--danger); }
+.btn-danger:hover { background: #2a1515; }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+.btn-tab { border: none; background: none; color: var(--dim); border-bottom: 2px solid transparent; padding: 6px 14px; font-size: 13px; border-radius: 0; }
+.btn-tab.active { color: var(--text); border-bottom-color: var(--text); }
+.btn-copy { padding: 7px 18px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; }
+
+/* ---- Forms (modal) ---- */
+.form-row { margin-bottom: 18px; }
+.form-row label { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+.form-row input, .form-row select {
+    width: 100%; padding: 9px 12px; border: 1px solid var(--border); background: var(--surface2);
+    font: inherit; font-size: 13px; color: var(--text); outline: none; border-radius: 6px;
+}
+.form-row select { background: var(--surface2); }
+.form-row input:focus, .form-row select:focus { border-color: var(--dim); }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+.form-row.checkbox { display: flex; align-items: center; gap: 10px; }
+.form-row.checkbox label { margin: 0; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 400; color: var(--text); }
+.form-row.checkbox input { width: auto; }
+
+/* ---- Section header ---- */
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+
+/* ---- Badges ---- */
+.badge {
+    display: inline-block; padding: 3px 9px; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase; border-radius: 4px;
+}
+.badge-live    { background: #0d2211; color: var(--green); }
+.badge-pending { background: #1a1a1a; color: var(--dim); }
+.badge-ended   { background: #2a1515; color: var(--danger); }
+.badge-webrtc  { background: #111828; color: #6688ee; }
+.badge-llhls   { background: #1f1a0a; color: #ccaa33; }
+
+/* ---- Modal ---- */
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center; z-index: 300;
+}
+.modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    width: 600px; max-width: calc(100vw - 32px); max-height: calc(100vh - 64px);
+    overflow-y: auto; padding: 36px;
+}
+.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+.modal-title { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+
+/* ---- Waiting inline ---- */
+.waiting-section { border-top: 1px solid var(--border); padding: 16px 24px; background: var(--surface2); }
+.waiting-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.waiting-section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
+.participant-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.participant-row:last-child { border-bottom: none; }
+.waiting-empty { font-size: 12px; color: var(--faint); }
+
+/* ---- Toast ---- */
+#toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--text); color: var(--bg); padding: 10px 20px; border-radius: 8px;
+    font-size: 13px; opacity: 0; transition: opacity 0.2s, transform 0.2s; z-index: 999; pointer-events: none;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---- Room cards ---- */
+.room-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    margin-bottom: 16px; overflow: hidden;
+}
+.room-card-header {
+    display: flex; align-items: flex-start; gap: 16px;
+    padding: 20px 24px; border-bottom: 1px solid var(--border);
+}
+.room-card-info { flex: 1; min-width: 0; }
+.room-card-name { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.room-card-meta { font-size: 12px; color: var(--dim); }
+.room-card-badges { display: flex; gap: 6px; align-items: center; padding-top: 2px; flex-shrink: 0; }
+.room-card-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.room-card-body { padding: 20px 24px; }
+.room-card-footer {
+    padding: 12px 24px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; background: var(--surface2);
+}
+
+/* ---- URL rows ---- */
+.url-row {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+}
+.url-row:last-child { margin-bottom: 0; }
+.url-label {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--dim); width: 90px; flex-shrink: 0;
+}
+.url-input {
+    flex: 1; min-width: 0; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border);
+    font-family: monospace; font-size: 12px; color: var(--text); outline: none; border-radius: 6px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text;
+}
+.url-input:focus { border-color: var(--dim); }
+.url-divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+/* ---- Stream key cards ---- */
+.key-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    margin-bottom: 16px; overflow: hidden;
+}
+.key-card-header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+}
+.key-card-name { font-size: 17px; font-weight: 700; flex: 1; }
+.key-card-rooms { font-size: 12px; color: var(--dim); }
+.key-card-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 10px; }
+
+.empty { padding: 48px; text-align: center; color: var(--dim); font-size: 13px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+
+/* ---- OME stream cards ---- */
+.stream-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+.stream-card-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+}
+.stream-live-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+    flex-shrink: 0; animation: live-pulse 2s ease-in-out infinite;
+}
+@keyframes live-pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+.stream-card-info { flex: 1; min-width: 0; }
+.stream-card-name { font-size: 17px; font-weight: 700; }
+.stream-card-room { font-size: 12px; color: var(--dim); margin-top: 2px; }
+.stream-card-body { padding: 14px 24px; display: flex; flex-direction: column; gap: 6px; }
+.stream-stat { display: flex; align-items: baseline; gap: 10px; font-size: 13px; }
+.stat-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); width: 52px; flex-shrink: 0; }
+.stream-meta { font-size: 12px; color: var(--dim); padding: 8px 24px 14px; }
+.badge-source { background: #0d2211; color: var(--green); }
+.ome-subheader { font-size: 12px; color: var(--dim); margin-bottom: 20px; min-height: 18px; }
+
+/* ---- Responsive ---- */
+@media (max-width: 700px) {
+    /* Nav: stack brand + tabs + actions vertically */
+    nav {
+        height: auto;
+        flex-direction: column;
+        align-items: stretch;
+        padding: 12px 16px 0;
+        gap: 0;
+    }
+    .brand { padding: 0 0 10px; }
+    .nav-tabs { border-bottom: 1px solid var(--border); padding-bottom: 2px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .btn-tab { white-space: nowrap; }
+    .nav-right { padding: 10px 0; gap: 8px; }
+    :root { --nav-h: 108px; }
+
+    main { padding: 16px; }
+    .content-wrap { max-width: 100%; }
+
+    /* Cards */
+    .room-card-header { flex-wrap: wrap; gap: 10px; padding: 16px; }
+    .room-card-badges { order: 2; }
+    .room-card-actions { order: 3; flex-wrap: wrap; gap: 6px; }
+    .room-card-body { padding: 14px 16px; }
+    .room-card-footer { flex-wrap: wrap; gap: 8px; padding: 12px 16px; }
+
+    /* URL rows: stack label above input */
+    .url-row { flex-direction: column; align-items: stretch; gap: 4px; }
+    .url-label { width: auto; }
+
+    /* Stream key cards */
+    .key-card-header { flex-wrap: wrap; gap: 8px; padding: 14px 16px; }
+    .key-card-body { padding: 14px 16px; }
+
+    /* Form grid: single column */
+    .form-grid { grid-template-columns: 1fr; }
+    .form-grid .form-row[style*="grid-column"] { grid-column: auto !important; }
+
+    /* Login box */
+    .login-box { width: calc(100vw - 32px); padding: 36px 24px; }
+
+    /* Modal */
+    .modal { padding: 24px 16px; }
+
+    /* Waiting section */
+    .waiting-section { padding: 14px 16px; }
+    .participant-row { flex-wrap: wrap; gap: 8px; }
+
+    /* Stream cards */
+    .stream-card-header { flex-wrap: wrap; gap: 8px; padding: 14px 16px; }
+    .stream-card-body { padding: 12px 16px; }
+    .stream-meta { padding: 6px 16px 12px; }
+}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+    <div class="login-box">
+        <h1>Zé Maria Stream</h1>
+        <form id="login-form">
+            <div class="form-row">
+                <input type="password" id="password-input" placeholder="Password" autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%">Sign in</button>
+        </form>
+        <p class="login-error" id="login-error"></p>
+    </div>
+</div>
+
+<nav id="main-nav" style="display:none">
+    <span class="brand">Stream — Admin</span>
+    <div class="nav-tabs">
+        <button class="btn btn-tab active" data-tab="rooms">Rooms</button>
+        <button class="btn btn-tab" data-tab="keys">Stream Keys</button>
+        <button class="btn btn-tab" data-tab="ome">Stats</button>
+    </div>
+    <div class="nav-right">
+        <a href="https://zemariacolor.com" target="_blank" class="btn btn-sm">Portfolio</a>
+        <button class="btn btn-sm" id="logout-btn">Sign out</button>
+    </div>
+</nav>
+
+<main id="main-content" style="display:none">
+<div class="content-wrap">
+
+    <!-- Rooms tab -->
+    <div id="tab-rooms">
+        <div class="section-header">
+            <span class="section-title">Rooms</span>
+            <button class="btn btn-primary btn-sm" id="new-room-btn">+ New Room</button>
+        </div>
+
+        <div id="rooms-list">
+            <div class="empty">Loading…</div>
+        </div>
+    </div>
+
+    <!-- Stats tab -->
+    <div id="tab-ome" style="display:none">
+        <div class="section-header">
+            <span class="section-title">Live Streams</span>
+            <button class="btn btn-sm" id="ome-refresh-btn">Refresh</button>
+        </div>
+        <div class="ome-subheader" id="ome-subheader"></div>
+        <div id="ome-list"><div class="empty">Loading…</div></div>
+    </div>
+
+    <!-- Stream Keys tab -->
+    <div id="tab-keys" style="display:none">
+        <div class="section-header">
+            <span class="section-title">Stream Keys</span>
+            <button class="btn btn-primary btn-sm" id="new-key-btn">+ New Key</button>
+        </div>
+        <div id="keys-list">
+            <div class="empty">Loading…</div>
+        </div>
+    </div>
+
+</div>
+</main>
+
+<!-- Room modal -->
+<div class="modal-overlay" id="room-modal" style="display:none">
+    <div class="modal">
+        <div class="modal-header">
+            <span class="modal-title" id="room-modal-title">New Room</span>
+            <button class="btn btn-sm" id="room-modal-close">✕</button>
+        </div>
+        <div class="form-grid">
+            <div class="form-row" style="grid-column:1/-1">
+                <label>Room Name</label>
+                <input type="text" id="room-name" placeholder="e.g. Client Review — Project X">
+            </div>
+            <div class="form-row">
+                <label>Password <span style="font-weight:400;text-transform:none;letter-spacing:0">(leave blank to keep current)</span></label>
+                <input type="text" id="room-password" placeholder="Optional">
+            </div>
+            <div class="form-row checkbox" id="clear-password-row" style="display:none">
+                <input type="checkbox" id="room-clear-password">
+                <label for="room-clear-password">Remove password</label>
+            </div>
+            <div class="form-row">
+                <label>Delivery Mode</label>
+                <select id="room-delivery">
+                    <option value="webrtc">WebRTC (sub-second)</option>
+                    <option value="llhls">LLHLS (2–5s, broader compat)</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>Expires</label>
+                <input type="datetime-local" id="room-expires">
+            </div>
+            <div class="form-row">
+                <label>Stream Key</label>
+                <select id="room-stream-key">
+                    <option value="">— None —</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row checkbox">
+            <input type="checkbox" id="room-waiting">
+            <label for="room-waiting">Enable waiting room (approve viewers before they see the stream)</label>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" id="room-modal-cancel">Cancel</button>
+            <button class="btn btn-primary" id="room-modal-save">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Stream Key modal -->
+<div class="modal-overlay" id="key-modal" style="display:none">
+    <div class="modal">
+        <div class="modal-header">
+            <span class="modal-title">New Stream Key</span>
+            <button class="btn btn-sm" id="key-modal-close">✕</button>
+        </div>
+        <div class="form-row">
+            <label>Name</label>
+            <input type="text" id="key-name" placeholder="e.g. Main Suite, Laptop">
+        </div>
+        <div class="modal-footer">
+            <button class="btn" id="key-modal-cancel">Cancel</button>
+            <button class="btn btn-primary" id="key-modal-save">Create</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+    const API          = '';
+    const VIEWER_BASE  = 'https://stream.zemariacolor.com/watch';
+    const INGEST_HOST  = 'stream.zemariacolor.com';
+
+    let token         = localStorage.getItem('stream_token') || '';
+    let rooms         = [];
+    let keys          = [];
+    let waitingMap    = {};   // room_id → [{id, name}]
+    let kickedMap     = {};   // room_id → [{id, name}]
+    let editingRoomId = null;
+    let omeData       = null;
+    let activeTab     = 'rooms';
+
+    // ---- Utilities ----
+
+    function toast(msg, dur = 2500) {
+        const el = document.getElementById('toast');
+        el.textContent = msg;
+        el.classList.add('show');
+        setTimeout(() => el.classList.remove('show'), dur);
+    }
+
+    function fmtDate(iso) {
+        if (!iso) return null;
+        return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    async function apiFetch(path, opts = {}) {
+        const res = await fetch(API + path, {
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+            ...opts,
+        });
+        if (res.status === 401) { doLogout(); return null; }
+        return res;
+    }
+
+    function copy(text) {
+        navigator.clipboard.writeText(text).then(() => toast('Copied'));
+    }
+
+    function esc(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ---- Auth ----
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const err = document.getElementById('login-error');
+        err.textContent = '';
+        const password = document.getElementById('password-input').value;
+        let res;
+        try {
+            res = await fetch(API + '/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password }),
+            });
+        } catch {
+            err.textContent = 'Cannot reach server — is the backend running?';
+            return;
+        }
+        const data = await res.json();
+        if (!res.ok) { err.textContent = data.error || 'Sign in failed'; return; }
+        token = data.token;
+        localStorage.setItem('stream_token', token);
+        document.getElementById('password-input').value = '';
+        showApp();
+    });
+
+    document.getElementById('logout-btn').addEventListener('click', doLogout);
+
+    function doLogout() {
+        token = '';
+        localStorage.removeItem('stream_token');
+        document.getElementById('login-screen').style.display = 'flex';
+        document.getElementById('main-nav').style.display = 'none';
+        document.getElementById('main-content').style.display = 'none';
+    }
+
+    function showApp() {
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('main-nav').style.display = 'flex';
+        document.getElementById('main-content').style.display = 'block';
+        loadAll();
+    }
+
+    // ---- Tabs ----
+
+    document.querySelectorAll('.btn-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeTab = btn.dataset.tab;
+            document.getElementById('tab-rooms').style.display = activeTab === 'rooms' ? '' : 'none';
+            document.getElementById('tab-keys').style.display  = activeTab === 'keys'  ? '' : 'none';
+            document.getElementById('tab-ome').style.display   = activeTab === 'ome'   ? '' : 'none';
+            if (activeTab === 'ome') renderOme();
+        });
+    });
+
+    // ---- Load data ----
+
+    async function loadAll() {
+        await Promise.all([loadRooms(), loadKeys(), loadOme()]);
+    }
+
+    async function loadRooms() {
+        const res = await apiFetch('/api/rooms');
+        if (!res) return;
+        rooms = await res.json();
+
+        // Fetch waiting + kicked lists for active rooms
+        const withWaiting = rooms.filter(r => r.waiting_room && r.status !== 'ended');
+        const activeRooms = rooms.filter(r => r.status !== 'ended');
+        const [waitingResults, kickedResults] = await Promise.all([
+            Promise.all(withWaiting.map(r => apiFetch(`/api/rooms/${r.id}/waiting`).then(r2 => r2 ? r2.json() : []).then(list => [r.id, list]))),
+            Promise.all(activeRooms.map(r => apiFetch(`/api/rooms/${r.id}/kicked`).then(r2 => r2 ? r2.json() : []).then(list => [r.id, list]))),
+        ]);
+        waitingMap = Object.fromEntries(waitingResults);
+        kickedMap  = Object.fromEntries(kickedResults);
+
+        renderRooms();
+    }
+
+    async function loadKeys() {
+        const res = await apiFetch('/api/stream-keys');
+        if (!res) return;
+        keys = await res.json();
+        renderKeys();
+    }
+
+    // ---- Rooms ----
+
+    function renderRooms() {
+        const container = document.getElementById('rooms-list');
+        if (!rooms.length) {
+            container.innerHTML = '<div class="empty">No rooms yet. Create one to get started.</div>';
+            return;
+        }
+
+        container.innerHTML = rooms.map(r => {
+            const viewerUrl    = `${VIEWER_BASE}/${r.slug}`;
+            const presenterUrl = `${viewerUrl}?role=presenter`;
+const expires      = fmtDate(r.expires_at);
+            const keyLabel     = r.stream_key_name || '—';
+
+            const metaParts = [`/${r.slug}`];
+            if (keyLabel !== '—') metaParts.push(`Key: ${esc(keyLabel)}`);
+            if (expires) metaParts.push(`Expires ${expires}`);
+
+            const waitingCount  = r.waiting_count || 0;
+            const showWaiting   = r.waiting_room && r.status !== 'ended';
+            const waitingPeople = waitingMap[r.id] || [];
+
+            return `
+            <div class="room-card" data-id="${r.id}" data-slug="${esc(r.slug)}">
+                <div class="room-card-header">
+                    <div class="room-card-info">
+                        <div class="room-card-name">${esc(r.name)}</div>
+                        <div class="room-card-meta">${metaParts.join(' · ')}</div>
+                    </div>
+                    <div class="room-card-badges">
+                        <span class="badge badge-${r.status}">${r.status}</span>
+                        <span class="badge badge-${r.delivery_mode}">${r.delivery_mode}</span>
+                    </div>
+                    <div class="room-card-actions">
+                        <button class="btn btn-sm" onclick="editRoom('${r.id}')">Edit</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteRoom('${r.id}')">Delete</button>
+                    </div>
+                </div>
+
+                <div class="room-card-body">
+                    <div class="url-row">
+                        <span class="url-label">Viewer</span>
+                        <input readonly class="url-input" value="${esc(viewerUrl)}">
+                        <button class="btn btn-copy" onclick="copy('${esc(viewerUrl)}')">Copy</button>
+                    </div>
+                    <div class="url-row">
+                        <span class="url-label">Presenter</span>
+                        <a class="btn btn-primary" href="${esc(presenterUrl)}" target="_blank" rel="noopener">Enter Room</a>
+                    </div>
+
+                </div>
+
+                ${showWaiting ? `
+                <div class="waiting-section">
+                    <div class="waiting-section-header">
+                        <span class="waiting-section-title">Waiting Room${waitingCount > 0 ? ` (${waitingCount})` : ''}</span>
+                        ${waitingCount > 0 ? `<button class="btn btn-sm" onclick="admitAll('${r.id}')">Admit All</button>` : ''}
+                    </div>
+                    ${waitingPeople.length ? waitingPeople.map(p => `
+                        <div class="participant-row">
+                            <span>${esc(p.name)}</span>
+                            <button class="btn btn-sm" onclick="admitOne('${r.id}','${p.id}')">Admit</button>
+                        </div>`).join('') : `<span class="waiting-empty">No one waiting.</span>`}
+                </div>
+                ` : ''}
+
+                ${(kickedMap[r.id] || []).length ? `
+                <div class="waiting-section">
+                    <div class="waiting-section-header">
+                        <span class="waiting-section-title" style="color:var(--danger)">Kicked (${kickedMap[r.id].length})</span>
+                    </div>
+                    ${kickedMap[r.id].map(p => `
+                        <div class="participant-row">
+                            <span>${esc(p.name)}</span>
+                            <button class="btn btn-sm" onclick="unkickOne('${r.id}','${p.id}')">Unblock</button>
+                        </div>`).join('')}
+                </div>
+                ` : ''}
+            </div>`;
+        }).join('');
+    }
+
+
+    // ---- Stream Keys ----
+
+    function renderKeys() {
+        const container = document.getElementById('keys-list');
+        if (!keys.length) {
+            container.innerHTML = '<div class="empty">No stream keys yet.</div>';
+            return;
+        }
+
+        container.innerHTML = keys.map(k => {
+            const srtUrl  = `srt://${INGEST_HOST}:9999?streamid=default/live/${k.key_token}`;
+            const rtmpServer = `rtmp://${INGEST_HOST}:1935/live`;
+            const whipUrl = `https://${INGEST_HOST}/live/${k.key_token}?direction=whip`;
+            const webrtcUrl = `wss://${INGEST_HOST}/live/${k.key_token}`;
+            const llhlsUrl  = `https://${INGEST_HOST}/live/${k.key_token}/llhls.m3u8`;
+
+            return `
+            <div class="key-card">
+                <div class="key-card-header">
+                    <div class="key-card-name">${esc(k.name)}</div>
+                    ${k.room_names ? `<div class="key-card-rooms">Used in: ${esc(k.room_names)}</div>` : ''}
+                    <button class="btn btn-sm btn-danger" onclick="deleteKey('${k.id}')">Delete</button>
+                </div>
+                <div class="key-card-body">
+                    <div class="url-row">
+                        <span class="url-label">Stream Key</span>
+                        <input readonly class="url-input" style="font-family:monospace;font-size:11px" value="${esc(k.key_token)}">
+                        <button class="btn btn-primary btn-copy" onclick="copy('${esc(k.key_token)}')">Copy</button>
+                    </div>
+                    <div class="url-row">
+                        <span class="url-label">SRT</span>
+                        <input readonly class="url-input" style="font-family:monospace;font-size:11px" value="${esc(srtUrl)}">
+                        <button class="btn btn-copy" onclick="copy('${esc(srtUrl)}')">Copy</button>
+                    </div>
+                    <div class="url-row">
+                        <span class="url-label">RTMP</span>
+                        <input readonly class="url-input" style="font-family:monospace;font-size:11px" value="${esc(rtmpServer)}">
+                        <button class="btn btn-copy" onclick="copy('${esc(rtmpServer)}')">Copy Server</button>
+                    </div>
+                    <div class="url-row">
+                        <span class="url-label"></span>
+                        <input readonly class="url-input" style="font-family:monospace;font-size:11px" value="${esc(k.key_token)}">
+                        <button class="btn btn-copy" onclick="copy('${esc(k.key_token)}')">Copy Key</button>
+                    </div>
+                    <div class="url-row">
+                        <span class="url-label">WHIP</span>
+                        <input readonly class="url-input" style="font-family:monospace;font-size:11px" value="${esc(whipUrl)}">
+                        <button class="btn btn-copy" onclick="copy('${esc(whipUrl)}')">Copy</button>
+                    </div>
+                    <hr class="url-divider">
+                    <div class="url-row">
+                        <span class="url-label" style="color:var(--accent)">WebRTC</span>
+                        <input readonly class="url-input" style="font-family:monospace;font-size:11px" value="${esc(webrtcUrl)}">
+                        <button class="btn btn-copy" onclick="copy('${esc(webrtcUrl)}')">Copy</button>
+                    </div>
+                    <div class="url-row">
+                        <span class="url-label" style="color:var(--accent)">LLHLS</span>
+                        <input readonly class="url-input" style="font-family:monospace;font-size:11px" value="${esc(llhlsUrl)}">
+                        <button class="btn btn-copy" onclick="copy('${esc(llhlsUrl)}')">Copy</button>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    // ---- Room modal ----
+
+    document.getElementById('new-room-btn').addEventListener('click', () => openRoomModal(null));
+    document.getElementById('room-modal-close').addEventListener('click', closeRoomModal);
+    document.getElementById('room-modal-cancel').addEventListener('click', closeRoomModal);
+    document.getElementById('room-modal-save').addEventListener('click', saveRoom);
+
+    function openRoomModal(id) {
+        editingRoomId = id;
+        document.getElementById('room-modal-title').textContent = id ? 'Edit Room' : 'New Room';
+
+        const skSelect = document.getElementById('room-stream-key');
+        skSelect.innerHTML = '<option value="">— None —</option>' +
+            keys.map(k => `<option value="${k.id}">${esc(k.name)}</option>`).join('');
+
+        document.getElementById('room-clear-password').checked = false;
+        if (id) {
+            const r = rooms.find(r => r.id === id);
+            document.getElementById('room-name').value      = r.name;
+            document.getElementById('room-password').value  = '';
+            document.getElementById('room-delivery').value  = r.delivery_mode;
+            document.getElementById('room-waiting').checked = !!r.waiting_room;
+            document.getElementById('room-expires').value   = r.expires_at ? r.expires_at.slice(0,16) : '';
+            skSelect.value = r.stream_key_id || '';
+            document.getElementById('clear-password-row').style.display = r.password_hash ? '' : 'none';
+        } else {
+            document.getElementById('room-name').value      = '';
+            document.getElementById('room-password').value  = '';
+            document.getElementById('room-delivery').value  = 'webrtc';
+            document.getElementById('room-waiting').checked = false;
+            document.getElementById('room-expires').value   = '';
+            skSelect.value = '';
+            document.getElementById('clear-password-row').style.display = 'none';
+        }
+
+        document.getElementById('room-modal').style.display = 'flex';
+    }
+
+    function closeRoomModal() {
+        document.getElementById('room-modal').style.display = 'none';
+        document.getElementById('clear-password-row').style.display = 'none';
+        document.getElementById('room-clear-password').checked = false;
+        editingRoomId = null;
+    }
+
+    async function saveRoom() {
+        const name          = document.getElementById('room-name').value.trim();
+        const password      = document.getElementById('room-password').value;
+        const clearPassword = document.getElementById('room-clear-password').checked;
+        const delivery_mode = document.getElementById('room-delivery').value;
+        const waiting_room  = document.getElementById('room-waiting').checked;
+        const expires_at    = document.getElementById('room-expires').value || null;
+        const streamKeyId   = document.getElementById('room-stream-key').value;
+
+        if (!name) { toast('Room name required'); return; }
+
+        // Password logic:
+        //   clearPassword checked → send '' to clear
+        //   password typed        → send new value to hash
+        //   neither               → omit field (backend keeps existing hash)
+        const body = {
+            name, delivery_mode, waiting_room, expires_at,
+            stream_key_id: streamKeyId || null,
+            ...(clearPassword ? { password: '' } : password ? { password } : {}),
+        };
+
+        let res;
+        if (editingRoomId) {
+            res = await apiFetch(`/api/rooms/${editingRoomId}`, { method: 'PUT', body: JSON.stringify(body) });
+        } else {
+            res = await apiFetch('/api/rooms', { method: 'POST', body: JSON.stringify(body) });
+        }
+
+        if (!res || !res.ok) { toast('Save failed'); return; }
+        closeRoomModal();
+        toast(editingRoomId ? 'Room updated' : 'Room created');
+        loadAll();
+    }
+
+    window.editRoom   = (id) => openRoomModal(id);
+
+    window.deleteRoom = async (id) => {
+        if (!confirm('Delete this room?')) return;
+        const res = await apiFetch(`/api/rooms/${id}`, { method: 'DELETE' });
+        if (res && res.ok) { toast('Room deleted'); loadAll(); }
+        else toast('Delete failed');
+    };
+
+    // ---- Stream Key modal ----
+
+    document.getElementById('new-key-btn').addEventListener('click', openKeyModal);
+    document.getElementById('key-modal-close').addEventListener('click', closeKeyModal);
+    document.getElementById('key-modal-cancel').addEventListener('click', closeKeyModal);
+    document.getElementById('key-modal-save').addEventListener('click', saveKey);
+
+    function openKeyModal() {
+        document.getElementById('key-name').value = '';
+        document.getElementById('key-modal').style.display = 'flex';
+    }
+
+    function closeKeyModal() {
+        document.getElementById('key-modal').style.display = 'none';
+    }
+
+    async function saveKey() {
+        const name = document.getElementById('key-name').value.trim();
+        if (!name) { toast('Name required'); return; }
+        const res = await apiFetch('/api/stream-keys', { method: 'POST', body: JSON.stringify({ name }) });
+        if (!res || !res.ok) { toast('Failed to create key'); return; }
+        closeKeyModal();
+        toast('Stream key created');
+        loadAll();
+    }
+
+    window.deleteKey = async (id) => {
+        if (!confirm('Delete this stream key?')) return;
+        const res = await apiFetch(`/api/stream-keys/${id}`, { method: 'DELETE' });
+        if (res && res.ok) { toast('Key deleted'); loadAll(); }
+        else toast('Delete failed');
+    };
+
+    // ---- Waiting room (inline) ----
+
+    window.admitOne = async (roomId, participantId) => {
+        await apiFetch(`/api/rooms/${roomId}/admit/${participantId}`, { method: 'POST' });
+        loadRooms();
+    };
+
+    window.admitAll = async (roomId) => {
+        await apiFetch(`/api/rooms/${roomId}/admit-all`, { method: 'POST' });
+        toast('All admitted');
+        loadRooms();
+    };
+
+    // ---- Kicked participants ----
+
+    window.unkickOne = async (roomId, participantId) => {
+        await apiFetch(`/api/rooms/${roomId}/unkick/${participantId}`, { method: 'POST' });
+        toast('Participant unblocked');
+        loadRooms();
+    };
+
+    // ---- OME Stats ----
+
+    document.getElementById('ome-refresh-btn').addEventListener('click', () => loadOme());
+
+    async function loadOme() {
+        const res = await apiFetch('/api/ome/status');
+        if (!res) return;
+        omeData = await res.json();
+        if (activeTab === 'ome') renderOme();
+    }
+
+    function renderOme() {
+        const container  = document.getElementById('ome-list');
+        const subheader  = document.getElementById('ome-subheader');
+
+        if (!omeData) { container.innerHTML = '<div class="empty">Loading…</div>'; return; }
+        if (omeData.error) {
+            container.innerHTML = `<div class="empty">OME unavailable — ${esc(omeData.error)}</div>`;
+            subheader.textContent = '';
+            return;
+        }
+
+        const { streams, conf_count } = omeData;
+        subheader.textContent = conf_count > 0
+            ? `${conf_count} conference stream${conf_count !== 1 ? 's' : ''} active`
+            : '';
+
+        if (!streams.length) {
+            container.innerHTML = '<div class="empty">No streams currently live.</div>';
+            return;
+        }
+
+        container.innerHTML = streams.map(s => {
+            const input  = s.detail?.input || {};
+            const vTrack = (input.tracks || []).find(t => t.type === 'Video');
+            const aTrack = (input.tracks || []).find(t => t.type === 'Audio');
+            const v = vTrack?.video;
+            const a = aTrack?.audio;
+
+            const videoStr = v
+                ? `${v.codec} · ${v.width}×${v.height} · ${Math.round(v.framerate)}fps · ${fmtBitrate(v.bitrateLatest)}`
+                : '—';
+            const audioStr = a
+                ? `${a.codec} · ${Math.round(a.samplerate / 1000)}kHz · ${a.channel}ch · ${fmtBitrate(a.bitrateLatest)}`
+                : '—';
+
+            const sourceType = input.sourceType || '?';
+            const sourceIp   = fmtSourceIp(input.sourceUrl);
+            const uptime     = input.createdTime ? fmtUptime(input.createdTime) : '';
+            const meta       = [uptime ? `Live ${uptime}` : '', sourceIp ? `from ${esc(sourceIp)}` : ''].filter(Boolean).join(' · ');
+
+            return `
+            <div class="stream-card">
+                <div class="stream-card-header">
+                    <div class="stream-live-dot"></div>
+                    <div class="stream-card-info">
+                        <div class="stream-card-name">${esc(s.key_name || s.name.slice(0, 16) + '…')}</div>
+                        <div class="stream-card-room">${s.room_name ? `Room: ${esc(s.room_name)}` : '<span style="color:var(--faint)">No room assigned</span>'}</div>
+                    </div>
+                    <span class="badge badge-source">${esc(sourceType)}</span>
+                    <button class="btn btn-sm btn-danger" onclick="kickStream('${esc(s.name)}')">Kick</button>
+                </div>
+                <div class="stream-card-body">
+                    <div class="stream-stat"><span class="stat-label">Video</span><span>${videoStr}</span></div>
+                    <div class="stream-stat"><span class="stat-label">Audio</span><span>${audioStr}</span></div>
+                </div>
+                ${meta ? `<div class="stream-meta">${meta}</div>` : ''}
+            </div>`;
+        }).join('');
+    }
+
+    function fmtBitrate(bps) {
+        if (!bps) return '—';
+        if (bps >= 1_000_000) return (bps / 1_000_000).toFixed(1) + ' Mbps';
+        return Math.round(bps / 1000) + ' kbps';
+    }
+
+    function fmtSourceIp(url) {
+        if (!url) return '';
+        const m = url.match(/\/\/([^:/]+)/);
+        return m ? m[1] : '';
+    }
+
+    function fmtUptime(iso) {
+        const secs = Math.floor((Date.now() - new Date(iso)) / 1000);
+        if (secs < 60)   return `${secs}s`;
+        if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+        return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
+    }
+
+    window.kickStream = async (name) => {
+        if (!confirm(`Kick stream "${name}"?\nThis will disconnect the encoder immediately.`)) return;
+        const res = await apiFetch(`/api/ome/streams/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        if (res && res.ok) { toast('Stream kicked'); loadOme(); loadRooms(); }
+        else toast('Kick failed');
+    };
+
+    // ---- Helpers ----
+
+    window.copy = copy;
+
+    // ---- Init ----
+
+    if (token) {
+        fetch(API + '/api/rooms', { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.ok ? showApp() : doLogout())
+            .catch(() => doLogout());
+    }
+
+    setInterval(() => { if (token) loadAll(); }, 15000);
+
+}());
+</script>
+</body>
+</html>

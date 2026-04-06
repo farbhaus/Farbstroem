@@ -1,0 +1,13 @@
+# Secrets
+.env
+backend/secrets.env
+livekit/livekit.yaml
+
+# Data
+data/
+
+# Dependencies
+backend/node_modules/
+
+# OS
+.DS_Store

@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<Server version="8">
+    <Name>ZeMariaStream</Name>
+    <Type>origin</Type>
+    <IP>*</IP>
+    <PrivacyProtection>false</PrivacyProtection>
+    <StunServer>stun.ovenmediaengine.com:13478</StunServer>
+
+    <Modules>
+        <HTTP2>
+            <Enable>true</Enable>
+        </HTTP2>
+        <LLHLS>
+            <Enable>true</Enable>
+        </LLHLS>
+        <P2P>
+            <Enable>false</Enable>
+        </P2P>
+        <ERTMP>
+            <Enable>true</Enable>
+        </ERTMP>
+    </Modules>
+
+    <Bind>
+        <Managers>
+            <API>
+                <Port>8081</Port>
+                <WorkerCount>1</WorkerCount>
+            </API>
+        </Managers>
+
+        <Providers>
+            <RTMP>
+                <Port>1935</Port>
+                <WorkerCount>1</WorkerCount>
+            </RTMP>
+            <SRT>
+                <Port>9999</Port>
+                <WorkerCount>1</WorkerCount>
+            </SRT>
+            <WebRTC>
+                <Signalling>
+                    <Port>3333</Port>
+                    <TLSPort>3334</TLSPort>
+                    <WorkerCount>1</WorkerCount>
+                </Signalling>
+                <IceCandidates>
+                    <IceCandidate>*:10000-10009/udp</IceCandidate>
+                    <TcpRelay>*:3478</TcpRelay>
+                    <TcpForce>true</TcpForce>
+                    <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
+                </IceCandidates>
+            </WebRTC>
+        </Providers>
+
+        <Publishers>
+            <LLHLS>
+                <!-- Port 3333: OME multiplexes LLHLS (HTTP) and WebRTC signaling (WebSocket) on the same port -->
+                <!-- Caddy owns 80/443; proxy /live/* → localhost:3333 handles both protocols -->
+                <Port>3333</Port>
+                <TLSPort>3334</TLSPort>
+                <WorkerCount>4</WorkerCount>
+            </LLHLS>
+            <WebRTC>
+                <Signalling>
+                    <Port>3333</Port>
+                    <TLSPort>3334</TLSPort>
+                    <WorkerCount>1</WorkerCount>
+                </Signalling>
+                <IceCandidates>
+                    <IceCandidate>*:10000-10009/udp</IceCandidate>
+                    <TcpRelay>*:3478</TcpRelay>
+                    <TcpForce>true</TcpForce>
+                    <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
+                </IceCandidates>
+            </WebRTC>
+        </Publishers>
+    </Bind>
+
+    <Managers>
+        <Host>
+            <Names>
+                <Name>*</Name>
+            </Names>
+        </Host>
+        <API>
+            <AccessToken>${env:OME_API_TOKEN:ome-default-token}</AccessToken>
+            <CrossDomains>
+                <Url>*</Url>
+            </CrossDomains>
+        </API>
+    </Managers>
+
+    <Defaults>
+        <CrossDomains>
+            <Url>*</Url>
+        </CrossDomains>
+    </Defaults>
+
+    <VirtualHosts>
+        <VirtualHost>
+            <Name>default</Name>
+            <Distribution>stream.zemariacolor.com</Distribution>
+
+            <Host>
+                <Names>
+                    <Name>*</Name>
+                </Names>
+            </Host>
+
+            <!--
+                Admission Webhook — OME calls our backend to validate every
+                ingest connection (stream key check) and optionally viewer connections.
+                Backend responds with accept/deny JSON.
+            -->
+            <AdmissionWebhooks>
+                <ControlServerUrl>http://127.0.0.1:4001/api/webhook/admission</ControlServerUrl>
+                <SecretKey>${env:OME_WEBHOOK_SECRET:webhook-default-secret}</SecretKey>
+                <Timeout>3000</Timeout>
+                <Enables>
+                    <!-- Validate all ingest connections (stream key auth) -->
+                    <Providers>rtmp,srt,webrtc</Providers>
+                    <!-- Phase 2: enable webrtc,llhls here for viewer waiting room -->
+                    <Publishers></Publishers>
+                </Enables>
+            </AdmissionWebhooks>
+
+            <Applications>
+                <Application>
+                    <Name>live</Name>
+                    <Type>live</Type>
+
+                    <OutputProfiles>
+                        <HWAccels>
+                            <Decoder><Enable>false</Enable></Decoder>
+                            <Encoder><Enable>false</Enable></Encoder>
+                        </HWAccels>
+
+                        <OutputProfile>
+                            <Name>bypass</Name>
+                            <OutputStreamName>${OriginStreamName}</OutputStreamName>
+
+                            <Encodes>
+                                <!--
+                                    Video bypass — passes H.264 or H.265 as-is for WebRTC.
+                                    No GPU required.
+                                -->
+                                <Video>
+                                    <Name>bypass_video</Name>
+                                    <Bypass>true</Bypass>
+                                </Video>
+
+
+                                <!--
+                                    Audio: bypass if already AAC (common from OBS),
+                                    otherwise encode to AAC for LLHLS compatibility.
+                                -->
+                                <Audio>
+                                    <Name>aac_audio</Name>
+                                    <Codec>aac</Codec>
+                                    <Bitrate>128000</Bitrate>
+                                    <Samplerate>48000</Samplerate>
+                                    <Channel>2</Channel>
+                                    <BypassIfMatch>
+                                        <Codec>eq</Codec>
+                                    </BypassIfMatch>
+                                </Audio>
+
+                                <!--
+                                    Opus: needed for WebRTC playback.
+                                    Bypass if already Opus, encode otherwise.
+                                -->
+                                <Audio>
+                                    <Name>opus_audio</Name>
+                                    <Codec>opus</Codec>
+                                    <Bitrate>128000</Bitrate>
+                                    <Samplerate>48000</Samplerate>
+                                    <Channel>2</Channel>
+                                    <BypassIfMatch>
+                                        <Codec>eq</Codec>
+                                    </BypassIfMatch>
+                                </Audio>
+                            </Encodes>
+                        </OutputProfile>
+                    </OutputProfiles>
+
+                    <Providers>
+                        <RTMP />
+                        <SRT />
+                        <WebRTC>
+                            <Timeout>30000</Timeout>
+                            <CrossDomains>
+                                <Url>*</Url>
+                            </CrossDomains>
+                        </WebRTC>
+                    </Providers>
+
+                    <Publishers>
+                        <AppWorkerCount>1</AppWorkerCount>
+                        <StreamWorkerCount>4</StreamWorkerCount>
+
+                        <WebRTC>
+                            <Timeout>30000</Timeout>
+                            <Rtx>true</Rtx>
+                            <Ulpfec>false</Ulpfec>
+                            <JitterBuffer>false</JitterBuffer>
+                        </WebRTC>
+
+                        <LLHLS>
+                            <ChunkDuration>0.2</ChunkDuration>
+                            <PartHoldBack>0.6</PartHoldBack>
+                            <SegmentDuration>6</SegmentDuration>
+                            <SegmentCount>10</SegmentCount>
+                            <DVR>
+                                <Enable>false</Enable>
+                            </DVR>
+                            <CrossDomains>
+                                <Url>*</Url>
+                            </CrossDomains>
+                            <CreateDefaultPlaylist>true</CreateDefaultPlaylist>
+                        </LLHLS>
+                    </Publishers>
+                </Application>
+            </Applications>
+        </VirtualHost>
+    </VirtualHosts>
+</Server>

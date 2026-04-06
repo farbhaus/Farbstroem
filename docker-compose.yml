@@ -1,0 +1,45 @@
+services:
+  stream-redis:
+    image: redis:7-alpine
+    container_name: stream-redis
+    restart: unless-stopped
+    network_mode: host
+    command: redis-server --save "" --loglevel warning
+
+  stream-livekit:
+    image: livekit/livekit-server:latest
+    container_name: stream-livekit
+    restart: unless-stopped
+    network_mode: host
+    env_file: ./backend/secrets.env
+    volumes:
+      - ./livekit/livekit.yaml:/livekit.yaml
+    command: --config /livekit.yaml
+    depends_on:
+      - stream-redis
+
+  stream-ome:
+    image: airensoft/ovenmediaengine:latest
+    container_name: stream-ome
+    restart: unless-stopped
+    network_mode: host
+    env_file: ./backend/secrets.env
+    environment:
+      - OME_HOST_IP=stream.zemariacolor.com
+    volumes:
+      - ./ome/origin_conf:/opt/ovenmediaengine/bin/origin_conf
+
+  stream-backend:
+    build: ./backend
+    container_name: stream-backend
+    restart: unless-stopped
+    network_mode: host
+    env_file: ./backend/secrets.env
+    environment:
+      - PORT=4001
+      - DB_PATH=/data/stream.db
+      - DATA_PATH=/opt/zemaria/stream/data
+      - NODE_ENV=production
+    volumes:
+      - /opt/zemaria/stream/data:/data
+      - /opt/zemaria/stream/www:/www
