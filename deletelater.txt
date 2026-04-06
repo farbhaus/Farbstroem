@@ -1,3 +1,0 @@
-deletelater 
-
-Learning git, this will be the first manual commit
