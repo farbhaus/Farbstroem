@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Ze Maria — Stream</title>
 <script src="https://cdn.jsdelivr.net/npm/ovenplayer/dist/ovenplayer.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5/dist/hls.min.js"></script>
@@ -194,6 +194,31 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     color: #fff; background: rgba(0,0,0,0.55); padding: 3px 10px; border-radius: 4px;
     pointer-events: none;
 }
+/* ---- Pointer overlay ---- */
+#pointer-overlay {
+    position: absolute; inset: 0; z-index: 7;
+    pointer-events: none; overflow: hidden;
+}
+#pointer-overlay.active { pointer-events: auto; cursor: crosshair; touch-action: none; }
+.remote-pointer {
+    position: absolute; pointer-events: none;
+    transition: left 0.05s linear, top 0.05s linear, opacity 0.5s ease;
+    opacity: 1; will-change: left, top;
+}
+.remote-pointer.faded { opacity: 0; }
+.remote-pointer-dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 4px rgba(0,0,0,0.5);
+    margin-left: -7px; margin-top: -7px;
+}
+.remote-pointer-label {
+    position: absolute; left: 10px; top: -4px;
+    font-size: 10px; font-weight: 700; color: #fff;
+    white-space: nowrap; padding: 1px 6px; border-radius: 3px;
+    pointer-events: none;
+}
+
 .offline-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); animation: pulse-dot 2s ease-in-out infinite; }
 @keyframes pulse-dot { 0%,100%{opacity:1; transform:scale(1)} 50%{opacity:0.3; transform:scale(0.8)} }
 .offline-label { font-size: 13px; color: var(--dim); font-weight: 500; }
@@ -317,6 +342,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .toolbar-group { display: flex; gap: 4px; }
 .tb-sep { width: 1px; height: 28px; background: var(--border); margin: 0 8px; }
+#tb-break { display: none; }
 
 .tb-btn {
     width: 42px; height: 42px;
@@ -364,11 +390,23 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     #top-bar { padding: 0 10px; }
     #top-center { gap: 6px; }
 
-    /* Toolbar */
-    .tb-btn { width: 38px; height: 38px; }
-    .tb-btn svg { width: 18px; height: 18px; }
-    #bottom-toolbar { height: 48px; gap: 2px; }
-    .tb-sep { margin: 0 4px; }
+    /* Toolbar — two rows */
+    #bottom-toolbar {
+        height: auto; display: flex; flex-wrap: wrap;
+        justify-content: center; align-items: center;
+        gap: 0; padding: 4px 8px;
+        padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+    }
+    .tb-btn { width: 36px; height: 36px; }
+    .tb-btn svg { width: 17px; height: 17px; }
+    .tb-sep { height: 24px; margin: 0 6px; }
+    .toolbar-group { display: flex; gap: 2px; }
+    /* Force row break before player controls */
+    #tb-break { display: block; order: 9; flex-basis: 100%; height: 2px; }
+    #player-controls { order: 10; }
+    .tb-sep:has(+ #player-controls) { order: 10; display: none; }
+    #utility-controls { order: 11; }
+    .tb-sep:has(+ #utility-controls) { order: 11; }
     #volume-slider { display: none; }
 
     /* Main layout: conference strip above video */
@@ -419,6 +457,39 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
     /* Join / waiting boxes fit small screens */
     .join-box, .waiting-box, .landing-box { width: calc(100vw - 32px); padding: 32px 24px; }
+}
+
+/* Mobile landscape — maximize video area */
+@media (max-height: 440px) and (orientation: landscape) {
+    #top-bar { height: 32px; }
+    #top-bar .brand-logo { display: none; }
+    #bottom-toolbar { flex-wrap: nowrap; padding: 2px 8px;
+        padding-bottom: calc(2px + env(safe-area-inset-bottom, 0px)); }
+    .tb-btn { width: 32px; height: 32px; }
+    .tb-btn svg { width: 15px; height: 15px; }
+
+    /* Panels as flex children — video shrinks to make room */
+    #main-row { flex-direction: row; }
+    #center-area { flex: 1; min-width: 0; min-height: 0; }
+
+    #left-panel {
+        position: static !important; width: 0 !important;
+        height: auto !important; overflow: hidden !important;
+        border-right: none !important; transition: width 0.2s ease !important;
+        flex-shrink: 0;
+    }
+    #left-panel.open { width: 220px !important; border-right-width: 1px !important; }
+    #left-panel .panel-header { display: flex !important; }
+    #conf-tiles {
+        flex-direction: column; height: auto; overflow-y: auto; overflow-x: hidden;
+    }
+
+    #right-panel {
+        position: static !important; width: 0 !important;
+        overflow: hidden !important; transition: width 0.2s ease !important;
+        flex-shrink: 0;
+    }
+    #right-panel.open { width: 260px !important; border-left-width: 1px !important; }
 }
 </style>
 </head>
@@ -551,6 +622,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
                 <video id="screenshare-video" autoplay playsinline></video>
                 <div id="screenshare-label"></div>
             </div>
+            <div id="pointer-overlay"></div>
             <div id="offline-screen">
                 <div class="offline-dot"></div>
                 <div class="offline-label" id="offline-msg">Waiting for livestream source...</div>
@@ -597,6 +669,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         </div>
         <div class="tb-sep"></div>
         <div class="toolbar-group">
+            <button class="tb-btn" id="pointer-btn" title="Pointer">
+                <svg viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6" stroke-linecap="round"/></svg>
+            </button>
             <button class="tb-btn" id="conf-toggle" title="Participants">
                 <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </button>
@@ -604,6 +679,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
                 <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             </button>
         </div>
+        <div id="tb-break"></div>
         <div class="tb-sep"></div>
         <div class="toolbar-group" id="player-controls">
             <button class="tb-btn" id="play-btn" title="Play/Pause" disabled>
@@ -617,7 +693,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             <input type="range" id="volume-slider" min="0" max="100" value="100" disabled>
         </div>
         <div class="tb-sep"></div>
-        <div class="toolbar-group">
+        <div class="toolbar-group" id="utility-controls">
+            <button class="tb-btn" id="resync-btn" title="Resync">
+                <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            </button>
             <button class="tb-btn" id="fullscreen-btn" title="Fullscreen">
                 <svg viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
             </button>
@@ -664,6 +743,31 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     // Panel state
     let chatOpen = false;
     let confOpen = false;
+
+    // Pointer overlay state
+    let pointerMode = false;
+    const pointerCursors = new Map(); // participantId -> { el, fadeTimer }
+    const POINTER_COLORS = [
+        '#FF3030', // red
+        '#00C853', // green
+        '#2979FF', // blue
+        '#FFD600', // yellow
+        '#D500F9', // magenta
+        '#FF6D00', // orange
+        '#00E5FF', // cyan
+        '#FF4081', // pink
+        '#76FF03', // lime
+        '#651FFF', // purple
+    ];
+    let pointerThrottleTimer = null;
+
+    function getPointerColor(pid) {
+        let h = 0;
+        for (let i = 0; i < pid.length; i++) {
+            h = Math.imul(h ^ pid.charCodeAt(i), 2654435761);
+        }
+        return POINTER_COLORS[((h >>> 0) % POINTER_COLORS.length)];
+    }
 
     function esc(s) {
         return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -1046,6 +1150,11 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     }
 
     window.addEventListener('resize', sizePlayer);
+    screen.orientation?.addEventListener('change', () => {
+        sizePlayer();
+        // iOS rotation animation takes ~300ms; re-measure throughout
+        for (const ms of [50, 150, 300, 500]) setTimeout(sizePlayer, ms);
+    });
     if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', sizePlayer);
     }
@@ -1090,6 +1199,13 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     });
 
     // ---- Fullscreen ----
+
+    document.getElementById('resync-btn').addEventListener('click', () => {
+        clearTimeout(retryTimer);
+        clearTimeout(offlineTimer);
+        if (player) { try { player.remove(); } catch {} player = null; }
+        initPlayer();
+    });
 
     document.getElementById('fullscreen-btn').addEventListener('click', () => {
         const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
@@ -1326,8 +1442,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
     volumeSlider.addEventListener('input', () => {
         if (!player) return;
-        player.setVolume(parseInt(volumeSlider.value));
-        if (player.getMute() && volumeSlider.value > 0) player.setMute(false);
+        const vol = parseInt(volumeSlider.value);
+        if (player.getMute() && vol > 0) player.setMute(false);
+        player.setVolume(vol);
+        syncPlayerControls();
     });
 
     // ---- WebSocket ----
@@ -1353,6 +1471,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
                 // LiveKit handles track state automatically — no manual sync needed
             }
             if (msg.type === 'kicked') {
+                clearAllPointers();
                 if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
                 localStorage.removeItem(`viewer_session_${slug}`);
                 localStorage.removeItem(PREF_KEY);
@@ -1367,8 +1486,13 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             if (msg.type === 'participants:update') updateWatchOnlyList(msg.participants);
             if (msg.type === 'chat:message') appendChatMessage(msg);
             if (msg.type === 'file:shared')  appendFileMessage(msg);
+            if (msg.type === 'pointer:move' && msg.participantId !== participantId) {
+                renderPointer(msg.participantId, msg.name, msg.x, msg.y);
+            }
+            if (msg.type === 'pointer:hide') hidePointer(msg.participantId);
         };
         ws.onclose = (e) => {
+            clearAllPointers();
             if (e.code === 1008) {
                 // Auth rejected — session is stale; clear it and return to join form
                 localStorage.removeItem(`viewer_session_${slug}`);
@@ -1502,6 +1626,12 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         const numEl = document.getElementById('participant-num');
         if (numEl) numEl.textContent = participants.length;
 
+        // Clean up pointers for participants who left
+        const currentPids = new Set(participants.map(p => p.id));
+        for (const pid of pointerCursors.keys()) {
+            if (!currentPids.has(pid)) hidePointer(pid);
+        }
+
         const viewersEl = document.getElementById('conf-viewers');
         const lkIds = livekitRoom
             ? new Set(Array.from(livekitRoom.remoteParticipants.keys()))
@@ -1517,6 +1647,79 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
                 `<circle cx="9" cy="7" r="4"/></svg>${esc(p.name)}</div>`
             ).join('');
     }
+
+    // ---- Pointer overlay ----
+
+    const pOverlay = document.getElementById('pointer-overlay');
+
+    function renderPointer(pid, name, x, y) {
+        let entry = pointerCursors.get(pid);
+        if (!entry) {
+            const el = document.createElement('div');
+            el.className = 'remote-pointer';
+            const color = getPointerColor(pid);
+            el.innerHTML =
+                `<div class="remote-pointer-dot" style="background:${color}"></div>` +
+                `<div class="remote-pointer-label" style="background:${color}">${esc(name)}</div>`;
+            pOverlay.appendChild(el);
+            entry = { el, fadeTimer: null };
+            pointerCursors.set(pid, entry);
+        }
+        const rect = pOverlay.getBoundingClientRect();
+        entry.el.style.left = (x * rect.width) + 'px';
+        entry.el.style.top  = (y * rect.height) + 'px';
+        entry.el.classList.remove('faded');
+        clearTimeout(entry.fadeTimer);
+        entry.fadeTimer = setTimeout(() => entry.el.classList.add('faded'), 3000);
+    }
+
+    function hidePointer(pid) {
+        const entry = pointerCursors.get(pid);
+        if (!entry) return;
+        clearTimeout(entry.fadeTimer);
+        entry.el.remove();
+        pointerCursors.delete(pid);
+    }
+
+    function clearAllPointers() {
+        for (const pid of pointerCursors.keys()) hidePointer(pid);
+    }
+
+    document.getElementById('pointer-btn').addEventListener('click', () => {
+        pointerMode = !pointerMode;
+        document.getElementById('pointer-btn').classList.toggle('active', pointerMode);
+        pOverlay.classList.toggle('active', pointerMode);
+        if (!pointerMode && ws?.readyState === 1) {
+            ws.send(JSON.stringify({ type: 'pointer:hide' }));
+        }
+    });
+
+    function sendPointerMove(cx, cy) {
+        if (!pointerMode || !ws || ws.readyState !== 1) return;
+        if (pointerThrottleTimer) return;
+        pointerThrottleTimer = setTimeout(() => { pointerThrottleTimer = null; }, 33);
+        const rect = pOverlay.getBoundingClientRect();
+        const x = (cx - rect.left) / rect.width;
+        const y = (cy - rect.top) / rect.height;
+        ws.send(JSON.stringify({ type: 'pointer:move', x, y }));
+    }
+
+    function sendPointerHide() {
+        if (!ws || ws.readyState !== 1) return;
+        ws.send(JSON.stringify({ type: 'pointer:hide' }));
+    }
+
+    pOverlay.addEventListener('mousemove', (e) => sendPointerMove(e.clientX, e.clientY));
+    pOverlay.addEventListener('mouseleave', () => { if (pointerMode) sendPointerHide(); });
+
+    pOverlay.addEventListener('touchmove', (e) => {
+        if (!pointerMode) return;
+        e.preventDefault();
+        const t = e.touches[0];
+        sendPointerMove(t.clientX, t.clientY);
+    }, { passive: false });
+
+    pOverlay.addEventListener('touchend', () => { if (pointerMode) sendPointerHide(); });
 
     // ---- Camera toggle ----
 

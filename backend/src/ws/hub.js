@@ -75,6 +75,25 @@ module.exports = function setupHub(wss) {
                     });
                     break;
                 }
+                case 'pointer:move': {
+                    const x = Number(msg.x);
+                    const y = Number(msg.y);
+                    if (!Number.isFinite(x) || !Number.isFinite(y)) break;
+                    broadcastToRoom(slug, {
+                        type: 'pointer:move',
+                        participantId: participant.id,
+                        name: participant.name,
+                        x, y,
+                    });
+                    break;
+                }
+                case 'pointer:hide': {
+                    broadcastToRoom(slug, {
+                        type: 'pointer:hide',
+                        participantId: participant.id,
+                    });
+                    break;
+                }
             }
         });
 
