@@ -392,8 +392,8 @@ main { margin-top: var(--nav-h); padding: 32px; }
 <script>
 (function () {
     const API          = '';
-    const VIEWER_BASE  = 'https://stream.zemariacolor.com/watch';
-    const INGEST_HOST  = 'stream.zemariacolor.com';
+    const VIEWER_BASE  = `${location.origin}/watch`;
+    const INGEST_HOST  = location.hostname;
 
     let token         = localStorage.getItem('stream_token') || '';
     let rooms         = [];
@@ -617,11 +617,13 @@ const expires      = fmtDate(r.expires_at);
         }
 
         container.innerHTML = keys.map(k => {
+            const proto = location.protocol === 'https:' ? 'https' : 'http';
+            const wsproto = location.protocol === 'https:' ? 'wss' : 'ws';
             const srtUrl  = `srt://${INGEST_HOST}:9999?streamid=default/live/${k.key_token}`;
             const rtmpServer = `rtmp://${INGEST_HOST}:1935/live`;
-            const whipUrl = `https://${INGEST_HOST}/live/${k.key_token}?direction=whip`;
-            const webrtcUrl = `wss://${INGEST_HOST}/live/${k.key_token}`;
-            const llhlsUrl  = `https://${INGEST_HOST}/live/${k.key_token}/llhls.m3u8`;
+            const whipUrl = `${proto}://${INGEST_HOST}/live/${k.key_token}?direction=whip`;
+            const webrtcUrl = `${wsproto}://${INGEST_HOST}/live/${k.key_token}`;
+            const llhlsUrl  = `${proto}://${INGEST_HOST}/live/${k.key_token}/llhls.m3u8`;
 
             return `
             <div class="key-card">

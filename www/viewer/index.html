@@ -501,7 +501,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         <img src="/assets/logo-white.png" alt="Ze Maria Color" class="screen-logo">
         <div class="landing-title">Welcome</div>
         <div class="landing-sub">It appears you forgot the room link for your project. Please enter your room link below or ask your host for the correct URL.</div>
-        <input type="text" class="landing-input" id="landing-input" placeholder="https://stream.zemariacolor.com/room/..." autocomplete="off" spellcheck="false">
+        <input type="text" class="landing-input" id="landing-input" placeholder="https://yourdomain.com/room/..." autocomplete="off" spellcheck="false">
         <button class="landing-btn" id="landing-btn">Go to Room</button>
         <p class="landing-error" id="landing-error"></p>
     </div>
@@ -1350,10 +1350,12 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             return;
         }
 
-        const host    = location.hostname;
+        const host    = location.host;
+        const proto   = location.protocol === 'https:' ? 'https' : 'http';
+        const wsproto = location.protocol === 'https:' ? 'wss' : 'ws';
         const sources = deliveryMode === 'llhls'
-            ? [{ type: 'll-hls', file: `https://${host}/live/${streamKey}/llhls.m3u8` }]
-            : [{ type: 'webrtc', file: `wss://${host}/live/${streamKey}` }];
+            ? [{ type: 'll-hls', file: `${proto}://${host}/live/${streamKey}/llhls.m3u8` }]
+            : [{ type: 'webrtc', file: `${wsproto}://${host}/live/${streamKey}` }];
 
         player = OvenPlayer.create('player', {
             autoStart: true, autoFallback: false, mute: true, sources,
@@ -1459,7 +1461,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
     function connectWS() {
         setWsStatus('', 'Connecting');
-        ws = new WebSocket(`wss://${location.hostname}/ws/room/${slug}`);
+        ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/room/${slug}`);
         ws.onopen = () => {
             ws.send(JSON.stringify({ type: 'auth', participantId, token: myToken }));
         };

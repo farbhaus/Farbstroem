@@ -1,45 +1,82 @@
+networks:
+  stream-net:
+
+volumes:
+  caddy_data:
+  caddy_config:
+
 services:
+  stream-caddy:
+    image: caddy:2-alpine
+    container_name: stream-caddy
+    restart: unless-stopped
+    networks: [stream-net]
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - SITE_ADDRESS=${SITE_ADDRESS:-localhost}
+    depends_on: [stream-backend, stream-ome]
+
   stream-redis:
     image: redis:7-alpine
     container_name: stream-redis
     restart: unless-stopped
-    network_mode: host
+    networks: [stream-net]
     command: redis-server --save "" --loglevel warning
 
   stream-livekit:
     image: livekit/livekit-server:latest
     container_name: stream-livekit
     restart: unless-stopped
-    network_mode: host
-    env_file: ./backend/secrets.env
+    networks: [stream-net]
     volumes:
       - ./livekit/livekit.yaml:/livekit.yaml
+    environment:
+      - "LIVEKIT_KEYS=${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
     command: --config /livekit.yaml
-    depends_on:
-      - stream-redis
+    ports:
+      - "7880:7880"                    # signaling (local dev direct access)
+      - "7881:7881"                    # TCP media fallback
+      - "50000-50100:50000-50100/udp"  # WebRTC media
+    depends_on: [stream-redis]
 
   stream-ome:
     image: airensoft/ovenmediaengine:latest
     container_name: stream-ome
     restart: unless-stopped
-    network_mode: host
-    env_file: ./backend/secrets.env
+    networks: [stream-net]
+    env_file: .env
     environment:
-      - OME_HOST_IP=stream.zemariacolor.com
+      - OME_HOST_IP=${DOMAIN:-localhost}
     volumes:
       - ./ome/origin_conf:/opt/ovenmediaengine/bin/origin_conf
+    ports:
+      - "1935:1935"                    # RTMP ingest
+      - "9999:9999/udp"               # SRT ingest
+      - "3478:3478"                    # TURN
+      - "10000-10009:10000-10009/udp"  # ICE candidates
+    depends_on: [stream-backend]
 
   stream-backend:
     build: ./backend
     container_name: stream-backend
     restart: unless-stopped
-    network_mode: host
-    env_file: ./backend/secrets.env
+    networks: [stream-net]
+    env_file: .env
     environment:
       - PORT=4001
       - DB_PATH=/data/stream.db
-      - DATA_PATH=/opt/zemaria/stream/data
+      - DATA_PATH=/data
       - NODE_ENV=production
+      - OME_API_URL=http://stream-ome:8081/v1
+      - LIVEKIT_INTERNAL_URL=http://stream-livekit:7880
     volumes:
       - ./data:/data
       - ./www:/www
+    depends_on: [stream-redis]

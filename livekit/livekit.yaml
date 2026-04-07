@@ -6,6 +6,5 @@ rtc:
   use_external_ip: true
 redis:
   address: stream-redis:6379
-# Keys are injected via LIVEKIT_KEYS env var in docker-compose
 logging:
   level: info

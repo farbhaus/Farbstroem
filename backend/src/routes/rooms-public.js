@@ -8,7 +8,7 @@ const router       = express.Router();
 
 function getRoomService() {
     return new RoomServiceClient(
-        'http://localhost:7880',
+        process.env.LIVEKIT_INTERNAL_URL || 'http://stream-livekit:7880',
         process.env.LIVEKIT_API_KEY,
         process.env.LIVEKIT_API_SECRET
     );

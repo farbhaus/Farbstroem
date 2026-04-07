@@ -1,13 +1,15 @@
 # Secrets
 .env
 backend/secrets.env
-livekit/livekit.yaml
 
 # Data
 data/
 
 # Dependencies
 backend/node_modules/
+
+# Override (author's server-specific port mappings)
+docker-compose.override.yml
 
 # OS
 .DS_Store
