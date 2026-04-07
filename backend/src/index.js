@@ -1,5 +1,14 @@
 const path        = require('path');
+const { RoomServiceClient } = require('livekit-server-sdk');
 require('dotenv').config();
+
+function getRoomService() {
+    return new RoomServiceClient(
+        process.env.LIVEKIT_INTERNAL_URL || 'http://stream-livekit:7880',
+        process.env.LIVEKIT_API_KEY,
+        process.env.LIVEKIT_API_SECRET
+    );
+}
 
 // Fail fast
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32)
@@ -48,6 +57,12 @@ app.use('/api/ome',         requireAuth, require('./routes/ome'));
 // Public room routes (no auth — viewer join flow)
 app.use('/api/public/rooms', joinLimiter, require('./routes/rooms-public'));
 app.use('/api/public/rooms', joinLimiter, require('./routes/files'));
+
+// Branding routes (public GET, admin POST/DELETE)
+const brandingRouter = require('./routes/branding');
+app.use('/branding',           brandingRouter);
+app.use('/api/branding',       brandingRouter);
+app.use('/api/admin/branding', brandingRouter);
 
 // Serve frontend
 app.use('/admin', express.static('/www/admin'));
@@ -99,6 +114,23 @@ setInterval(async () => {
         // OME temporarily unavailable — skip this cycle
     }
 }, 30_000);
+
+// Auto-end expired rooms every 60 seconds
+setInterval(async () => {
+    try {
+        const expired = db.prepare(
+            "SELECT id, slug FROM rooms WHERE expires_at IS NOT NULL AND expires_at < datetime('now') AND status != 'ended'"
+        ).all();
+        for (const room of expired) {
+            db.prepare("UPDATE rooms SET status = 'ended', ended_at = CURRENT_TIMESTAMP WHERE id = ?").run(room.id);
+            events.emit('room:ended', room.slug);
+            try { await getRoomService().deleteRoom(room.slug); } catch {}
+            console.log(`[expiry] Room ${room.slug} auto-ended`);
+        }
+    } catch (err) {
+        console.error('[expiry] Error:', err.message);
+    }
+}, 60_000);
 
 const PORT = process.env.PORT || 4001;
 _startupReady.then(() => {

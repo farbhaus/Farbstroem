@@ -1,6 +1,5 @@
 # Secrets
 .env
-backend/secrets.env
 
 # Data
 data/

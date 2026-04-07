@@ -274,6 +274,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
         <button class="btn btn-tab active" data-tab="rooms">Rooms</button>
         <button class="btn btn-tab" data-tab="keys">Stream Keys</button>
         <button class="btn btn-tab" data-tab="ome">Stats</button>
+        <button class="btn btn-tab" data-tab="branding">Branding</button>
     </div>
     <div class="nav-right">
         <button class="btn btn-sm" id="logout-btn">Sign out</button>
@@ -313,6 +314,49 @@ main { margin-top: var(--nav-h); padding: 32px; }
         </div>
         <div id="keys-list">
             <div class="empty">Loading…</div>
+        </div>
+    </div>
+
+    <!-- Branding tab -->
+    <div id="tab-branding" style="display:none">
+        <div class="section-header">
+            <span class="section-title">Branding</span>
+        </div>
+
+        <div class="room-card">
+            <div class="room-card-header">
+                <div class="room-card-info">
+                    <div class="room-card-name">Logo</div>
+                    <div class="room-card-meta">Shown in the top bar and on all overlay screens. PNG or SVG recommended. Max 5 MB.</div>
+                </div>
+                <div class="room-card-actions">
+                    <button class="btn btn-sm" id="logo-upload-btn">Upload</button>
+                    <button class="btn btn-sm btn-danger" id="logo-remove-btn">Remove</button>
+                </div>
+            </div>
+            <div class="room-card-body" style="padding:16px 20px 20px">
+                <img id="logo-preview" src="" alt="Logo preview" style="max-height:48px;display:none;opacity:0.8;margin-bottom:4px;">
+                <span id="logo-empty" style="font-size:13px;color:var(--dim)">No custom logo — using default.</span>
+                <input type="file" id="logo-file-input" accept="image/*" style="display:none">
+            </div>
+        </div>
+
+        <div class="room-card" style="margin-top:12px">
+            <div class="room-card-header">
+                <div class="room-card-info">
+                    <div class="room-card-name">Background Image</div>
+                    <div class="room-card-meta">Shown on the join, waiting, and kicked screens. Max 5 MB.</div>
+                </div>
+                <div class="room-card-actions">
+                    <button class="btn btn-sm" id="bg-upload-btn">Upload</button>
+                    <button class="btn btn-sm btn-danger" id="bg-remove-btn">Remove</button>
+                </div>
+            </div>
+            <div class="room-card-body" style="padding:16px 20px 20px">
+                <img id="bg-preview" src="" alt="Background preview" style="max-height:100px;max-width:100%;object-fit:cover;border-radius:6px;display:none;margin-bottom:4px;">
+                <span id="bg-empty" style="font-size:13px;color:var(--dim)">No custom background — using default.</span>
+                <input type="file" id="bg-file-input" accept="image/*" style="display:none">
+            </div>
         </div>
     </div>
 
@@ -484,10 +528,12 @@ main { margin-top: var(--nav-h); padding: 32px; }
             document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             activeTab = btn.dataset.tab;
-            document.getElementById('tab-rooms').style.display = activeTab === 'rooms' ? '' : 'none';
-            document.getElementById('tab-keys').style.display  = activeTab === 'keys'  ? '' : 'none';
-            document.getElementById('tab-ome').style.display   = activeTab === 'ome'   ? '' : 'none';
+            document.getElementById('tab-rooms').style.display    = activeTab === 'rooms'    ? '' : 'none';
+            document.getElementById('tab-keys').style.display     = activeTab === 'keys'     ? '' : 'none';
+            document.getElementById('tab-ome').style.display      = activeTab === 'ome'      ? '' : 'none';
+            document.getElementById('tab-branding').style.display = activeTab === 'branding' ? '' : 'none';
             if (activeTab === 'ome') renderOme();
+            if (activeTab === 'branding') loadBranding();
         });
     });
 
@@ -695,7 +741,12 @@ const expires      = fmtDate(r.expires_at);
             document.getElementById('room-password').value  = '';
             document.getElementById('room-delivery').value  = r.delivery_mode;
             document.getElementById('room-waiting').checked = !!r.waiting_room;
-            document.getElementById('room-expires').value   = r.expires_at ? r.expires_at.slice(0,16) : '';
+            if (r.expires_at) {
+                const d = new Date(r.expires_at);
+                document.getElementById('room-expires').value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+            } else {
+                document.getElementById('room-expires').value = '';
+            }
             skSelect.value = r.stream_key_id || '';
             document.getElementById('clear-password-row').style.display = r.password_hash ? '' : 'none';
         } else {
@@ -724,7 +775,8 @@ const expires      = fmtDate(r.expires_at);
         const clearPassword = document.getElementById('room-clear-password').checked;
         const delivery_mode = document.getElementById('room-delivery').value;
         const waiting_room  = document.getElementById('room-waiting').checked;
-        const expires_at    = document.getElementById('room-expires').value || null;
+        const expiresRaw    = document.getElementById('room-expires').value;
+        const expires_at    = expiresRaw ? new Date(expiresRaw).toISOString() : null;
         const streamKeyId   = document.getElementById('room-stream-key').value;
 
         if (!name) { toast('Room name required'); return; }
@@ -911,6 +963,52 @@ const expires      = fmtDate(r.expires_at);
         if (res && res.ok) { toast('Stream kicked'); loadOme(); loadRooms(); }
         else toast('Kick failed');
     };
+
+    // ---- Branding ----
+
+    async function loadBranding() {
+        const res = await fetch('/api/branding');
+        if (!res.ok) return;
+        const { hasLogo, hasBg } = await res.json();
+
+        document.getElementById('logo-preview').style.display = hasLogo ? '' : 'none';
+        document.getElementById('logo-empty').style.display   = hasLogo ? 'none' : '';
+        if (hasLogo) document.getElementById('logo-preview').src = '/branding/logo?' + Date.now();
+
+        document.getElementById('bg-preview').style.display = hasBg ? '' : 'none';
+        document.getElementById('bg-empty').style.display   = hasBg ? 'none' : '';
+        if (hasBg) document.getElementById('bg-preview').src = '/branding/bg?' + Date.now();
+    }
+
+    async function uploadBrandingAsset(asset) {
+        const input = document.getElementById(`${asset}-file-input`);
+        const file  = input.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch(`/api/admin/branding/${asset}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: fd,
+        });
+        input.value = '';
+        if (res && res.ok) { toast(`${asset === 'logo' ? 'Logo' : 'Background'} updated`); loadBranding(); }
+        else toast('Upload failed');
+    }
+
+    async function removeBrandingAsset(asset) {
+        if (!confirm(`Remove custom ${asset === 'logo' ? 'logo' : 'background image'}?`)) return;
+        const res = await apiFetch(`/api/admin/branding/${asset}`, { method: 'DELETE' });
+        if (res && res.ok) { toast('Removed'); loadBranding(); }
+        else toast('Remove failed');
+    }
+
+    document.getElementById('logo-upload-btn').addEventListener('click', () => document.getElementById('logo-file-input').click());
+    document.getElementById('logo-file-input').addEventListener('change', () => uploadBrandingAsset('logo'));
+    document.getElementById('logo-remove-btn').addEventListener('click', () => removeBrandingAsset('logo'));
+    document.getElementById('bg-upload-btn').addEventListener('click', () => document.getElementById('bg-file-input').click());
+    document.getElementById('bg-file-input').addEventListener('change', () => uploadBrandingAsset('bg'));
+    document.getElementById('bg-remove-btn').addEventListener('click', () => removeBrandingAsset('bg'));
 
     // ---- Helpers ----
 
