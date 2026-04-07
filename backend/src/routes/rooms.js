@@ -3,7 +3,16 @@ const bcrypt  = require('bcryptjs');
 const crypto  = require('crypto');
 const db      = require('../db');
 const events  = require('../events');
+const { RoomServiceClient } = require('livekit-server-sdk');
 const router  = express.Router();
+
+function getRoomService() {
+    return new RoomServiceClient(
+        process.env.LIVEKIT_INTERNAL_URL || 'http://stream-livekit:7880',
+        process.env.LIVEKIT_API_KEY,
+        process.env.LIVEKIT_API_SECRET
+    );
+}
 
 // List all rooms (admin)
 router.get('/', (req, res) => {
@@ -103,9 +112,19 @@ router.post('/:id/end', (req, res) => {
 });
 
 // Delete room
-router.delete('/:id', (req, res) => {
-    const result = db.prepare('DELETE FROM rooms WHERE id = ?').run(req.params.id);
-    if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+router.delete('/:id', async (req, res) => {
+    const room = db.prepare('SELECT slug FROM rooms WHERE id = ?').get(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Not found' });
+
+    // Notify connected participants and trigger file/chat cleanup
+    events.emit('room:ended', room.slug);
+
+    // Clean up LiveKit room
+    try { await getRoomService().deleteRoom(room.slug); } catch (err) {
+        if (!err.message?.includes('not found')) console.error('[delete room] LiveKit:', err.message);
+    }
+
+    db.prepare('DELETE FROM rooms WHERE id = ?').run(req.params.id);
     res.json({ ok: true });
 });
 

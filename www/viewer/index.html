@@ -32,7 +32,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     position: fixed; inset: 0; z-index: 200;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    background: #000 url('/assets/calibration-standby.png?v=2') center/cover no-repeat;
+    background: #000;
     gap: 16px;
 }
 .screen.hidden { display: none; }
@@ -59,7 +59,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 #landing-screen {
     position: fixed; inset: 0; z-index: 300;
     display: flex; align-items: center; justify-content: center;
-    background: #000 url('/assets/calibration-standby.png?v=2') center/cover no-repeat;
+    background: #000;
 }
 #landing-screen.hidden { display: none; }
 .landing-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 48px; width: 400px; }
@@ -171,7 +171,8 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 /* Hide all OvenPlayer built-in UI */
 #player .op-ui-container, #player .op-loading-container,
 #player .op-controls-container, #player .op-bottom-area,
-#player .op-watermark { display: none !important; }
+#player .op-watermark, #player .op-message-container,
+#player .op-notification-container { display: none !important; }
 
 #offline-screen {
     position: absolute; inset: 0; z-index: 5;
@@ -332,6 +333,20 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .chat-file-size { font-size: 11px; color: var(--dim); }
 .chat-file-dl { padding: 5px 9px; background: var(--surface); border: 1px solid var(--border); color: var(--text); font: inherit; font-size: 11px; font-weight: 700; text-decoration: none; letter-spacing: 0.04em; flex-shrink: 0; transition: border-color 0.15s; }
 .chat-file-dl:hover { border-color: #555; }
+
+/* ---- Files section ---- */
+#files-section { flex-shrink: 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; max-height: 180px; }
+#files-header { display: flex; align-items: center; justify-content: space-between; padding: 5px 12px; background: var(--surface2); flex-shrink: 0; }
+.files-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
+.files-count-badge { font-size: 10px; background: var(--border); color: var(--dim); border-radius: 10px; padding: 1px 6px; }
+#files-list { overflow-y: auto; display: flex; flex-direction: column; }
+.file-row { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+.file-row:last-child { border-bottom: none; }
+.file-row-name { flex: 1; min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.file-row-size { font-size: 10px; color: var(--dim); flex-shrink: 0; }
+.file-row-dl { padding: 3px 8px; background: var(--surface); border: 1px solid var(--border); color: var(--text); font: inherit; font-size: 10px; font-weight: 700; text-decoration: none; flex-shrink: 0; transition: border-color 0.15s; }
+.file-row-dl:hover { border-color: #555; }
+#files-empty { padding: 8px 12px; font-size: 12px; color: var(--dim); }
 
 /* ---- Bottom toolbar ---- */
 #bottom-toolbar {
@@ -498,7 +513,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 <!-- Landing screen -->
 <div id="landing-screen" class="hidden">
     <div class="landing-box">
-        <img src="/assets/logo-white.png" alt="Ze Maria Color" class="screen-logo">
+        <img src="" alt="Ze Maria Color" class="screen-logo">
         <div class="landing-title">Welcome</div>
         <div class="landing-sub">It appears you forgot the room link for your project. Please enter your room link below or ask your host for the correct URL.</div>
         <input type="text" class="landing-input" id="landing-input" placeholder="https://yourdomain.com/room/..." autocomplete="off" spellcheck="false">
@@ -510,7 +525,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 <!-- Join screen -->
 <div id="join-screen" class="screen hidden">
     <div class="join-box">
-        <img src="/assets/logo-white.png" alt="Ze Maria Color" class="screen-logo">
+        <img src="" alt="Ze Maria Color" class="screen-logo">
         <div class="join-room-name" id="join-room-name">Loading...</div>
         <form id="join-form">
             <div class="form-row">
@@ -545,6 +560,16 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     </div>
 </div>
 
+<!-- Left screen -->
+<div id="left-screen" class="screen hidden">
+    <div class="waiting-box">
+        <img src="" alt="Logo" class="screen-logo brand-logo">
+        <div class="waiting-name" id="left-room-name"></div>
+        <div class="waiting-msg">You left the session.</div>
+        <button class="join-btn" id="left-rejoin-btn" style="margin-top:16px">Rejoin</button>
+    </div>
+</div>
+
 <!-- Conference permission prompt -->
 <div id="conf-prompt-overlay" class="hidden">
     <div class="conf-prompt-box">
@@ -573,7 +598,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     <!-- Top bar -->
     <div id="top-bar">
         <div id="top-left">
-            <img src="/assets/logo-white.png" alt="Ze Maria Color" class="brand-logo">
+            <img src="" alt="Ze Maria Color" class="brand-logo">
         </div>
         <div id="top-center">
             <div id="ws-status"><div id="ws-dot"></div><span id="ws-label">Connecting</span></div>
@@ -586,6 +611,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
                 <span id="participant-num">0</span>
             </span>
             <span id="live-badge"><svg viewBox="0 0 8 8" width="8" height="8" style="fill:var(--green);stroke:none"><circle cx="4" cy="4" r="4"/></svg> Live</span>
+            <button id="leave-btn" title="Leave session" style="background:none;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:3px 10px;font:inherit;font-size:11px;cursor:pointer;margin-left:8px;">Leave</button>
         </div>
     </div>
 
@@ -639,6 +665,18 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             </div>
             <div id="chat-body">
                 <div id="chat-messages"></div>
+                <div id="files-section">
+                    <div id="files-header">
+                        <span class="files-label">Files</span>
+                        <span class="files-count-badge" id="files-count">0</span>
+                    </div>
+                    <div id="files-list">
+                        <div id="files-empty">No files shared yet.</div>
+                    </div>
+                </div>
+                <div id="upload-progress-bar" style="display:none;height:3px;background:var(--border);margin-bottom:2px;border-radius:2px;overflow:hidden;">
+                    <div id="upload-progress-fill" style="height:100%;width:0%;background:var(--accent);transition:width 0.1s linear;"></div>
+                </div>
                 <div id="chat-input-row">
                     <input type="text" id="chat-input" placeholder="Message..." maxlength="500" autocomplete="off" disabled>
                     <button id="chat-attach" disabled title="Attach file">
@@ -1470,6 +1508,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             if (msg.type === 'auth:ok') {
                 setWsStatus('connected', 'Connected');
                 setChatEnabled(true);
+                loadSessionFiles();
                 // LiveKit handles track state automatically — no manual sync needed
             }
             if (msg.type === 'kicked') {
@@ -1486,8 +1525,21 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             if (msg.type === 'room:pending') { setRoomStatus('pending'); }
             if (msg.type === 'room:ended')   { setRoomStatus('ended'); localStorage.removeItem(`viewer_session_${slug}`); }
             if (msg.type === 'participants:update') updateWatchOnlyList(msg.participants);
+            if (msg.type === 'chat:history') {
+                msg.messages.forEach(m => {
+                    const list = document.getElementById('chat-messages');
+                    const d = document.createElement('div');
+                    d.className = 'chat-msg';
+                    const t = new Date(m.ts);
+                    const hhmm = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
+                    d.innerHTML = `<div class="chat-meta"><span class="chat-who ${esc(m.role)}">${esc(m.name)}</span><span class="chat-time">${hhmm}</span></div><div class="chat-text">${esc(m.text)}</div>`;
+                    list.appendChild(d);
+                });
+                const list = document.getElementById('chat-messages');
+                list.scrollTop = list.scrollHeight;
+            }
             if (msg.type === 'chat:message') appendChatMessage(msg);
-            if (msg.type === 'file:shared')  appendFileMessage(msg);
+            if (msg.type === 'file:shared')  { appendFileMessage(msg); addFileToSection(msg); }
             if (msg.type === 'pointer:move' && msg.participantId !== participantId) {
                 renderPointer(msg.participantId, msg.name, msg.x, msg.y);
             }
@@ -1509,6 +1561,40 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         };
         ws.onerror = () => { setWsStatus('error', 'Error'); };
     }
+
+    // ---- Leave room ----
+
+    document.getElementById('leave-btn').addEventListener('click', () => {
+        wsReconnect = false;
+        if (ws) { try { ws.close(); } catch {} ws = null; }
+        if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
+        document.getElementById('app').classList.remove('visible');
+        document.getElementById('left-room-name').textContent = roomInfo?.name || slug;
+        document.getElementById('left-screen').classList.remove('hidden');
+    });
+    document.getElementById('left-rejoin-btn').addEventListener('click', () => location.reload());
+
+    // ---- Branding ----
+
+    (async function loadBranding() {
+        try {
+            const res = await fetch('/api/branding');
+            if (!res.ok) return;
+            const { hasLogo, hasBg } = await res.json();
+            if (hasLogo) {
+                document.querySelectorAll('.screen-logo, .brand-logo').forEach(img => {
+                    img.src = '/branding/logo';
+                });
+            }
+            if (hasBg) {
+                const bgUrl = 'url(/branding/bg) center/cover no-repeat';
+                document.querySelectorAll('.screen').forEach(el => {
+                    el.style.background = '#000 ' + bgUrl;
+                });
+                document.getElementById('landing-screen').style.background = '#000 ' + bgUrl;
+            }
+        } catch {}
+    })();
 
     // ---- Chat ----
 
@@ -1573,26 +1659,69 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         notifyChat();
     }
 
-    async function uploadFile(file) {
-        const attachBtn = document.getElementById('chat-attach');
-        attachBtn.disabled = true;
+    function addFileToSection(f) {
+        // f: { id, name, size, uploaderName?, role? }
+        const list = document.getElementById('files-list');
+        if (document.getElementById('files-empty')) {
+            document.getElementById('files-empty').remove();
+        }
+        // Avoid duplicates on reload
+        if (list.querySelector(`[data-fid="${CSS.escape(f.id)}"]`)) return;
+        const dlUrl = `/api/public/rooms/${encodeURIComponent(slug)}/files/${encodeURIComponent(f.id)}/download`
+            + `?participantId=${encodeURIComponent(participantId)}&token=${encodeURIComponent(myToken)}`;
+        const row = document.createElement('div');
+        row.className = 'file-row';
+        row.dataset.fid = f.id;
+        row.innerHTML =
+            `<div class="file-row-name" title="${esc(f.name)}">${esc(f.name)}</div>` +
+            `<span class="file-row-size">${formatBytes(f.size)}</span>` +
+            `<a class="file-row-dl" href="${dlUrl}" download="${esc(f.name)}">Get</a>`;
+        list.appendChild(row);
+        document.getElementById('files-count').textContent = list.querySelectorAll('.file-row').length;
+    }
+
+    async function loadSessionFiles() {
         try {
-            const fd = new FormData();
-            fd.append('file', file);
             const res = await fetch(
                 `/api/public/rooms/${encodeURIComponent(slug)}/files`
-                + `?participantId=${encodeURIComponent(participantId)}&token=${encodeURIComponent(myToken)}`,
-                { method: 'POST', body: fd }
+                + `?participantId=${encodeURIComponent(participantId)}&token=${encodeURIComponent(myToken)}`
             );
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                console.error('[upload]', err.error || res.status);
+            if (!res.ok) return;
+            const files = await res.json();
+            files.forEach(f => addFileToSection(f));
+        } catch {}
+    }
+
+    function uploadFile(file) {
+        const attachBtn    = document.getElementById('chat-attach');
+        const progressBar  = document.getElementById('upload-progress-bar');
+        const progressFill = document.getElementById('upload-progress-fill');
+
+        attachBtn.disabled = true;
+        progressBar.style.display = '';
+        progressFill.style.width  = '0%';
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST',
+            `/api/public/rooms/${encodeURIComponent(slug)}/files`
+            + `?participantId=${encodeURIComponent(participantId)}&token=${encodeURIComponent(myToken)}`
+        );
+        xhr.upload.addEventListener('progress', e => {
+            if (e.lengthComputable) {
+                progressFill.style.width = Math.round((e.loaded / e.total) * 100) + '%';
             }
-        } catch (e) {
-            console.error('[upload]', e);
-        } finally {
+        });
+        const done = () => {
             attachBtn.disabled = false;
-        }
+            progressBar.style.display = 'none';
+            progressFill.style.width  = '0%';
+        };
+        xhr.onload  = done;
+        xhr.onerror = done;
+
+        const fd = new FormData();
+        fd.append('file', file);
+        xhr.send(fd);
     }
 
     document.getElementById('chat-attach').addEventListener('click', () => {

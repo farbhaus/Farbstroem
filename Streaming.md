@@ -35,7 +35,7 @@ Repo: https://github.com/zcolor/zstream (private)
 
 Create a flexible livestreaming collaboration platform that can do the following: 
 
-1. Ingest Protocol: SRT, WHIP and RTMPS
+1. Ingest Protocol: SRT, WHIP and RTMP
 2. Viewer Delivery: WebRTC and LLHLS — per-room choice
 3. Features:
     - Waiting room + room passwords
@@ -54,7 +54,7 @@ Create a flexible livestreaming collaboration platform that can do the following
 
 ```
 Main stream (OBS → OME → OvenPlayer):
-  OBS (SRT/RTMPS/WHIP) → OvenMediaEngine → OvenPlayer (WebRTC/LLHLS)
+  OBS (SRT/RTMP/WHIP) → OvenMediaEngine → OvenPlayer (WebRTC/LLHLS)
 
 Conference (LiveKit SFU):
   Browser → LiveKit JS SDK → livekit-server → LiveKit JS SDK (remote tiles)
@@ -158,22 +158,23 @@ Backend serves static files via Express (`/admin` → admin SPA, `/*` → viewer
 ├── backend/
 │   ├── Dockerfile
 │   └── src/
-│       ├── index.js          ← server setup, rate limiting, OME poller (30s), startup waits for bcrypt hash
+│       ├── index.js          ← server setup, rate limiting, OME poller (30s), expiry cleanup (60s), startup waits for bcrypt hash
 │       ├── db.js
 │       ├── events.js
 │       ├── routes/
 │       │   ├── auth.js       ← login + logout (stateless JWT)
-│       │   ├── rooms.js      ← admin room CRUD
+│       │   ├── rooms.js      ← admin room CRUD; DELETE emits room:ended + cleans LiveKit before DB delete
 │       │   ├── rooms-public.js ← join, waiting, admission, livekit-token, conference/kick, conference/mute
 │       │   ├── files.js      ← upload, list, download; multer; cleanup on room:ended + weekly
+│       │   ├── branding.js   ← logo + bg upload/serve/delete; files in /data/branding/; mime in settings table
 │       │   ├── stream-keys.js
 │       │   ├── webhook.js    ← OME admission webhook (stream key validation only, conf-* removed)
 │       │   └── ome.js
 │       ├── middleware/auth.js
-│       └── ws/hub.js         ← broadcasts participants:update, chat:message, file:shared; handles participant:kicked event
+│       └── ws/hub.js         ← broadcasts participants:update, chat:message, file:shared; chat persisted to DB; history sent on auth:ok
 └── www/
-    ├── admin/index.html      ← Admin SPA (responsive, rooms, stream keys, waiting room)
-    └── viewer/index.html     ← Viewer page (OvenPlayer + LiveKit conference + chat + screen sharing)
+    ├── admin/index.html      ← Admin SPA (rooms, stream keys, waiting room, branding tab)
+    └── viewer/index.html     ← Viewer page (OvenPlayer + LiveKit conference + chat + files section + screen sharing)
 ```
 
 ---
@@ -184,9 +185,9 @@ Backend serves static files via Express (`/admin` → admin SPA, `/*` → viewer
 CREATE TABLE rooms (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL,
     password_hash TEXT, delivery_mode TEXT DEFAULT 'webrtc',
-    waiting_room INTEGER DEFAULT 0, expires_at DATETIME,
+    waiting_room INTEGER DEFAULT 0, expires_at DATETIME,  -- stored as UTC ISO string
     status TEXT DEFAULT 'pending',  -- 'pending' | 'live' | 'ended'
-    started_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    started_at DATETIME, ended_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE stream_keys (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, key_token TEXT UNIQUE NOT NULL,
@@ -206,6 +207,14 @@ CREATE TABLE session_files (  -- live; files stored at /data/uploads/{roomId}/
     original_name TEXT NOT NULL, stored_path TEXT NOT NULL,
     mime_type TEXT NOT NULL, size_bytes INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE chat_messages (  -- session-scoped; deleted on room:ended
+    id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+    name TEXT NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE settings (  -- key-value store for platform config (e.g. branding mime types)
+    key TEXT PRIMARY KEY, value TEXT NOT NULL
 );
 ```
 
@@ -229,15 +238,23 @@ CREATE TABLE session_files (  -- live; files stored at /data/uploads/{roomId}/
 
 ### Admin (JWT required)
 - `GET/POST /api/rooms`, `GET/PUT/DELETE /api/rooms/:id`, `POST /api/rooms/:id/end`
+  - `DELETE /api/rooms/:id` — emits `room:ended` (kicks WS participants, triggers file/chat cleanup), deletes LiveKit room, then removes from DB
 - `GET/POST/DELETE /api/stream-keys`
 - `GET /api/rooms/:id/waiting`, `POST /api/rooms/:id/admit/:participantId`, `POST /api/rooms/:id/admit-all`
 - `GET /api/rooms/:id/kicked`, `POST /api/rooms/:id/unkick/:participantId` — kicked list + unblock
 - `GET /api/ome/stats`
+- `POST /api/admin/branding/logo|bg` — upload custom logo or background image (max 5 MB); stored in `/data/branding/`
+- `DELETE /api/admin/branding/logo|bg` — remove custom asset
+
+### Public branding
+- `GET /api/branding` — returns `{ hasLogo: bool, hasBg: bool }`
+- `GET /branding/logo`, `GET /branding/bg` — serve custom assets with correct Content-Type
 
 ### WebSocket (`/ws/room/:slug`)
 - Auth: first message must be `{ type: 'auth', participantId, token }`
+- After `auth:ok`: server sends `{ type: 'chat:history', messages: [...] }` (last 50, for rejoin persistence)
 - Hub broadcasts: `{ type: 'participants:update', participants: [{id, name, role}] }`
-- Chat: `{ type: 'chat:message', text }` → broadcast `{ type: 'chat:message', id, participantId, name, role, text, ts }`
+- Chat: `{ type: 'chat:message', text }` → broadcast `{ type: 'chat:message', id, participantId, name, role, text, ts }` — also persisted to `chat_messages` table; deleted on `room:ended`
 - Files: upload via REST → broadcast `{ type: 'file:shared', id, participantId, uploaderName, role, name, size, mime, ts }`
 - Room status: `room:live`, `room:pending`, `room:ended`
 - Kick: `{ type: 'kicked' }` — sent to victim before WS close; viewer shows "Removed" screen
@@ -275,11 +292,11 @@ CREATE TABLE session_files (  -- live; files stored at /data/uploads/{roomId}/
 
 - **Left panel (320px):** Conference panel — self-tile + remote tiles (vertical, scrollable)
 - **Center flex:** OvenPlayer (main stream) — JS-sized to exact 16:9 via `sizePlayer()`
-- **Right panel (320px):** Chat panel (messages, file sharing, input)
+- **Right panel (320px):** Chat panel — messages area, persistent Files section (fetched from REST on join, updated on `file:shared`), progress bar, input row
 - **Center overlay (z-index 6):** Screen share — `#screenshare-wrap` covers player area when active
 - **Pointer overlay (z-index 7):** `#pointer-overlay` — shared cursors with colored dots + name labels; `pointer-events: none` until toggled active
 - **Bottom toolbar (56px):** Camera, Mic, Screen Share, Pointer, Participants toggle, Chat toggle, Play/Pause, Volume, Resync, Fullscreen
-- **Top bar (48px):** Logo, WS status, room name, participant count, live badge
+- **Top bar (48px):** Logo, WS status, room name, participant count, live badge, Leave button
 
 **Mobile portrait (< 640px):**
 - Conference panel: inline horizontal strip above video (always visible, 104px tall, tiles scroll horizontally)
@@ -338,10 +355,17 @@ CREATE TABLE session_files (  -- live; files stored at /data/uploads/{roomId}/
 - [x] LLHLS autoFallback for main player
 - [ ] Watermarking
 - [x] OME stats dashboard in admin
-- [ ] Room auto-cleanup on expiry
+- [x] Room auto-cleanup on expiry (60s interval in index.js; sets status='ended', emits room:ended, cleans LiveKit)
 - [x] Landing page at `/`
-- [x] Calibration patch backgrounds
 - [x] Resync button (tears down and reinitializes player)
+- [x] Custom branding: logo + background image upload in admin (global, stored in /data/branding/, max 5 MB; no default — blank if not set)
+- [x] Chat persistence across rejoin (last 50 messages sent on auth:ok; deleted on room:ended)
+- [x] Persistent Files section in chat panel (fetched from REST on join; survives page reload)
+- [x] File upload progress bar in chat
+- [x] Exit room button (Leave in top bar → "You left" screen with Rejoin)
+- [x] OvenPlayer on-screen error overlay hidden via CSS
+- [x] Room delete kicks all WS participants and cleans up LiveKit before DB removal
+- [x] expires_at stored and compared in UTC (admin datetime-local input converted on save/load)
 
 ### Phase 5 — Containerization ✅ (self-contained docker-compose)
 - [x] Caddy containerized with env-based domain (`SITE_ADDRESS`)
@@ -370,6 +394,7 @@ CREATE TABLE session_files (  -- live; files stored at /data/uploads/{roomId}/
 ### OvenPlayer
 - **`ovenplayer.js` is slim** — no hls.js bundled. Must load `hls.js` separately or LLHLS fails silently.
 - **`controls: false` is not a valid config option** — causes silent error. Use CSS to hide UI: `.op-ui-container { display: none !important }`.
+- **Error overlay** — OvenPlayer renders its own on-screen error/notification overlay outside `.op-ui-container`. Hidden via `.op-message-container, .op-notification-container { display: none !important }`. The app-level "Waiting for livestream source..." overlay handles UX instead.
 - **LLHLS + Safari + H.265:** OvenPlayer's LLHLS path uses MSE which Safari blocks for HEVC. Mitigated by WebRTC-first with LLHLS autoFallback.
 
 ### Player Sizing
@@ -379,6 +404,10 @@ CREATE TABLE session_files (  -- live; files stored at /data/uploads/{roomId}/
 ### iOS
 - **Volume slider is non-functional on iOS** — `HTMLMediaElement.volume` is read-only on iOS Safari; volume is hardware-only. Slider is hidden on mobile via CSS.
 - **Viewport zoom on rotation** — requires `maximum-scale=1.0, user-scalable=no` in viewport meta tag to prevent iOS auto-zoom.
+
+### Timezones
+- **`expires_at` is stored as UTC ISO string** — admin `datetime-local` input (local time) is converted via `new Date(value).toISOString()` before sending to the backend. On load, converted back with `new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,16)`. SQLite's `datetime('now')` returns UTC, so the comparison is correct.
+- **Rooms created before this fix** may have `expires_at` stored in local time (off by UTC offset). Re-save them in the admin to correct.
 
 ### Docker
 - **Backend JS is baked into image** — `docker restart` does NOT pick up code changes. Must `docker compose up -d --build stream-backend`.

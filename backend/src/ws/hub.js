@@ -56,6 +56,29 @@ module.exports = function setupHub(wss) {
                 }
 
                 ws.send(JSON.stringify({ type: 'auth:ok' }));
+
+                // Send chat history (last 50 messages)
+                const history = db.prepare(`
+                    SELECT cm.id, cm.name, cm.role, cm.text, cm.created_at
+                    FROM chat_messages cm
+                    JOIN rooms r ON r.id = cm.room_id
+                    WHERE r.slug = ?
+                    ORDER BY cm.created_at ASC
+                    LIMIT 50
+                `).all(slug);
+                if (history.length > 0) {
+                    ws.send(JSON.stringify({
+                        type: 'chat:history',
+                        messages: history.map(m => ({
+                            id:   m.id,
+                            name: m.name,
+                            role: m.role,
+                            text: m.text,
+                            ts:   new Date(m.created_at).getTime(),
+                        })),
+                    }));
+                }
+
                 broadcastParticipants(slug);
                 return;
             }
@@ -64,9 +87,15 @@ module.exports = function setupHub(wss) {
                 case 'chat:message': {
                     const text = String(msg.text || '').trim().slice(0, 500);
                     if (!text) break;
+                    const id = randomUUID();
+                    try {
+                        db.prepare(
+                            'INSERT INTO chat_messages (id, room_id, name, role, text) VALUES (?, (SELECT id FROM rooms WHERE slug = ?), ?, ?, ?)'
+                        ).run(id, slug, participant.name, participant.role, text);
+                    } catch {}
                     broadcastToRoom(slug, {
                         type: 'chat:message',
-                        id: randomUUID(),
+                        id,
                         participantId: participant.id,
                         name: participant.name,
                         role: participant.role,
@@ -139,7 +168,13 @@ function broadcastToRoom(slug, msg) {
 
 events.on('room:live',    slug => broadcastToRoom(slug, { type: 'room:live' }));
 events.on('room:pending', slug => broadcastToRoom(slug, { type: 'room:pending' }));
-events.on('room:ended',   slug => broadcastToRoom(slug, { type: 'room:ended' }));
+events.on('room:ended',   slug => {
+    broadcastToRoom(slug, { type: 'room:ended' });
+    // Delete chat history — same privacy lifecycle as uploaded files
+    try {
+        db.prepare('DELETE FROM chat_messages WHERE room_id = (SELECT id FROM rooms WHERE slug = ?)').run(slug);
+    } catch {}
+});
 events.on('file:shared',  ({ slug, ...msg }) => broadcastToRoom(slug, { type: 'file:shared', ...msg }));
 
 events.on('participant:kicked', ({ slug, participantId }) => {

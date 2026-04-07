@@ -52,12 +52,27 @@ db.exec(`
         created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE INDEX IF NOT EXISTS idx_rooms_slug       ON rooms(slug);
-    CREATE INDEX IF NOT EXISTS idx_rooms_status     ON rooms(status);
+    CREATE TABLE IF NOT EXISTS settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        id         TEXT PRIMARY KEY,
+        room_id    TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        name       TEXT NOT NULL,
+        role       TEXT NOT NULL,
+        text       TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_rooms_slug        ON rooms(slug);
+    CREATE INDEX IF NOT EXISTS idx_rooms_status      ON rooms(status);
     CREATE INDEX IF NOT EXISTS idx_stream_keys_token ON stream_keys(key_token);
     CREATE INDEX IF NOT EXISTS idx_stream_keys_room  ON stream_keys(room_id);
     CREATE INDEX IF NOT EXISTS idx_participants_room ON participants(room_id);
     CREATE INDEX IF NOT EXISTS idx_participants_token ON participants(token);
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_room ON chat_messages(room_id, created_at);
 `);
 
 // Migration: add stream_key_id to rooms (many rooms → one stream key)
