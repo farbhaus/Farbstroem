@@ -57,7 +57,7 @@
         <Publishers>
             <LLHLS>
                 <!-- Port 3333: OME multiplexes LLHLS (HTTP) and WebRTC signaling (WebSocket) on the same port -->
-                <!-- Caddy owns 80/443; proxy /live/* → localhost:3333 handles both protocols -->
+                <!-- Caddy proxies /live/* → stream-ome:3333 to handle both protocols -->
                 <Port>3333</Port>
                 <TLSPort>3334</TLSPort>
                 <WorkerCount>4</WorkerCount>
@@ -101,7 +101,7 @@
     <VirtualHosts>
         <VirtualHost>
             <Name>default</Name>
-            <Distribution>stream.zemariacolor.com</Distribution>
+            <Distribution>${env:OME_HOST_IP:localhost}</Distribution>
 
             <Host>
                 <Names>
@@ -115,7 +115,7 @@
                 Backend responds with accept/deny JSON.
             -->
             <AdmissionWebhooks>
-                <ControlServerUrl>http://127.0.0.1:4001/api/webhook/admission</ControlServerUrl>
+                <ControlServerUrl>http://stream-backend:4001/api/webhook/admission</ControlServerUrl>
                 <SecretKey>${env:OME_WEBHOOK_SECRET:webhook-default-secret}</SecretKey>
                 <Timeout>3000</Timeout>
                 <Enables>

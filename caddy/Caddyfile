@@ -1,0 +1,16 @@
+{$SITE_ADDRESS:localhost} {
+	encode gzip zstd
+
+	# OME — LLHLS + WebRTC signaling (must be HTTP/1.1, unbuffered)
+	handle /live/* {
+		reverse_proxy stream-ome:3333 {
+			transport http {
+				versions 1.1
+			}
+			flush_interval -1
+		}
+	}
+
+	# Everything else → backend (API + WebSocket + static files)
+	reverse_proxy stream-backend:4001
+}

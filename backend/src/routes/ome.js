@@ -2,7 +2,7 @@ const express = require('express');
 const db      = require('../db');
 const router  = express.Router();
 
-const OME_API = 'http://127.0.0.1:8081/v1';
+const OME_API = process.env.OME_API_URL || 'http://stream-ome:8081/v1';
 
 async function omeRequest(path) {
     const token  = Buffer.from(process.env.OME_API_TOKEN || '').toString('base64');

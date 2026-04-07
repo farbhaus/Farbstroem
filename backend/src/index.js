@@ -1,5 +1,5 @@
 const path        = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../secrets.env') });
+require('dotenv').config();
 
 // Fail fast
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32)
@@ -50,8 +50,10 @@ app.use('/api/public/rooms', joinLimiter, require('./routes/rooms-public'));
 app.use('/api/public/rooms', joinLimiter, require('./routes/files'));
 
 // Serve frontend
-app.use(express.static('/www'));
-app.get('*', (_req, res) => res.sendFile('/www/admin/index.html'));
+app.use('/admin', express.static('/www/admin'));
+app.use(express.static('/www/viewer'));
+app.get('/admin*', (_req, res) => res.sendFile('/www/admin/index.html'));
+app.get('*', (_req, res) => res.sendFile('/www/viewer/index.html'));
 
 // Error handler
 app.use((err, _req, res, _next) => {
@@ -68,7 +70,8 @@ require('./ws/hub')(wss);
 setInterval(async () => {
     try {
         const token = Buffer.from(process.env.OME_API_TOKEN || '').toString('base64');
-        const res = await fetch('http://127.0.0.1:8081/v1/vhosts/default/apps/live/streams', {
+        const omeApi = process.env.OME_API_URL || 'http://stream-ome:8081/v1';
+        const res = await fetch(`${omeApi}/vhosts/default/apps/live/streams`, {
             headers: { Authorization: `Basic ${token}` },
         });
         if (!res.ok) return;
