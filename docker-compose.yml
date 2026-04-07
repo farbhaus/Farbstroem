@@ -41,5 +41,5 @@ services:
       - DATA_PATH=/opt/zemaria/stream/data
       - NODE_ENV=production
     volumes:
-      - /opt/zemaria/stream/data:/data
-      - /opt/zemaria/stream/www:/www
+      - ./data:/data
+      - ./www:/www
