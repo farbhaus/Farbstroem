@@ -704,17 +704,17 @@ fn is_leap(y: i64) -> bool {
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/{slug}/info", get(room_info))
-        .route("/{slug}/join", post(join_room))
+        .route("/:slug/info", get(room_info))
+        .route("/:slug/join", post(join_room))
         .route(
-            "/{slug}/status/{participantId}",
+            "/:slug/status/:participantId",
             get(participant_status),
         )
         .route(
-            "/{slug}/waiting/events/{participantId}",
+            "/:slug/waiting/events/:participantId",
             get(waiting_events),
         )
-        .route("/{slug}/livekit-token", get(livekit_token))
-        .route("/{slug}/conference/kick", post(kick_participant))
-        .route("/{slug}/conference/mute", post(mute_participant))
+        .route("/:slug/livekit-token", get(livekit_token))
+        .route("/:slug/conference/kick", post(kick_participant))
+        .route("/:slug/conference/mute", post(mute_participant))
 }

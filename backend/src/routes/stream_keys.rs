@@ -161,5 +161,5 @@ async fn delete_key(
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_keys).post(create_key))
-        .route("/{id}", put(update_key).delete(delete_key))
+        .route("/:id", put(update_key).delete(delete_key))
 }

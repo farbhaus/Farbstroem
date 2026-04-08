@@ -151,9 +151,9 @@ async fn delete_asset(
 pub fn public_router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(get_branding_status))
-        .route("/{asset}", get(get_asset))
+        .route("/:asset", get(get_asset))
 }
 
 pub fn admin_router() -> Router<Arc<AppState>> {
-    Router::new().route("/{asset}", post(upload_asset).delete(delete_asset))
+    Router::new().route("/:asset", post(upload_asset).delete(delete_asset))
 }

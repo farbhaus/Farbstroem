@@ -52,7 +52,7 @@ struct AuthMsg {
 // ---------------------------------------------------------------------------
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/ws/room/{slug}", get(ws_handler))
+    Router::new().route("/ws/room/:slug", get(ws_handler))
 }
 
 async fn ws_handler(

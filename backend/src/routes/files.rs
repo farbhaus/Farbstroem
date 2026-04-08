@@ -181,7 +181,7 @@ async fn upload_file(
             let pid_db = participant.id.clone();
             tokio::task::spawn_blocking(move || {
                 conn.execute(
-                    "INSERT INTO session_files (id, room_id, participant_id, original_name, stored_name, mime, size, created_at) \
+                    "INSERT INTO session_files (id, room_id, uploader_id, original_name, stored_path, mime_type, size_bytes, created_at) \
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime(?8, 'unixepoch'))",
                     params![
                         file_id_clone,
@@ -244,10 +244,10 @@ async fn list_files(
         let participant = validate_participant(&conn, &pid, &token, &slug_clone)?;
 
         let mut stmt = conn.prepare(
-            "SELECT sf.id, sf.original_name, sf.mime, sf.size, sf.created_at, \
+            "SELECT sf.id, sf.original_name, sf.mime_type, sf.size_bytes, sf.created_at, \
              p.name AS uploader_name, p.role AS uploader_role \
              FROM session_files sf \
-             JOIN participants p ON p.id = sf.participant_id \
+             JOIN participants p ON p.id = sf.uploader_id \
              WHERE sf.room_id = ?1 \
              ORDER BY sf.created_at ASC",
         )?;
@@ -295,7 +295,7 @@ async fn download_file(
 
         let (stored_name, original_name, mime): (String, String, String) = conn
             .query_row(
-                "SELECT stored_name, original_name, mime FROM session_files \
+                "SELECT stored_path, original_name, mime_type FROM session_files \
                  WHERE id = ?1 AND room_id = ?2",
                 params![file_id, participant.room_id],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
@@ -338,6 +338,6 @@ async fn download_file(
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/{slug}/files", post(upload_file).get(list_files))
-        .route("/{slug}/files/{fileId}/download", get(download_file))
+        .route("/:slug/files", post(upload_file).get(list_files))
+        .route("/:slug/files/:fileId/download", get(download_file))
 }

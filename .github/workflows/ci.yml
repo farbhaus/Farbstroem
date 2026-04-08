@@ -16,3 +16,5 @@ jobs:
           workspaces: backend
       - run: cargo build --release
         working-directory: backend
+      - run: cargo test
+        working-directory: backend
