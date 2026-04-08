@@ -5,7 +5,7 @@
 data/
 
 # Dependencies
-backend/node_modules/
+backend/target/
 
 # Override (author's server-specific port mappings)
 docker-compose.override.yml
