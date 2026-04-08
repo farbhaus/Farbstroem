@@ -1,6 +1,6 @@
 # General
-
 - [ ] Create README.md with instructions on how to test and deploy this project as well as overview of project architecture.
+- [ ] Cleanup Streaming.md it's too stuffed
 - [ ] Create and test a setup script for development & deployment
 - [ ] Test room expiration and verify auto-cleanup
 
