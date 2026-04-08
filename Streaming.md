@@ -248,7 +248,7 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 
 ### Public branding
 - `GET /api/branding` — returns `{ hasLogo: bool, hasBg: bool }`
-- `GET /branding/logo`, `GET /branding/bg` — serve custom assets with correct Content-Type
+- `GET /api/branding/logo`, `GET /api/branding/bg` — serve custom assets with correct Content-Type
 
 ### WebSocket (`/ws/room/:slug`)
 - Auth: first message must be `{ type: 'auth', participantId, token }`
@@ -257,7 +257,7 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 - Chat: `{ type: 'chat:message', text }` → broadcast `{ type: 'chat:message', id, participantId, name, role, text, ts }` — also persisted to `chat_messages` table; deleted on `room:ended`
 - Files: upload via REST → broadcast `{ type: 'file:shared', id, participantId, uploaderName, role, name, size, mime, ts }`
 - Room status: `room:live`, `room:pending`, `room:ended`
-- Kick: `{ type: 'kicked' }` — sent to victim before WS close; viewer shows "Removed" screen
+- Kick: `{ type: 'kicked' }` — sent to victim before WS close; viewer shows "Removed" screen and sets `viewer_kicked_{slug}` in `sessionStorage` so the kicked screen persists across refreshes within the same tab
 - Pointer: `{ type: 'pointer:move', x, y }` → broadcast `{ type: 'pointer:move', participantId, name, x, y }` (normalized 0-1 coords, ~30fps throttled)
 - Pointer hide: `{ type: 'pointer:hide' }` → broadcast `{ type: 'pointer:hide', participantId }` (on mouseleave/touchend/toggle off)
 
@@ -274,6 +274,7 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 
 **Presenter moderation:**
 - Kick: `POST /conference/kick` → sets `is_kicked=1` in DB, emits `participant:kicked` event (hub force-closes WS + sends `{type:'kicked'}`), calls `RoomServiceClient.removeParticipant()`. Fully expels participant; rejoin blocked by name match. Admin can unblock via `POST /api/rooms/:id/unkick/:participantId`.
+  - Kicked screen persists across tab refreshes via `viewer_kicked_{slug}` in `sessionStorage`. Cleared only when tab is closed. Hub also sends `{type:'kicked'}` on reconnect attempt (if participant tries to refresh into the app, hub detects `is_kicked=1` and re-expels).
 - Mute: `POST /conference/mute` → `RoomServiceClient.mutePublishedTrack()` — server-side forced mute of specific track. Muted participant's local UI auto-updates (mic button reflects muted state via `TrackMuted` event + `syncLocalMuteState`).
 - Only `role === 'presenter'` can use these; presenters cannot target other presenters
 - Buttons appear on hover (desktop) or always visible (mobile) on remote tiles
@@ -367,6 +368,16 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 - [x] Room delete kicks all WS participants and cleans up LiveKit before DB removal
 - [x] expires_at stored and compared in UTC (admin datetime-local input converted on save/load)
 
+### Phase 4b — Security & Session Bug Fixes ✅
+- [x] Canonical `/watch/{slug}` URL enforcement — direct room slug URLs redirect to `/watch/` prefix
+- [x] Rate limiter moved off GET `/info` onto POST `/join` only — prevents false "Room not found" on refresh
+- [x] `viewer_session_{slug}` moved from `localStorage` to `sessionStorage` — per-tab isolation; prevents multi-tab session sharing
+- [x] Removed `wasAdmitted` auto-bypass logic from join route — each new tab/browser creates a fresh participant
+- [x] Removed auto-join on `savedName` — new tabs always show the join form, never bypass waiting room/password
+- [x] Watch-only participant kick: delegated click listener moved to `#left-panel` (parent of both `#conf-tiles` and `#conf-viewers`) — fixes no-op kick buttons for watch-only participants
+- [x] Kicked screen persists across refreshes — `viewer_kicked_{slug}` flag in `sessionStorage`; hub sends `{type:'kicked'}` on any reconnect attempt by a kicked participant
+- [x] Kicked screen cannot be overridden by `ws.onclose` 1008 handler — guard checks kicked screen visibility before showing join form
+
 ### Phase 5 — Containerization ✅ (self-contained docker-compose)
 - [x] Caddy containerized with env-based domain (`SITE_ADDRESS`)
 - [x] Bridge network replacing `network_mode: host`
@@ -408,6 +419,11 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 ### Timezones
 - **`expires_at` is stored as UTC ISO string** — admin `datetime-local` input (local time) is converted via `new Date(value).toISOString()` before sending to the backend. On load, converted back with `new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,16)`. SQLite's `datetime('now')` returns UTC, so the comparison is correct.
 - **Rooms created before this fix** may have `expires_at` stored in local time (off by UTC offset). Re-save them in the admin to correct.
+
+### Session Isolation
+- **`sessionStorage` vs `localStorage` for participant sessions:** `viewer_session_{slug}` is stored in `sessionStorage` (per-tab, survives refresh, cleared on tab close). Name/password prefill remains in `localStorage` (shared across tabs, intentional).
+- **Kicked flag:** `viewer_kicked_{slug}` stored in `sessionStorage`. Set when `{type:'kicked'}` WS message received or when hub closes with 1008 after detecting `is_kicked=1`. Checked at page load before attempting any WS connection — kicked participant sees the "Removed" screen immediately on refresh without a network round-trip.
+- **Unblocking a kicked participant:** Admin sets `is_kicked=0, is_admitted=1` via unkick endpoint. Participant must close and reopen the tab (or open a new one) to clear the sessionStorage flag and attempt rejoin.
 
 ### Docker
 - **Backend JS is baked into image** — `docker restart` does NOT pick up code changes. Must `docker compose up -d --build stream-backend`.

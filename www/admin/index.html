@@ -973,11 +973,11 @@ const expires      = fmtDate(r.expires_at);
 
         document.getElementById('logo-preview').style.display = hasLogo ? '' : 'none';
         document.getElementById('logo-empty').style.display   = hasLogo ? 'none' : '';
-        if (hasLogo) document.getElementById('logo-preview').src = '/branding/logo?' + Date.now();
+        if (hasLogo) document.getElementById('logo-preview').src = '/api/branding/logo?' + Date.now();
 
         document.getElementById('bg-preview').style.display = hasBg ? '' : 'none';
         document.getElementById('bg-empty').style.display   = hasBg ? 'none' : '';
-        if (hasBg) document.getElementById('bg-preview').src = '/branding/bg?' + Date.now();
+        if (hasBg) document.getElementById('bg-preview').src = '/api/branding/bg?' + Date.now();
     }
 
     async function uploadBrandingAsset(asset) {

@@ -37,7 +37,17 @@ module.exports = function setupHub(wss) {
                     WHERE p.id = ? AND p.token = ? AND r.slug = ? AND p.is_admitted = 1 AND p.is_kicked = 0
                 `).get(msg.participantId, msg.token, slug);
 
-                if (!p) { ws.close(1008, 'Unauthorized'); return; }
+                if (!p) {
+                    // Check if they're specifically kicked so the viewer can show the right screen
+                    const kicked = db.prepare(
+                        'SELECT is_kicked FROM participants WHERE id = ? AND token = ?'
+                    ).get(msg.participantId, msg.token);
+                    if (kicked?.is_kicked) {
+                        try { ws.send(JSON.stringify({ type: 'kicked' })); } catch {}
+                    }
+                    ws.close(1008, 'Unauthorized');
+                    return;
+                }
 
                 if (!rooms.has(slug)) rooms.set(slug, new Map());
                 const room = rooms.get(slug);

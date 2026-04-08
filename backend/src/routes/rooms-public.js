@@ -1,10 +1,14 @@
 const express      = require('express');
 const bcrypt       = require('bcryptjs');
 const crypto       = require('crypto');
+const rateLimit    = require('express-rate-limit');
 const db           = require('../db');
 const events       = require('../events');
 const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 const router       = express.Router();
+
+// Limit join attempts only — not info/status/SSE reads
+const joinLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
 
 function getRoomService() {
     return new RoomServiceClient(
@@ -27,7 +31,7 @@ router.get('/:slug/info', (req, res) => {
 });
 
 // Join room (viewer)
-router.post('/:slug/join', async (req, res) => {
+router.post('/:slug/join', joinLimiter, async (req, res) => {
     const room = db.prepare('SELECT * FROM rooms WHERE slug = ?').get(req.params.slug);
     if (!room) return res.status(404).json({ error: 'Room not found' });
     if (room.status === 'ended') return res.status(410).json({ error: 'Session has ended' });
@@ -56,11 +60,7 @@ router.post('/:slug/join', async (req, res) => {
     const token         = crypto.randomBytes(32).toString('hex');
     const isPresenter   = role === 'presenter';
 
-    const wasAdmitted = room.waiting_room && !isPresenter
-        ? !!db.prepare(`SELECT id FROM participants WHERE room_id = ? AND name = ? AND is_admitted = 1 LIMIT 1`).get(room.id, name)
-        : false;
-
-    const isAdmitted = !room.waiting_room || isPresenter || wasAdmitted ? 1 : 0;
+    const isAdmitted = !room.waiting_room || isPresenter ? 1 : 0;
 
     db.prepare(`
         INSERT INTO participants (id, room_id, name, role, is_admitted, token)
