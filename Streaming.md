@@ -225,8 +225,8 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 ### Public (participant token auth)
 - `GET  /api/public/rooms/:slug/info` — room metadata
 - `POST /api/public/rooms/:slug/join` — validate password, create participant, return token + role
-- `GET  /api/public/rooms/:slug/status/:participantId` — admission status poll
-- `GET  /api/public/rooms/:slug/waiting/events/:id` — SSE for waiting room
+- `GET  /api/public/rooms/:slug/status/:participantId?token=` — admission status poll (token required)
+- `GET  /api/public/rooms/:slug/waiting/events/:id?token=` — SSE for waiting room (token validated before stream opens)
 - `GET  /api/public/rooms/:slug/livekit-token` — LiveKit access token (admitted only)
 - `POST /api/public/rooms/:slug/conference/kick` — presenter kicks + bans participant (is_kicked=1, WS disconnect, LiveKit removal)
 - `POST /api/public/rooms/:slug/conference/mute` — presenter mutes/unmutes participant's track (server-side)
@@ -242,6 +242,7 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 - `GET/POST/DELETE /api/stream-keys`
 - `GET /api/rooms/:id/waiting`, `POST /api/rooms/:id/admit/:participantId`, `POST /api/rooms/:id/admit-all`
 - `GET /api/rooms/:id/kicked`, `POST /api/rooms/:id/unkick/:participantId` — kicked list + unblock
+- `POST /api/rooms/:id/enter` — admin enters room as presenter; creates a `role=presenter, is_admitted=1` participant, returns `{participantId, token, slug, deliveryMode, streamKey}`. Admin UI stores credentials in localStorage as `_presession_{slug}`, opens viewer tab which consumes them immediately into sessionStorage.
 - `GET /api/ome/stats`
 - `POST /api/admin/branding/logo|bg` — upload custom logo or background image (max 5 MB); stored in `/data/branding/`
 - `DELETE /api/admin/branding/logo|bg` — remove custom asset
@@ -271,6 +272,12 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 - Validates participant is admitted
 - Issues AccessToken with `roomJoin: true, room: slug, canPublish: true, canSubscribe: true`
 - Metadata includes `{ role }` — used client-side for presenter detection
+
+**Presenter entry (admin):**
+- Admin clicks "Enter Room" → `POST /api/rooms/:id/enter` (JWT required) — creates `role=presenter, is_admitted=1` participant, returns credentials
+- Admin JS writes `_presession_{slug}` to localStorage, opens `/watch/{slug}` in new tab
+- Viewer tab consumes the presession on load: moves it to sessionStorage as `viewer_session_{slug}`, then proceeds to `showApp()` as presenter with no join form
+- This is the only way to obtain presenter role; there is no public URL that grants it
 
 **Presenter moderation:**
 - Kick: `POST /conference/kick` → sets `is_kicked=1` in DB, emits `participant:kicked` event (hub force-closes WS + sends `{type:'kicked'}`), calls `RoomServiceClient.removeParticipant()`. Fully expels participant; rejoin blocked by name match. Admin can unblock via `POST /api/rooms/:id/unkick/:participantId`.
@@ -378,6 +385,12 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 - [x] Kicked screen persists across refreshes — `viewer_kicked_{slug}` flag in `sessionStorage`; hub sends `{type:'kicked'}` on any reconnect attempt by a kicked participant
 - [x] Kicked screen cannot be overridden by `ws.onclose` 1008 handler — guard checks kicked screen visibility before showing join form
 
+### Phase 4c — Pentester Audit Fixes ✅
+- [x] **Critical: Presenter role bypass** — `req.body.role` was trusted blindly; anyone could add `?role=presenter` to URL and get presenter privileges. Fixed by adding `presenter_key` (32-byte random hex) to each room in DB. Join endpoint validates key server-side; wrong/missing → silently joins as viewer. Presenter role is now only obtainable via `POST /api/rooms/:id/enter` (admin JWT required).
+- [x] **Medium: Kicked participants could upload/download files** — `participantAuth` in `files.js` checked `is_admitted=1` but not `is_kicked=0`. Fixed.
+- [x] **Medium: Client-supplied MIME type served on downloads** — `req.file.mimetype` comes from the multipart header (fully client-controlled). A malicious participant could upload a file with `Content-Type: text/html` and it would be served as HTML — stored XSS vector. Fixed by whitelisting safe MIME types on upload; unknown types stored and served as `application/octet-stream`. Added `X-Content-Type-Options: nosniff` to download response.
+- [x] **Low: Unauthenticated waiting room SSE/poll** — `GET /:slug/waiting/events/:participantId` and `GET /:slug/status/:participantId` had no token validation. Anyone knowing a participantId (UUID) could monitor admission status indefinitely. Fixed by requiring `?token=` on both endpoints; validated against DB before SSE stream opens.
+
 ### Phase 5 — Containerization ✅ (self-contained docker-compose)
 - [x] Caddy containerized with env-based domain (`SITE_ADDRESS`)
 - [x] Bridge network replacing `network_mode: host`
@@ -419,6 +432,15 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 ### Timezones
 - **`expires_at` is stored as UTC ISO string** — admin `datetime-local` input (local time) is converted via `new Date(value).toISOString()` before sending to the backend. On load, converted back with `new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,16)`. SQLite's `datetime('now')` returns UTC, so the comparison is correct.
 - **Rooms created before this fix** may have `expires_at` stored in local time (off by UTC offset). Re-save them in the admin to correct.
+
+### Security Architecture
+- **Presenter role** is exclusively granted via `POST /api/rooms/:id/enter` (admin JWT required). The join endpoint ignores any client-supplied `role=presenter` without a valid `presenter_key` (stored in rooms table, never exposed publicly). Incorrect or missing key → silent demotion to viewer.
+- **`presenter_key`** is a 32-byte random hex value generated at room creation. It lives in the DB and is included in admin-only `SELECT r.*` responses (behind JWT). It is never served to unauthenticated clients (the public `/info` endpoint uses an explicit column list).
+- **Admin "Enter Room"** flow: `POST /api/rooms/:id/enter` → credentials written to `localStorage['_presession_{slug}']` → viewer tab opens, immediately reads and deletes the entry, moves to `sessionStorage`. The localStorage key exists for milliseconds only.
+- **File MIME types** are validated against a whitelist on upload. Downloads are served with the stored (whitelisted) MIME type + `X-Content-Type-Options: nosniff` + `Content-Disposition: attachment` — browsers cannot render them inline.
+- **Participant auth** on file and SSE endpoints: all check `participantId + token` pair against DB, `is_admitted = 1`, and `is_kicked = 0`.
+- **SQL injection**: all DB queries use better-sqlite3 prepared statements with `?` placeholders. No string interpolation.
+- **Admin auth**: bcrypt password → JWT (HS256, 7d expiry). Password hashed at startup and plaintext deleted from env. No server-side session store.
 
 ### Session Isolation
 - **`sessionStorage` vs `localStorage` for participant sessions:** `viewer_session_{slug}` is stored in `sessionStorage` (per-tab, survives refresh, cleared on tab close). Name/password prefill remains in `localStorage` (shared across tabs, intentional).

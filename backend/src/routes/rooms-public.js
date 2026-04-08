@@ -41,7 +41,7 @@ router.post('/:slug/join', joinLimiter, async (req, res) => {
         return res.status(410).json({ error: 'Session has expired' });
     }
 
-    const { name, password, role } = req.body;
+    const { name, password, role, presenter_key } = req.body;
     if (!name) return res.status(400).json({ error: 'Name required' });
 
     if (room.password_hash) {
@@ -58,7 +58,12 @@ router.post('/:slug/join', joinLimiter, async (req, res) => {
 
     const participantId = crypto.randomUUID();
     const token         = crypto.randomBytes(32).toString('hex');
-    const isPresenter   = role === 'presenter';
+
+    // Presenter role requires server-side key validation — client-supplied role alone is not trusted
+    const isPresenter = role === 'presenter'
+        && typeof presenter_key === 'string'
+        && presenter_key.length > 0
+        && presenter_key === room.presenter_key;
 
     const isAdmitted = !room.waiting_room || isPresenter ? 1 : 0;
 
@@ -86,16 +91,25 @@ router.post('/:slug/join', joinLimiter, async (req, res) => {
 
 // Admission status poll
 router.get('/:slug/status/:participantId', (req, res) => {
+    const { token } = req.query;
     const p = db.prepare(`
         SELECT is_admitted FROM participants
-        WHERE id = ? AND room_id = (SELECT id FROM rooms WHERE slug = ?)
-    `).get(req.params.participantId, req.params.slug);
+        WHERE id = ? AND token = ? AND room_id = (SELECT id FROM rooms WHERE slug = ?)
+    `).get(req.params.participantId, token || '', req.params.slug);
     if (!p) return res.status(404).json({ error: 'Not found' });
     res.json({ admitted: !!p.is_admitted });
 });
 
 // SSE — waiting room notifications
 router.get('/:slug/waiting/events/:participantId', (req, res) => {
+    const { token } = req.query;
+    // Validate token before opening the SSE stream
+    const valid = db.prepare(`
+        SELECT id FROM participants
+        WHERE id = ? AND token = ? AND room_id = (SELECT id FROM rooms WHERE slug = ?)
+    `).get(req.params.participantId, token || '', req.params.slug);
+    if (!valid) return res.status(401).end();
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');

@@ -10,17 +10,18 @@ db.pragma('synchronous = NORMAL');
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS rooms (
-        id          TEXT PRIMARY KEY,
-        name        TEXT NOT NULL,
-        slug        TEXT UNIQUE NOT NULL,
+        id            TEXT PRIMARY KEY,
+        name          TEXT NOT NULL,
+        slug          TEXT UNIQUE NOT NULL,
         password_hash TEXT,
+        presenter_key TEXT,
         delivery_mode TEXT NOT NULL DEFAULT 'webrtc',
         waiting_room  INTEGER NOT NULL DEFAULT 0,
-        expires_at  DATETIME,
-        status      TEXT NOT NULL DEFAULT 'pending',
-        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-        started_at  DATETIME,
-        ended_at    DATETIME
+        expires_at    DATETIME,
+        status        TEXT NOT NULL DEFAULT 'pending',
+        created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+        started_at    DATETIME,
+        ended_at      DATETIME
     );
 
     CREATE TABLE IF NOT EXISTS stream_keys (
@@ -91,6 +92,14 @@ if (!roomCols.includes('stream_key_id')) {
 const partCols = db.prepare('PRAGMA table_info(participants)').all().map(c => c.name);
 if (!partCols.includes('is_kicked')) {
     db.exec('ALTER TABLE participants ADD COLUMN is_kicked INTEGER NOT NULL DEFAULT 0');
+}
+
+// Migration: add presenter_key to rooms (server-side presenter auth)
+if (!roomCols.includes('presenter_key')) {
+    db.exec(`
+        ALTER TABLE rooms ADD COLUMN presenter_key TEXT;
+        UPDATE rooms SET presenter_key = lower(hex(randomblob(16))) WHERE presenter_key IS NULL;
+    `);
 }
 
 module.exports = db;

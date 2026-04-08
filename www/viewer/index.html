@@ -756,10 +756,11 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         return;
     }
 
-    const params       = new URLSearchParams(location.search);
-    const autoPassword = params.get('p') || '';
-    const autoName     = params.get('n') || '';
-    const isPresenter  = params.get('role') === 'presenter';
+    const params        = new URLSearchParams(location.search);
+    const autoPassword  = params.get('p') || '';
+    const autoName      = params.get('n') || '';
+    const presenterKey  = params.get('pk') || '';
+    const isPresenter   = params.get('role') === 'presenter' && presenterKey.length > 0;
 
     let roomInfo      = null;
     let participantId = null;
@@ -1066,6 +1067,24 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     if (savedName) document.getElementById('name-input').value = savedName;
     if (savedPass) document.getElementById('password-input').value = savedPass;
 
+    // Admin "Enter Room" — consume one-time presenter session handed off via localStorage
+    (function consumePresession() {
+        try {
+            const raw = localStorage.getItem(`_presession_${slug}`);
+            if (!raw) return;
+            localStorage.removeItem(`_presession_${slug}`);
+            const ps = JSON.parse(raw);
+            if (!ps.participantId || !ps.token) return;
+            sessionStorage.setItem(`viewer_session_${slug}`, JSON.stringify({
+                participantId: ps.participantId,
+                token:         ps.token,
+                deliveryMode:  ps.deliveryMode || 'webrtc',
+                streamKey:     ps.streamKey || null,
+                role:          ps.role || 'presenter',
+            }));
+        } catch {}
+    })();
+
     loadRoomInfo();
 
     async function loadRoomInfo() {
@@ -1128,7 +1147,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             const res  = await fetch(`${API}/${slug}/join`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, password, role: isPresenter ? 'presenter' : 'viewer' }),
+                body: JSON.stringify({ name, password, role: isPresenter ? 'presenter' : 'viewer', presenter_key: presenterKey }),
             });
             const data = await res.json();
 
@@ -1170,12 +1189,12 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     // ---- Waiting room ----
 
     function pollAdmission() {
-        const sse = new EventSource(`${API}/${slug}/waiting/events/${participantId}`);
+        const sse = new EventSource(`${API}/${slug}/waiting/events/${participantId}?token=${encodeURIComponent(myToken)}`);
         sse.addEventListener('admitted', () => { sse.close(); showApp(); });
         sse.addEventListener('error', () => {
             sse.close();
             statusInterval = setInterval(async () => {
-                const res  = await fetch(`${API}/${slug}/status/${participantId}`);
+                const res  = await fetch(`${API}/${slug}/status/${participantId}?token=${encodeURIComponent(myToken)}`);
                 const data = await res.json();
                 if (data.admitted) { clearInterval(statusInterval); showApp(); }
             }, 3000);

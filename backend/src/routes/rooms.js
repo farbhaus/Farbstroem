@@ -44,17 +44,18 @@ router.post('/', async (req, res) => {
     const { name, password, delivery_mode, waiting_room, expires_at, stream_key_id } = req.body;
     if (!name) return res.status(400).json({ error: 'Name required' });
 
-    const id   = crypto.randomUUID();
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80)
-               + '-' + crypto.randomBytes(3).toString('hex');
+    const id            = crypto.randomUUID();
+    const slug          = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80)
+                        + '-' + crypto.randomBytes(3).toString('hex');
+    const presenter_key = crypto.randomBytes(16).toString('hex');
 
     const password_hash = password ? await bcrypt.hash(password, 12) : null;
 
     db.prepare(`
-        INSERT INTO rooms (id, name, slug, password_hash, delivery_mode, waiting_room, expires_at, stream_key_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO rooms (id, name, slug, presenter_key, password_hash, delivery_mode, waiting_room, expires_at, stream_key_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-        id, name, slug, password_hash,
+        id, name, slug, presenter_key, password_hash,
         delivery_mode || 'webrtc',
         waiting_room ? 1 : 0,
         expires_at || null,
@@ -126,6 +127,35 @@ router.delete('/:id', async (req, res) => {
 
     db.prepare('DELETE FROM rooms WHERE id = ?').run(req.params.id);
     res.json({ ok: true });
+});
+
+// Enter room as presenter (admin-authenticated; bypasses join form and waiting room)
+router.post('/:id/enter', (req, res) => {
+    const room = db.prepare(`
+        SELECT r.id, r.slug, r.delivery_mode, r.status, sk.key_token as stream_key
+        FROM rooms r LEFT JOIN stream_keys sk ON sk.id = r.stream_key_id
+        WHERE r.id = ?
+    `).get(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Not found' });
+    if (room.status === 'ended') return res.status(410).json({ error: 'Room has ended' });
+
+    const name          = String(req.body.name || 'Host').trim().slice(0, 50) || 'Host';
+    const participantId = crypto.randomUUID();
+    const token         = crypto.randomBytes(32).toString('hex');
+
+    db.prepare(`
+        INSERT INTO participants (id, room_id, name, role, is_admitted, token)
+        VALUES (?, ?, ?, 'presenter', 1, ?)
+    `).run(participantId, room.id, name, token);
+
+    res.json({
+        participantId,
+        token,
+        slug:         room.slug,
+        deliveryMode: room.delivery_mode,
+        streamKey:    room.stream_key || null,
+        role:         'presenter',
+    });
 });
 
 // Waiting room list (admin)
