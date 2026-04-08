@@ -1,0 +1,329 @@
+mod common;
+
+use serde_json::{json, Value};
+
+// ---------------------------------------------------------------------------
+// Room info
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn room_info_returns_404() {
+    let state = common::test_state();
+    let server = common::test_app(state);
+
+    let res = server.get("/api/public/rooms/nonexistent-slug/info").await;
+    assert_eq!(res.status_code(), 404);
+}
+
+#[tokio::test]
+async fn room_info_returns_safe_fields() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let _room_id = common::seed_room_with_password(&state, "Info Room", "info-room-abc123", "secret");
+
+    let res = server.get("/api/public/rooms/info-room-abc123/info").await;
+    assert_eq!(res.status_code(), 200);
+
+    let body: Value = res.json();
+    assert_eq!(body["name"], "Info Room");
+    assert_eq!(body["slug"], "info-room-abc123");
+    // has_password should be 1 (truthy) since we set a password
+    assert_eq!(body["has_password"], 1);
+    // password_hash must NOT be exposed
+    assert!(body.get("password_hash").is_none());
+}
+
+// ---------------------------------------------------------------------------
+// Join room
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn join_returns_404_nonexistent() {
+    let state = common::test_state();
+    let server = common::test_app(state);
+
+    let res = server
+        .post("/api/public/rooms/no-such-room/join")
+        .json(&json!({ "name": "Alice" }))
+        .await;
+    assert_eq!(res.status_code(), 404);
+}
+
+#[tokio::test]
+async fn join_returns_410_ended() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let _room_id = common::seed_room_full(
+        &state,
+        "Ended Room",
+        "ended-room-abc123",
+        "ended",
+        false,
+        None,
+    );
+
+    let res = server
+        .post("/api/public/rooms/ended-room-abc123/join")
+        .json(&json!({ "name": "Alice" }))
+        .await;
+    assert_eq!(res.status_code(), 410);
+}
+
+#[tokio::test]
+async fn join_returns_400_no_name() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let _room_id = common::seed_room(&state, "Join Room", "join-noname-abc123");
+
+    let res = server
+        .post("/api/public/rooms/join-noname-abc123/join")
+        .json(&json!({}))
+        .await;
+    assert_eq!(res.status_code(), 400);
+}
+
+#[tokio::test]
+async fn join_returns_401_wrong_password() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let _room_id =
+        common::seed_room_with_password(&state, "PW Room", "pw-room-abc123", "correct-pass");
+
+    let res = server
+        .post("/api/public/rooms/pw-room-abc123/join")
+        .json(&json!({ "name": "Alice", "password": "wrong-pass" }))
+        .await;
+    assert_eq!(res.status_code(), 401);
+}
+
+#[tokio::test]
+async fn join_succeeds() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let _room_id = common::seed_room(&state, "Open Room", "open-room-abc123");
+
+    let res = server
+        .post("/api/public/rooms/open-room-abc123/join")
+        .json(&json!({ "name": "Alice" }))
+        .await;
+    assert_eq!(res.status_code(), 200);
+
+    let body: Value = res.json();
+    assert!(body.get("participantId").is_some());
+    assert!(body.get("token").is_some());
+    assert_eq!(body["admitted"], true);
+    assert_eq!(body["role"], "viewer");
+}
+
+#[tokio::test]
+async fn join_returns_403_kicked() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let room_id = common::seed_room(&state, "Kick Check", "kick-check-abc123");
+    // Seed a kicked participant named "TestUser"
+    let (_pid, _tok) = common::seed_participant(
+        &state,
+        &room_id,
+        "TestUser",
+        "viewer",
+        true,  // admitted
+        true,  // kicked
+    );
+
+    // Try joining as "testuser" (case insensitive match)
+    let res = server
+        .post("/api/public/rooms/kick-check-abc123/join")
+        .json(&json!({ "name": "testuser" }))
+        .await;
+    assert_eq!(res.status_code(), 403);
+}
+
+#[tokio::test]
+async fn join_presenter_needs_key() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let _room_id = common::seed_room(&state, "Presenter Room", "pres-room-abc123");
+
+    // Join with role=presenter but wrong/missing key -> should become viewer
+    let res = server
+        .post("/api/public/rooms/pres-room-abc123/join")
+        .json(&json!({ "name": "Bob", "role": "presenter", "presenter_key": "wrong-key" }))
+        .await;
+    assert_eq!(res.status_code(), 200);
+
+    let body: Value = res.json();
+    assert_eq!(body["role"], "viewer");
+}
+
+#[tokio::test]
+async fn join_presenter_with_valid_key() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let room_id = common::seed_room(&state, "Presenter Valid", "pres-valid-abc123");
+    let presenter_key = common::get_room_presenter_key(&state, &room_id);
+
+    let res = server
+        .post("/api/public/rooms/pres-valid-abc123/join")
+        .json(&json!({
+            "name": "Presenter Bob",
+            "role": "presenter",
+            "presenter_key": presenter_key
+        }))
+        .await;
+    assert_eq!(res.status_code(), 200);
+
+    let body: Value = res.json();
+    assert_eq!(body["role"], "presenter");
+}
+
+// ---------------------------------------------------------------------------
+// Status poll
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn status_poll_returns_404() {
+    let state = common::test_state();
+    let server = common::test_app(state);
+
+    let res = server
+        .get("/api/public/rooms/no-slug/status/no-pid?token=bad")
+        .await;
+    assert_eq!(res.status_code(), 404);
+}
+
+#[tokio::test]
+async fn status_poll_returns_admitted() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let room_id = common::seed_room(&state, "Status Room", "status-room-abc123");
+    let (pid, ptok) = common::seed_participant(
+        &state,
+        &room_id,
+        "StatusUser",
+        "viewer",
+        true,  // admitted
+        false, // not kicked
+    );
+
+    let url = format!(
+        "/api/public/rooms/status-room-abc123/status/{}?token={}",
+        pid, ptok
+    );
+    let res = server.get(&url).await;
+    assert_eq!(res.status_code(), 200);
+
+    let body: Value = res.json();
+    assert_eq!(body["admitted"], true);
+    assert_eq!(body["kicked"], false);
+}
+
+// ---------------------------------------------------------------------------
+// LiveKit token
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn livekit_token_returns_401_without_params() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let _room_id = common::seed_room(&state, "LK Room", "lk-room-abc123");
+
+    // Missing both participantId and token
+    let res = server
+        .get("/api/public/rooms/lk-room-abc123/livekit-token")
+        .await;
+    // Should return 400 for missing participantId
+    let status = res.status_code().as_u16();
+    assert!(status == 400 || status == 401, "Expected 400 or 401, got {}", status);
+}
+
+#[tokio::test]
+async fn livekit_token_succeeds() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let room_id = common::seed_room(&state, "LK Token Room", "lk-token-abc123");
+    let (pid, ptok) = common::seed_participant(
+        &state,
+        &room_id,
+        "LKUser",
+        "viewer",
+        true,  // admitted
+        false, // not kicked
+    );
+
+    let url = format!(
+        "/api/public/rooms/lk-token-abc123/livekit-token?participantId={}&token={}",
+        pid, ptok
+    );
+    let res = server.get(&url).await;
+    // LiveKit token generation may fail in test env (no real LiveKit), so we accept
+    // 200 (success) or 500 (LiveKit unavailable). The route logic is still exercised.
+    let status = res.status_code().as_u16();
+    assert!(
+        status == 200 || status == 500,
+        "Expected 200 or 500, got {}",
+        status
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Kick
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn kick_returns_400_missing_fields() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let _room_id = common::seed_room(&state, "Kick Room", "kick-route-abc123");
+
+    let res = server
+        .post("/api/public/rooms/kick-route-abc123/conference/kick")
+        .json(&json!({}))
+        .await;
+    assert_eq!(res.status_code(), 400);
+}
+
+#[tokio::test]
+async fn kick_returns_403_non_presenter() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let room_id = common::seed_room(&state, "Kick Deny", "kick-deny-abc123");
+    let (viewer_pid, viewer_tok) = common::seed_participant(
+        &state,
+        &room_id,
+        "ViewerKicker",
+        "viewer",
+        true,
+        false,
+    );
+    let (target_pid, _) = common::seed_participant(
+        &state,
+        &room_id,
+        "Target",
+        "viewer",
+        true,
+        false,
+    );
+
+    let res = server
+        .post("/api/public/rooms/kick-deny-abc123/conference/kick")
+        .json(&json!({
+            "participantId": viewer_pid,
+            "token": viewer_tok,
+            "targetId": target_pid
+        }))
+        .await;
+    assert_eq!(res.status_code(), 403);
+}

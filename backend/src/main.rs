@@ -1,13 +1,10 @@
-mod config;
-mod db;
-mod error;
-mod events;
-mod state;
-mod auth;
-mod livekit;
-mod routes;
-mod ws;
-mod tasks;
+use stream_backend::config;
+use stream_backend::db;
+use stream_backend::events;
+use stream_backend::state;
+use stream_backend::routes;
+use stream_backend::ws;
+use stream_backend::tasks;
 
 use std::sync::Arc;
 use std::net::SocketAddr;
