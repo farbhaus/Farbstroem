@@ -1,4 +1,3 @@
-const path        = require('path');
 const { RoomServiceClient } = require('livekit-server-sdk');
 require('dotenv').config();
 
@@ -43,7 +42,6 @@ app.use(morgan('combined'));
 
 // Rate limiting
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
-const joinLimiter = rateLimit({ windowMs: 1 * 60 * 1000,  max: 10 });
 
 // Webhook: raw body BEFORE express.json so HMAC is over the original bytes
 app.use('/api/webhook/admission', express.raw({ type: '*/*' }), require('./routes/webhook'));
@@ -55,14 +53,14 @@ app.use('/api/rooms',       requireAuth, require('./routes/rooms'));
 app.use('/api/ome',         requireAuth, require('./routes/ome'));
 
 // Public room routes (no auth — viewer join flow)
-app.use('/api/public/rooms', joinLimiter, require('./routes/rooms-public'));
-app.use('/api/public/rooms', joinLimiter, require('./routes/files'));
+// Note: joinLimiter is applied per-route inside rooms-public.js (POST /join only)
+app.use('/api/public/rooms', require('./routes/rooms-public'));
+app.use('/api/public/rooms', require('./routes/files'));
 
-// Branding routes (public GET, admin POST/DELETE)
+// Branding routes (all under /api — no public /branding URL)
 const brandingRouter = require('./routes/branding');
-app.use('/branding',           brandingRouter);
-app.use('/api/branding',       brandingRouter);
-app.use('/api/admin/branding', brandingRouter);
+app.use('/api/branding',       brandingRouter); // GET /api/branding, GET /api/branding/logo|bg
+app.use('/api/admin/branding', brandingRouter); // POST/DELETE /api/admin/branding/logo|bg (requireAuth inside)
 
 // Serve frontend
 app.use('/admin', express.static('/www/admin'));

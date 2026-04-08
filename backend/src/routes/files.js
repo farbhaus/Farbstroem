@@ -20,7 +20,7 @@ function participantAuth(req, res, next) {
         SELECT p.id, p.name, p.role, r.id AS room_id, r.slug
         FROM participants p
         JOIN rooms r ON r.id = p.room_id
-        WHERE p.id = ? AND p.token = ? AND r.slug = ? AND p.is_admitted = 1
+        WHERE p.id = ? AND p.token = ? AND r.slug = ? AND p.is_admitted = 1 AND p.is_kicked = 0
     `).get(participantId, token, slug);
 
     if (!row) return res.status(401).json({ error: 'Unauthorized' });
@@ -49,7 +49,18 @@ router.post('/:slug/files', participantAuth, upload.single('file'), (req, res) =
 
     const id           = randomUUID();
     const originalName = req.file.originalname.replace(/"/g, '').slice(0, 255) || 'file';
-    const mime         = req.file.mimetype || 'application/octet-stream';
+    // Whitelist safe MIME types — client-supplied value is not trusted (prevents stored XSS via download)
+    const SAFE_MIMES = new Set([
+        'image/jpeg','image/png','image/gif','image/webp','image/svg+xml','image/avif',
+        'video/mp4','video/quicktime','video/webm',
+        'audio/mpeg','audio/wav','audio/ogg','audio/flac',
+        'application/pdf',
+        'text/plain',
+        'application/zip','application/x-zip-compressed',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ]);
+    const mime = SAFE_MIMES.has(req.file.mimetype) ? req.file.mimetype : 'application/octet-stream';
 
     db.prepare(`
         INSERT INTO session_files (id, room_id, uploader_id, original_name, stored_path, mime_type, size_bytes)
@@ -95,8 +106,10 @@ router.get('/:slug/files/:fileId/download', participantAuth, (req, res) => {
 
     if (!file) return res.status(404).json({ error: 'Not found' });
 
-    res.setHeader('Content-Type', file.mime_type);
+    // Force attachment + safe MIME so the browser downloads rather than renders
+    res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.original_name)}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.sendFile(file.stored_path);
 });
 

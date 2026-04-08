@@ -516,7 +516,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         <img src="" alt="Ze Maria Color" class="screen-logo">
         <div class="landing-title">Welcome</div>
         <div class="landing-sub">It appears you forgot the room link for your project. Please enter your room link below or ask your host for the correct URL.</div>
-        <input type="text" class="landing-input" id="landing-input" placeholder="https://yourdomain.com/room/..." autocomplete="off" spellcheck="false">
+        <input type="text" class="landing-input" id="landing-input" placeholder="/room-name-123abc" autocomplete="off" spellcheck="false">
         <button class="landing-btn" id="landing-btn">Go to Room</button>
         <p class="landing-error" id="landing-error"></p>
     </div>
@@ -750,10 +750,17 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     const pathParts = location.pathname.replace(/^\//, '').split('/').filter(Boolean);
     const slug = pathParts[pathParts.length - 1];
 
-    const params       = new URLSearchParams(location.search);
-    const autoPassword = params.get('p') || '';
-    const autoName     = params.get('n') || '';
-    const isPresenter  = params.get('role') === 'presenter';
+    // Enforce canonical /watch/{slug} URL — redirect anything else
+    if (slug && !location.pathname.startsWith('/watch/')) {
+        location.replace('/watch/' + slug + location.search);
+        return;
+    }
+
+    const params        = new URLSearchParams(location.search);
+    const autoPassword  = params.get('p') || '';
+    const autoName      = params.get('n') || '';
+    const presenterKey  = params.get('pk') || '';
+    const isPresenter   = params.get('role') === 'presenter' && presenterKey.length > 0;
 
     let roomInfo      = null;
     let participantId = null;
@@ -1042,7 +1049,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             dest = raw.replace(/^\/+|\/+$/g, '').split('/').pop();
         }
         if (!dest) { errEl.textContent = 'Could not parse a room from that URL.'; return; }
-        location.href = '/' + dest + location.search;
+        location.href = '/watch/' + dest + location.search;
     }
 
     document.getElementById('landing-btn').addEventListener('click', goToRoom);
@@ -1060,11 +1067,30 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     if (savedName) document.getElementById('name-input').value = savedName;
     if (savedPass) document.getElementById('password-input').value = savedPass;
 
+    // Admin "Enter Room" — consume one-time presenter session handed off via localStorage
+    (function consumePresession() {
+        try {
+            const raw = localStorage.getItem(`_presession_${slug}`);
+            if (!raw) return;
+            localStorage.removeItem(`_presession_${slug}`);
+            const ps = JSON.parse(raw);
+            if (!ps.participantId || !ps.token) return;
+            sessionStorage.setItem(`viewer_session_${slug}`, JSON.stringify({
+                participantId: ps.participantId,
+                token:         ps.token,
+                deliveryMode:  ps.deliveryMode || 'webrtc',
+                streamKey:     ps.streamKey || null,
+                role:          ps.role || 'presenter',
+            }));
+        } catch {}
+    })();
+
     loadRoomInfo();
 
     async function loadRoomInfo() {
         try {
             const res = await fetch(`${API}/${slug}/info`);
+            if (res.status === 429) { setTimeout(loadRoomInfo, 2000); return; }
             if (!res.ok) {
                 showLanding();
                 document.getElementById('landing-error').textContent = 'Room not found. Please check your link.';
@@ -1074,7 +1100,12 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             document.title = roomInfo.name + ' — Ze Maria';
             document.getElementById('join-room-name').textContent = roomInfo.name;
             if (roomInfo.has_password) document.getElementById('password-row').style.display = '';
-            const savedSession = JSON.parse(localStorage.getItem(`viewer_session_${slug}`) || 'null');
+            // If this tab was kicked, stay on kicked screen until manually cleared
+            if (sessionStorage.getItem(`viewer_kicked_${slug}`)) {
+                document.getElementById('kicked-screen').classList.remove('hidden');
+                return;
+            }
+            const savedSession = JSON.parse(sessionStorage.getItem(`viewer_session_${slug}`) || 'null');
             if (savedSession && roomInfo.status !== 'ended') {
                 participantId = savedSession.participantId;
                 myToken       = savedSession.token;
@@ -1083,13 +1114,11 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
                 streamKey     = savedSession.streamKey;
                 showApp(roomInfo.status);
             } else if (savedSession && roomInfo.status === 'ended') {
-                localStorage.removeItem(`viewer_session_${slug}`);
+                sessionStorage.removeItem(`viewer_session_${slug}`);
                 document.getElementById('join-screen').classList.remove('hidden');
             } else if (autoName) {
                 document.getElementById('name-input').value = autoName;
                 if (autoPassword) document.getElementById('password-input').value = autoPassword;
-                doJoin();
-            } else if (savedName && (!roomInfo.has_password || savedPass)) {
                 doJoin();
             } else {
                 document.getElementById('join-screen').classList.remove('hidden');
@@ -1118,7 +1147,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             const res  = await fetch(`${API}/${slug}/join`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, password, role: isPresenter ? 'presenter' : 'viewer' }),
+                body: JSON.stringify({ name, password, role: isPresenter ? 'presenter' : 'viewer', presenter_key: presenterKey }),
             });
             const data = await res.json();
 
@@ -1135,7 +1164,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             deliveryMode  = data.delivery_mode;
             streamKey     = data.stream_key;
 
-            localStorage.setItem(`viewer_session_${slug}`, JSON.stringify({
+            sessionStorage.setItem(`viewer_session_${slug}`, JSON.stringify({
                 participantId, token: myToken, deliveryMode, streamKey, role: myRole,
             }));
             localStorage.setItem(`viewer_name_${slug}`, name);
@@ -1160,12 +1189,12 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     // ---- Waiting room ----
 
     function pollAdmission() {
-        const sse = new EventSource(`${API}/${slug}/waiting/events/${participantId}`);
+        const sse = new EventSource(`${API}/${slug}/waiting/events/${participantId}?token=${encodeURIComponent(myToken)}`);
         sse.addEventListener('admitted', () => { sse.close(); showApp(); });
         sse.addEventListener('error', () => {
             sse.close();
             statusInterval = setInterval(async () => {
-                const res  = await fetch(`${API}/${slug}/status/${participantId}`);
+                const res  = await fetch(`${API}/${slug}/status/${participantId}?token=${encodeURIComponent(myToken)}`);
                 const data = await res.json();
                 if (data.admitted) { clearInterval(statusInterval); showApp(); }
             }, 3000);
@@ -1514,7 +1543,8 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             if (msg.type === 'kicked') {
                 clearAllPointers();
                 if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
-                localStorage.removeItem(`viewer_session_${slug}`);
+                sessionStorage.removeItem(`viewer_session_${slug}`);
+                sessionStorage.setItem(`viewer_kicked_${slug}`, '1');
                 localStorage.removeItem(PREF_KEY);
                 document.getElementById('app').classList.remove('visible');
                 document.getElementById('kicked-screen').classList.remove('hidden');
@@ -1523,7 +1553,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             }
             if (msg.type === 'room:live')    { clearTimeout(offlineTimer); setRoomStatus('live'); reloadPlayer(); }
             if (msg.type === 'room:pending') { setRoomStatus('pending'); }
-            if (msg.type === 'room:ended')   { setRoomStatus('ended'); localStorage.removeItem(`viewer_session_${slug}`); }
+            if (msg.type === 'room:ended')   { setRoomStatus('ended'); sessionStorage.removeItem(`viewer_session_${slug}`); }
             if (msg.type === 'participants:update') updateWatchOnlyList(msg.participants);
             if (msg.type === 'chat:history') {
                 msg.messages.forEach(m => {
@@ -1548,8 +1578,18 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         ws.onclose = (e) => {
             clearAllPointers();
             if (e.code === 1008) {
-                // Auth rejected — session is stale; clear it and return to join form
-                localStorage.removeItem(`viewer_session_${slug}`);
+                sessionStorage.removeItem(`viewer_session_${slug}`);
+                // If kicked message already showed the kicked screen, don't override it
+                if (!document.getElementById('kicked-screen').classList.contains('hidden')) {
+                    sessionStorage.setItem(`viewer_kicked_${slug}`, '1');
+                    return;
+                }
+                // If hub sent kicked flag (reconnect after kick), show kicked screen
+                if (sessionStorage.getItem(`viewer_kicked_${slug}`)) {
+                    document.getElementById('kicked-screen').classList.remove('hidden');
+                    return;
+                }
+                // Auth rejected — session is stale; return to join form
                 document.getElementById('app').classList.remove('visible');
                 document.getElementById('join-screen').classList.remove('hidden');
                 document.getElementById('join-error').textContent = 'Session expired. Please re-enter your name.';
@@ -1583,11 +1623,11 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             const { hasLogo, hasBg } = await res.json();
             if (hasLogo) {
                 document.querySelectorAll('.screen-logo, .brand-logo').forEach(img => {
-                    img.src = '/branding/logo';
+                    img.src = '/api/branding/logo';
                 });
             }
             if (hasBg) {
-                const bgUrl = 'url(/branding/bg) center/cover no-repeat';
+                const bgUrl = 'url(/api/branding/bg) center/cover no-repeat';
                 document.querySelectorAll('.screen').forEach(el => {
                     el.style.background = '#000 ' + bgUrl;
                 });
@@ -1770,12 +1810,19 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         const watchOnly = participants.filter(p => p.id !== participantId && !lkIds.has(p.id));
 
         if (!watchOnly.length) { viewersEl.innerHTML = ''; return; }
+        const kickBtn = (p) => myRole === 'presenter'
+            ? `<button class="tile-btn danger" data-action="kick" data-identity="${esc(p.id)}" title="Remove" style="width:22px;height:22px;flex-shrink:0;">` +
+              `<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`
+            : '';
         viewersEl.innerHTML =
             `<div class="conf-viewers-label">Watch only</div>` +
             watchOnly.map(p =>
-                `<div class="conf-viewer-item">` +
-                `<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>` +
-                `<circle cx="9" cy="7" r="4"/></svg>${esc(p.name)}</div>`
+                `<div class="conf-viewer-item" style="justify-content:space-between;">` +
+                `<span style="display:flex;align-items:center;gap:6px;min-width:0;">` +
+                `<svg viewBox="0 0 24 24" style="flex-shrink:0"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>` +
+                `<circle cx="9" cy="7" r="4"/></svg><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.name)}</span></span>` +
+                kickBtn(p) +
+                `</div>`
             ).join('');
     }
 
@@ -1900,7 +1947,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
     // ---- Presenter moderation (kick / mute) ----
 
-    document.getElementById('conf-tiles').addEventListener('click', async (e) => {
+    document.getElementById('left-panel').addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn || myRole !== 'presenter') return;
         e.stopPropagation();

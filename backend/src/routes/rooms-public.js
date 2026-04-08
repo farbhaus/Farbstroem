@@ -1,10 +1,14 @@
 const express      = require('express');
 const bcrypt       = require('bcryptjs');
 const crypto       = require('crypto');
+const rateLimit    = require('express-rate-limit');
 const db           = require('../db');
 const events       = require('../events');
 const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 const router       = express.Router();
+
+// Limit join attempts only — not info/status/SSE reads
+const joinLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
 
 function getRoomService() {
     return new RoomServiceClient(
@@ -27,7 +31,7 @@ router.get('/:slug/info', (req, res) => {
 });
 
 // Join room (viewer)
-router.post('/:slug/join', async (req, res) => {
+router.post('/:slug/join', joinLimiter, async (req, res) => {
     const room = db.prepare('SELECT * FROM rooms WHERE slug = ?').get(req.params.slug);
     if (!room) return res.status(404).json({ error: 'Room not found' });
     if (room.status === 'ended') return res.status(410).json({ error: 'Session has ended' });
@@ -37,7 +41,7 @@ router.post('/:slug/join', async (req, res) => {
         return res.status(410).json({ error: 'Session has expired' });
     }
 
-    const { name, password, role } = req.body;
+    const { name, password, role, presenter_key } = req.body;
     if (!name) return res.status(400).json({ error: 'Name required' });
 
     if (room.password_hash) {
@@ -54,13 +58,14 @@ router.post('/:slug/join', async (req, res) => {
 
     const participantId = crypto.randomUUID();
     const token         = crypto.randomBytes(32).toString('hex');
-    const isPresenter   = role === 'presenter';
 
-    const wasAdmitted = room.waiting_room && !isPresenter
-        ? !!db.prepare(`SELECT id FROM participants WHERE room_id = ? AND name = ? AND is_admitted = 1 LIMIT 1`).get(room.id, name)
-        : false;
+    // Presenter role requires server-side key validation — client-supplied role alone is not trusted
+    const isPresenter = role === 'presenter'
+        && typeof presenter_key === 'string'
+        && presenter_key.length > 0
+        && presenter_key === room.presenter_key;
 
-    const isAdmitted = !room.waiting_room || isPresenter || wasAdmitted ? 1 : 0;
+    const isAdmitted = !room.waiting_room || isPresenter ? 1 : 0;
 
     db.prepare(`
         INSERT INTO participants (id, room_id, name, role, is_admitted, token)
@@ -86,16 +91,25 @@ router.post('/:slug/join', async (req, res) => {
 
 // Admission status poll
 router.get('/:slug/status/:participantId', (req, res) => {
+    const { token } = req.query;
     const p = db.prepare(`
         SELECT is_admitted FROM participants
-        WHERE id = ? AND room_id = (SELECT id FROM rooms WHERE slug = ?)
-    `).get(req.params.participantId, req.params.slug);
+        WHERE id = ? AND token = ? AND room_id = (SELECT id FROM rooms WHERE slug = ?)
+    `).get(req.params.participantId, token || '', req.params.slug);
     if (!p) return res.status(404).json({ error: 'Not found' });
     res.json({ admitted: !!p.is_admitted });
 });
 
 // SSE — waiting room notifications
 router.get('/:slug/waiting/events/:participantId', (req, res) => {
+    const { token } = req.query;
+    // Validate token before opening the SSE stream
+    const valid = db.prepare(`
+        SELECT id FROM participants
+        WHERE id = ? AND token = ? AND room_id = (SELECT id FROM rooms WHERE slug = ?)
+    `).get(req.params.participantId, token || '', req.params.slug);
+    if (!valid) return res.status(401).end();
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');

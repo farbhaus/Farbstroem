@@ -578,9 +578,8 @@ main { margin-top: var(--nav-h); padding: 32px; }
         }
 
         container.innerHTML = rooms.map(r => {
-            const viewerUrl    = `${VIEWER_BASE}/${r.slug}`;
-            const presenterUrl = `${viewerUrl}?role=presenter`;
-const expires      = fmtDate(r.expires_at);
+            const viewerUrl = `${VIEWER_BASE}/${r.slug}`;
+            const expires   = fmtDate(r.expires_at);
             const keyLabel     = r.stream_key_name || '—';
 
             const metaParts = [`/${r.slug}`];
@@ -616,7 +615,7 @@ const expires      = fmtDate(r.expires_at);
                     </div>
                     <div class="url-row">
                         <span class="url-label">Presenter</span>
-                        <a class="btn btn-primary" href="${esc(presenterUrl)}" target="_blank" rel="noopener">Enter Room</a>
+                        <button class="btn btn-primary" onclick="enterAsPresenter('${r.id}')">Enter Room</button>
                     </div>
 
                 </div>
@@ -806,6 +805,26 @@ const expires      = fmtDate(r.expires_at);
 
     window.editRoom   = (id) => openRoomModal(id);
 
+    window.enterAsPresenter = async (id) => {
+        const name = prompt('Your name in the room:', 'Host');
+        if (name === null) return;
+        const res = await apiFetch(`/api/rooms/${id}/enter`, {
+            method: 'POST',
+            body: JSON.stringify({ name: name.trim() || 'Host' }),
+        });
+        if (!res || !res.ok) { toast('Failed to enter room'); return; }
+        const data = await res.json();
+        // Hand off credentials to the viewer tab via localStorage (consumed on first read)
+        localStorage.setItem(`_presession_${data.slug}`, JSON.stringify({
+            participantId: data.participantId,
+            token:         data.token,
+            deliveryMode:  data.deliveryMode,
+            streamKey:     data.streamKey,
+            role:          'presenter',
+        }));
+        window.open(`/watch/${data.slug}`, '_blank');
+    };
+
     window.deleteRoom = async (id) => {
         if (!confirm('Delete this room?')) return;
         const res = await apiFetch(`/api/rooms/${id}`, { method: 'DELETE' });
@@ -973,11 +992,11 @@ const expires      = fmtDate(r.expires_at);
 
         document.getElementById('logo-preview').style.display = hasLogo ? '' : 'none';
         document.getElementById('logo-empty').style.display   = hasLogo ? 'none' : '';
-        if (hasLogo) document.getElementById('logo-preview').src = '/branding/logo?' + Date.now();
+        if (hasLogo) document.getElementById('logo-preview').src = '/api/branding/logo?' + Date.now();
 
         document.getElementById('bg-preview').style.display = hasBg ? '' : 'none';
         document.getElementById('bg-empty').style.display   = hasBg ? 'none' : '';
-        if (hasBg) document.getElementById('bg-preview').src = '/branding/bg?' + Date.now();
+        if (hasBg) document.getElementById('bg-preview').src = '/api/branding/bg?' + Date.now();
     }
 
     async function uploadBrandingAsset(asset) {
