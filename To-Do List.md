@@ -3,10 +3,12 @@
 - [ ] Cleanup Streaming.md it's too stuffed
 - [ ] Create and test a setup script for development & deployment
 - [ ] Test room expiration and verify auto-cleanup
+- [ ] 
 
 # Admin:
 - [ ]  <span class="brand">Stream — Admin</span>  - replace with logo
-- [ ] main-nav - Add “Files” tab with ability to manage files uploaded to rooms. Include ability to upload files as well as add/remove files to existing rooms.
+- [ ] main-nav: Add “Files” tab with ability to manage files uploaded to rooms. Include ability to upload files as well as add/remove files to existing rooms.
+- [ ] main-nav: Add "Dashboard" showing Server performance dashboard to admin
 - [ ] Branding tab - Expand functionality: add ability to change admin and room color palette.
 - [ ] Waiting room approval: Reduce time it takes for a participant request to appear in the waiting room tab in admin.
 - [ ] Presenter “enter room” button: window to input presenter name should match style.
