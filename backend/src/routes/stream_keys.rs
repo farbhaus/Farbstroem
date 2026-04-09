@@ -3,7 +3,7 @@ use axum::{
     routing::{delete, get, post, put},
     Json, Router,
 };
-use rand::Rng;
+use rand::RngExt;
 use serde::Deserialize;
 use base64::Engine;
 use serde_json::{json, Value};
@@ -74,7 +74,7 @@ async fn create_key(
         .ok_or_else(|| AppError::BadRequest("Name is required".into()))?;
 
     let id = uuid::Uuid::new_v4().to_string();
-    let key_bytes: [u8; 24] = rand::thread_rng().gen();
+    let key_bytes: [u8; 24] = rand::rng().random();
     let key_token: String = key_bytes.iter().map(|b| format!("{:02x}", b)).collect();
 
     let conn = state.db.get()?;
@@ -161,5 +161,5 @@ async fn delete_key(
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_keys).post(create_key))
-        .route("/:id", put(update_key).delete(delete_key))
+        .route("/{id}", put(update_key).delete(delete_key))
 }

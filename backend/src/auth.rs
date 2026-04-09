@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use axum::{
     extract::FromRequestParts,
     http::{request::Parts, StatusCode},
@@ -20,7 +19,6 @@ pub struct AdminClaims {
 /// Extractor that validates JWT Bearer token from Authorization header.
 pub struct AdminAuth(pub AdminClaims);
 
-#[async_trait]
 impl FromRequestParts<Arc<AppState>> for AdminAuth {
     type Rejection = Response;
 
