@@ -3,7 +3,7 @@ use axum::{
     routing::{delete, get, post, put},
     Json, Router,
 };
-use rand::Rng;
+use rand::RngExt;
 use serde::Deserialize;
 use base64::Engine;
 use serde_json::{json, Value};
@@ -46,7 +46,7 @@ fn generate_slug(name: &str) -> String {
         .collect::<Vec<_>>()
         .join("-");
     let slug_base = &slug_base[..slug_base.len().min(80)];
-    let random_suffix: [u8; 3] = rand::thread_rng().gen();
+    let random_suffix: [u8; 3] = rand::rng().random();
     let hex: String = random_suffix
         .iter()
         .map(|b| format!("{:02x}", b))
@@ -55,7 +55,7 @@ fn generate_slug(name: &str) -> String {
 }
 
 fn generate_presenter_key() -> String {
-    let bytes: [u8; 16] = rand::thread_rng().gen();
+    let bytes: [u8; 16] = rand::rng().random();
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
@@ -549,7 +549,7 @@ async fn enter_room(
     let (slug, delivery_mode, stream_key) = room_data;
 
     let participant_id = uuid::Uuid::new_v4().to_string();
-    let token_bytes: [u8; 24] = rand::thread_rng().gen();
+    let token_bytes: [u8; 24] = rand::rng().random();
     let token: String = token_bytes.iter().map(|b| format!("{:02x}", b)).collect();
 
     let conn = state.db.get()?;
@@ -697,12 +697,12 @@ async fn unkick_participant(
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_rooms).post(create_room))
-        .route("/:id", get(get_room).put(update_room).delete(delete_room))
-        .route("/:id/end", post(end_room))
-        .route("/:id/enter", post(enter_room))
-        .route("/:id/waiting", get(get_waiting))
-        .route("/:id/admit/:participantId", post(admit_participant))
-        .route("/:id/admit-all", post(admit_all))
-        .route("/:id/kicked", get(get_kicked))
-        .route("/:id/unkick/:participantId", post(unkick_participant))
+        .route("/{id}", get(get_room).put(update_room).delete(delete_room))
+        .route("/{id}/end", post(end_room))
+        .route("/{id}/enter", post(enter_room))
+        .route("/{id}/waiting", get(get_waiting))
+        .route("/{id}/admit/{participantId}", post(admit_participant))
+        .route("/{id}/admit-all", post(admit_all))
+        .route("/{id}/kicked", get(get_kicked))
+        .route("/{id}/unkick/{participantId}", post(unkick_participant))
 }

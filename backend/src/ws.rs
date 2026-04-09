@@ -52,7 +52,7 @@ struct AuthMsg {
 // ---------------------------------------------------------------------------
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/ws/room/:slug", get(ws_handler))
+    Router::new().route("/ws/room/{slug}", get(ws_handler))
 }
 
 async fn ws_handler(
@@ -142,7 +142,7 @@ async fn handle_socket(socket: WebSocket, slug: String, state: Arc<AppState>) {
         Ok(row) => row,
         Err(_) => {
             let _ = tx.send(Message::Text(
-                json!({"type": "error", "message": "Invalid credentials"}).to_string(),
+                json!({"type": "error", "message": "Invalid credentials"}).to_string().into(),
             ));
             let _ = tx.send(Message::Close(Some(CloseFrame {
                 code: 1008,
@@ -154,7 +154,7 @@ async fn handle_socket(socket: WebSocket, slug: String, state: Arc<AppState>) {
     };
 
     if is_kicked {
-        let _ = tx.send(Message::Text(json!({"type": "kicked"}).to_string()));
+        let _ = tx.send(Message::Text(json!({"type": "kicked"}).to_string().into()));
         let _ = tx.send(Message::Close(Some(CloseFrame {
             code: 1008,
             reason: "Kicked".into(),
@@ -165,7 +165,7 @@ async fn handle_socket(socket: WebSocket, slug: String, state: Arc<AppState>) {
 
     if !is_admitted {
         let _ = tx.send(Message::Text(
-            json!({"type": "error", "message": "Not admitted"}).to_string(),
+            json!({"type": "error", "message": "Not admitted"}).to_string().into(),
         ));
         let _ = tx.send(Message::Close(Some(CloseFrame {
             code: 1008,
@@ -201,7 +201,7 @@ async fn handle_socket(socket: WebSocket, slug: String, state: Arc<AppState>) {
     }
 
     // Send auth:ok
-    let _ = tx.send(Message::Text(json!({"type": "auth:ok"}).to_string()));
+    let _ = tx.send(Message::Text(json!({"type": "auth:ok"}).to_string().into()));
 
     // Send chat history (last 50)
     send_chat_history(&state, &slug, &tx);
@@ -404,7 +404,7 @@ fn send_chat_history(
         "messages": messages,
     });
 
-    let _ = tx.send(Message::Text(history_msg.to_string()));
+    let _ = tx.send(Message::Text(history_msg.to_string().into()));
 }
 
 // ---------------------------------------------------------------------------
@@ -455,7 +455,7 @@ async fn broadcast_to_room(rooms: &WsRooms, slug: &str, msg: &str) {
     let rooms_guard = rooms.read().await;
     if let Some(room) = rooms_guard.get(slug) {
         for participant in room.values() {
-            let _ = participant.tx.send(Message::Text(msg.to_string()));
+            let _ = participant.tx.send(Message::Text(msg.to_string().into()));
         }
     }
 }
@@ -481,7 +481,7 @@ async fn broadcast_participants(rooms: &WsRooms, slug: &str) {
         .to_string();
 
         for participant in room.values() {
-            let _ = participant.tx.send(Message::Text(msg.clone()));
+            let _ = participant.tx.send(Message::Text(msg.clone().into()));
         }
     }
 }
@@ -491,7 +491,7 @@ async fn send_to_participant_and_close(rooms: &WsRooms, slug: &str, participant_
     let mut rooms_guard = rooms.write().await;
     if let Some(room) = rooms_guard.get_mut(slug) {
         if let Some(participant) = room.remove(participant_id) {
-            let _ = participant.tx.send(Message::Text(msg.to_string()));
+            let _ = participant.tx.send(Message::Text(msg.to_string().into()));
             let _ = participant.tx.send(Message::Close(Some(CloseFrame {
                 code: 1008,
                 reason: "Kicked".into(),

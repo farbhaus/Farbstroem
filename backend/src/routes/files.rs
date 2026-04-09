@@ -338,6 +338,6 @@ async fn download_file(
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/:slug/files", post(upload_file).get(list_files))
-        .route("/:slug/files/:fileId/download", get(download_file))
+        .route("/{slug}/files", post(upload_file).get(list_files))
+        .route("/{slug}/files/{fileId}/download", get(download_file))
 }

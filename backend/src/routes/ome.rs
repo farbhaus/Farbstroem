@@ -185,5 +185,5 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/status", get(get_status))
         .route("/streams", get(list_streams))
-        .route("/streams/:streamKey", get(get_stream).delete(delete_stream))
+        .route("/streams/{streamKey}", get(get_stream).delete(delete_stream))
 }
