@@ -23,7 +23,7 @@ dotenvy = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 hmac = "0.12"
-sha1 = "0.10"
+sha1 = "0.11"
 base64 = "0.22"
 mime_guess = "2"
 tokio-stream = "0.1"
