@@ -73,7 +73,6 @@ services:
       - PORT=4001
       - DB_PATH=/data/stream.db
       - DATA_PATH=/data
-      - NODE_ENV=production
       - OME_API_URL=http://stream-ome:8081/v1
       - LIVEKIT_INTERNAL_URL=http://stream-livekit:7880
     volumes:

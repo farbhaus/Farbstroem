@@ -1,0 +1,182 @@
+use jsonwebtoken::{encode, EncodingKey, Header, Algorithm};
+use serde::{Deserialize, Serialize};
+use crate::config::AppConfig;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct LiveKitClaims {
+    iss: String,
+    sub: String,
+    iat: u64,
+    exp: u64,
+    nbf: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    video: Option<LiveKitVideoGrant>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveKitVideoGrant {
+    pub room_join: bool,
+    pub room: String,
+    pub can_publish: bool,
+    pub can_subscribe: bool,
+}
+
+#[derive(Clone)]
+pub struct LiveKitClient {
+    http: reqwest::Client,
+    api_url: String,
+    api_key: String,
+    api_secret: String,
+}
+
+impl LiveKitClient {
+    pub fn new(config: &AppConfig, http: reqwest::Client) -> Self {
+        Self {
+            http,
+            api_url: config.livekit_internal_url.clone(),
+            api_key: config.livekit_api_key.clone(),
+            api_secret: config.livekit_api_secret.clone(),
+        }
+    }
+
+    fn service_token(&self) -> String {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let claims = LiveKitClaims {
+            iss: self.api_key.clone(),
+            sub: String::new(),
+            iat: now,
+            exp: now + 600,
+            nbf: now,
+            video: None,
+        };
+
+        encode(
+            &Header::new(Algorithm::HS256),
+            &claims,
+            &EncodingKey::from_secret(self.api_secret.as_bytes()),
+        )
+        .unwrap_or_default()
+    }
+
+    pub async fn delete_room(&self, room_name: &str) -> Result<(), String> {
+        let token = self.service_token();
+        let res = self
+            .http
+            .post(format!("{}/twirp/livekit.RoomService/DeleteRoom", self.api_url))
+            .header("Authorization", format!("Bearer {}", token))
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({ "room": room_name }))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if res.status().is_success() || res.status().as_u16() == 404 {
+            Ok(())
+        } else {
+            Err(format!("LiveKit API error: {}", res.status()))
+        }
+    }
+
+    pub async fn remove_participant(&self, room: &str, identity: &str) -> Result<(), String> {
+        let token = self.service_token();
+        let res = self
+            .http
+            .post(format!("{}/twirp/livekit.RoomService/RemoveParticipant", self.api_url))
+            .header("Authorization", format!("Bearer {}", token))
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({ "room": room, "identity": identity }))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if res.status().is_success() || res.status().as_u16() == 404 {
+            Ok(())
+        } else {
+            Err(format!("LiveKit API error: {}", res.status()))
+        }
+    }
+
+    pub async fn mute_published_track(
+        &self,
+        room: &str,
+        identity: &str,
+        track_sid: &str,
+        muted: bool,
+    ) -> Result<(), String> {
+        let token = self.service_token();
+        let res = self
+            .http
+            .post(format!("{}/twirp/livekit.RoomService/MutePublishedTrack", self.api_url))
+            .header("Authorization", format!("Bearer {}", token))
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "room": room,
+                "identity": identity,
+                "track_sid": track_sid,
+                "muted": muted,
+            }))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if res.status().is_success() || res.status().as_u16() == 404 {
+            Ok(())
+        } else {
+            Err(format!("LiveKit API error: {}", res.status()))
+        }
+    }
+
+    pub fn create_access_token(
+        &self,
+        identity: &str,
+        name: &str,
+        room: &str,
+        metadata: &str,
+    ) -> Result<String, String> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let claims = LiveKitClaims {
+            iss: self.api_key.clone(),
+            sub: identity.to_string(),
+            iat: now,
+            exp: now + 86400, // 24 hours
+            nbf: now,
+            video: Some(LiveKitVideoGrant {
+                room_join: true,
+                room: room.to_string(),
+                can_publish: true,
+                can_subscribe: true,
+            }),
+        };
+
+        // LiveKit expects identity and name in the JWT metadata
+        #[derive(Serialize)]
+        struct FullClaims {
+            #[serde(flatten)]
+            base: LiveKitClaims,
+            name: String,
+            metadata: String,
+        }
+
+        let full = FullClaims {
+            base: claims,
+            name: name.to_string(),
+            metadata: metadata.to_string(),
+        };
+
+        encode(
+            &Header::new(Algorithm::HS256),
+            &full,
+            &EncodingKey::from_secret(self.api_secret.as_bytes()),
+        )
+        .map_err(|e| e.to_string())
+    }
+}
