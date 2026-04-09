@@ -63,13 +63,13 @@ Screen sharing:
   Browser → LiveKit SDK → center video overlay (z-index 6, above offline screen)
 
 Chat / presence / files:
-  Browser ↔ WebSocket hub (Node.js) — participants:update, chat:message, file:shared
+  Browser ↔ WebSocket hub (Rust/Axum, src/ws.rs) — participants:update, chat:message, file:shared, pointer:move/hide
 ```
 
 **Containers (docker-compose.yml) — bridge network `stream-net`:**
 - `stream-caddy` — Caddy 2 Alpine (TLS + routing `/live/*` to OME, everything else to backend)
 - `stream-ome` — OvenMediaEngine (broadcast ingest + delivery)
-- `stream-backend` — Node.js/Express + SQLite (port 4001, serves static files)
+- `stream-backend` — Rust/Axum + SQLite (port 4001, serves static files via `tower-http` `ServeDir`)
 - `stream-livekit` — LiveKit SFU server (port 7880, RTC 50000-50100/UDP, 7881/TCP)
 - `stream-redis` — Redis 7 Alpine (required by LiveKit)
 
@@ -93,8 +93,8 @@ Chat / presence / files:
 |---|---|---|
 | Broadcast engine | OvenMediaEngine | Multi-protocol, H.265 passthrough, no GPU |
 | Conference SFU | LiveKit | Rooms, track management, screen sharing, moderation API |
-| Backend | Node.js/Express | Port 4001 |
-| Database | SQLite (WAL) | `/data/stream.db` (mounted volume) |
+| Backend | Rust + Axum 0.7 | Port 4001; `tokio` runtime; integration tests via `axum-test` |
+| Database | SQLite (WAL) via `rusqlite` + `r2d2` pool | `/data/stream.db` (mounted volume); schema in `backend/schema.sql` |
 | Frontend (admin) | Vanilla JS SPA | `/www/admin/index.html` |
 | Frontend (viewer) | Vanilla JS + OvenPlayer + LiveKit JS SDK | `/www/viewer/index.html` |
 | Reverse proxy | Caddy (container) | Proxies `/live/*` to OME:3333, everything else to backend; `SITE_ADDRESS` env var for domain/TLS |
@@ -141,7 +141,7 @@ WebRTC or LLHLS is a per-room setting defined in the backend.
 }
 ```
 
-Backend serves static files via Express (`/admin` → admin SPA, `/*` → viewer SPA). Caddy only routes `/live/*` to OME and everything else to the backend.
+Backend serves static files via `tower-http` `ServeDir` (`/admin` → admin SPA via `nest_service`, fallback service → viewer SPA). Caddy only routes `/live/*` to OME and everything else to the backend.
 
 ---
 
@@ -156,22 +156,33 @@ Backend serves static files via Express (`/admin` → admin SPA, `/*` → viewer
 ├── livekit/livekit.yaml      ← LiveKit server config (keys via LIVEKIT_KEYS env var, no secrets in file)
 ├── ome/origin_conf/Server.xml
 ├── backend/
-│   ├── Dockerfile
-│   └── src/
-│       ├── index.js          ← server setup, rate limiting, OME poller (30s), expiry cleanup (60s), startup waits for bcrypt hash
-│       ├── db.js
-│       ├── events.js
-│       ├── routes/
-│       │   ├── auth.js       ← login + logout (stateless JWT)
-│       │   ├── rooms.js      ← admin room CRUD; DELETE emits room:ended + cleans LiveKit before DB delete
-│       │   ├── rooms-public.js ← join, waiting, admission, livekit-token, conference/kick, conference/mute
-│       │   ├── files.js      ← upload, list, download; multer; cleanup on room:ended + weekly
-│       │   ├── branding.js   ← logo + bg upload/serve/delete; files in /data/branding/; mime in settings table
-│       │   ├── stream-keys.js
-│       │   ├── webhook.js    ← OME admission webhook (stream key validation only, conf-* removed)
-│       │   └── ome.js
-│       ├── middleware/auth.js
-│       └── ws/hub.js         ← broadcasts participants:update, chat:message, file:shared; chat persisted to DB; history sent on auth:ok
+│   ├── Cargo.toml            ← axum 0.7, tokio, rusqlite, r2d2, jsonwebtoken, bcrypt, reqwest (rustls)
+│   ├── Cargo.lock
+│   ├── Dockerfile            ← multi-stage: rust:1-alpine builder → alpine:3.20 runtime (musl static binary)
+│   ├── schema.sql            ← SQLite DDL applied on init_pool()
+│   ├── src/
+│   │   ├── main.rs           ← startup: bcrypt hash admin pw, init pool, spawn pollers + ws listeners, mount static dirs, axum::serve
+│   │   ├── lib.rs            ← module declarations
+│   │   ├── config.rs         ← AppConfig::from_env() — fails fast on missing JWT_SECRET / ADMIN_PASSWORD / OME_WEBHOOK_SECRET
+│   │   ├── state.rs          ← AppState (db pool, events, config, http_client, admin_password_hash) — Arc-shared
+│   │   ├── db.rs             ← r2d2_sqlite pool init, schema bootstrap
+│   │   ├── error.rs          ← AppError + IntoResponse impl
+│   │   ├── events.rs         ← broadcast channels: room_ended, room_pending, kicked, file_shared, …
+│   │   ├── auth.rs           ← JWT encode/decode (jsonwebtoken HS256), bcrypt verify
+│   │   ├── livekit.rs        ← LiveKitClient: AccessToken minting + RoomService HTTP calls (mute/remove/delete-room)
+│   │   ├── tasks.rs          ← spawn_ome_poller (30s), spawn_expiry_poller (60s), spawn_room_ended_cleanup, spawn_weekly_cleanup
+│   │   ├── ws.rs             ← /ws/room/:slug; broadcasts participants:update, chat:message, file:shared, pointer:move/hide; chat persisted; history on auth:ok
+│   │   └── routes/
+│   │       ├── mod.rs        ← build_router(state) — nests all sub-routers under /api
+│   │       ├── auth.rs       ← login + logout (stateless JWT)
+│   │       ├── rooms.rs      ← admin room CRUD; DELETE emits room:ended + cleans LiveKit before DB delete
+│   │       ├── rooms_public.rs ← join, waiting (SSE), admission, livekit-token, conference/kick, conference/mute
+│   │       ├── files.rs      ← upload, list, download; axum multipart; cleanup on room:ended + weekly
+│   │       ├── branding.rs   ← logo + bg upload/serve/delete; files in /data/branding/; mime in settings table
+│   │       ├── stream_keys.rs
+│   │       ├── webhook.rs    ← OME admission webhook (HMAC-SHA1 signature verify, stream key validation)
+│   │       └── ome.rs        ← /api/ome/stats proxy
+│   └── tests/                ← integration tests (axum-test): auth, rooms, rooms_public, stream_keys, files, ome, webhook, branding
 └── www/
     ├── admin/index.html      ← Admin SPA (rooms, stream keys, waiting room, branding tab)
     └── viewer/index.html     ← Viewer page (OvenPlayer + LiveKit conference + chat + files section + screen sharing)
@@ -181,13 +192,20 @@ Backend serves static files via Express (`/admin` → admin SPA, `/*` → viewer
 
 ## Database Schema
 
+Source of truth: `backend/schema.sql` (applied on startup via `db::init_pool`).
+
 ```sql
 CREATE TABLE rooms (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL,
-    password_hash TEXT, delivery_mode TEXT DEFAULT 'webrtc',
-    waiting_room INTEGER DEFAULT 0, expires_at DATETIME,  -- stored as UTC ISO string
-    status TEXT DEFAULT 'pending',  -- 'pending' | 'live' | 'ended'
-    started_at DATETIME, ended_at DATETIME, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    password_hash TEXT,
+    presenter_key TEXT,  -- 32-byte hex; client must present to obtain presenter role
+    delivery_mode TEXT NOT NULL DEFAULT 'webrtc',
+    waiting_room INTEGER NOT NULL DEFAULT 0,
+    expires_at DATETIME,  -- stored as UTC ISO string
+    status TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'live' | 'ended'
+    stream_key_id TEXT REFERENCES stream_keys(id) ON DELETE SET NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at DATETIME, ended_at DATETIME
 );
 CREATE TABLE stream_keys (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, key_token TEXT UNIQUE NOT NULL,
@@ -197,13 +215,14 @@ CREATE TABLE stream_keys (
 CREATE TABLE participants (
     id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
     name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'viewer',  -- 'presenter' | 'viewer'
-    token TEXT UNIQUE, is_admitted INTEGER DEFAULT 0,
+    is_admitted INTEGER NOT NULL DEFAULT 0,
     is_kicked INTEGER NOT NULL DEFAULT 0,  -- kicked by presenter, blocks rejoin by name
+    token TEXT UNIQUE,
     joined_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE session_files (  -- live; files stored at /data/uploads/{roomId}/
+CREATE TABLE session_files (  -- files stored at /data/uploads/{roomId}/
     id TEXT PRIMARY KEY, room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-    uploader_id TEXT REFERENCES participants(id),
+    uploader_id TEXT REFERENCES participants(id) ON DELETE SET NULL,
     original_name TEXT NOT NULL, stored_path TEXT NOT NULL,
     mime_type TEXT NOT NULL, size_bytes INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -216,6 +235,8 @@ CREATE TABLE chat_messages (  -- session-scoped; deleted on room:ended
 CREATE TABLE settings (  -- key-value store for platform config (e.g. branding mime types)
     key TEXT PRIMARY KEY, value TEXT NOT NULL
 );
+-- Indexes: rooms(slug, status, stream_key_id), stream_keys(key_token, room_id),
+--         participants(room_id, token), chat_messages(room_id, created_at)
 ```
 
 ---
@@ -280,9 +301,9 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 - This is the only way to obtain presenter role; there is no public URL that grants it
 
 **Presenter moderation:**
-- Kick: `POST /conference/kick` → sets `is_kicked=1` in DB, emits `participant:kicked` event (hub force-closes WS + sends `{type:'kicked'}`), calls `RoomServiceClient.removeParticipant()`. Fully expels participant; rejoin blocked by name match. Admin can unblock via `POST /api/rooms/:id/unkick/:participantId`.
+- Kick: `POST /conference/kick` → sets `is_kicked=1` in DB, emits `kicked` event (hub force-closes WS + sends `{type:'kicked'}`), calls `LiveKitClient::remove_participant`. Fully expels participant; rejoin blocked by name match. Admin can unblock via `POST /api/rooms/:id/unkick/:participantId`.
   - Kicked screen persists across tab refreshes via `viewer_kicked_{slug}` in `sessionStorage`. Cleared only when tab is closed. Hub also sends `{type:'kicked'}` on reconnect attempt (if participant tries to refresh into the app, hub detects `is_kicked=1` and re-expels).
-- Mute: `POST /conference/mute` → `RoomServiceClient.mutePublishedTrack()` — server-side forced mute of specific track. Muted participant's local UI auto-updates (mic button reflects muted state via `TrackMuted` event + `syncLocalMuteState`).
+- Mute: `POST /conference/mute` → `LiveKitClient::mute_published_track` — server-side forced mute of specific track. Muted participant's local UI auto-updates (mic button reflects muted state via `TrackMuted` event + `syncLocalMuteState`).
 - Only `role === 'presenter'` can use these; presenters cannot target other presenters
 - Buttons appear on hover (desktop) or always visible (mobile) on remote tiles
 
@@ -349,7 +370,7 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 - [x] Camera, microphone, screen sharing via LiveKit JS SDK
 - [x] Screen share routed to center overlay (not side panel)
 - [x] Watch-only participants connect to LiveKit (subscribe without publishing)
-- [x] Presenter moderation: kick + mute via RoomServiceClient
+- [x] Presenter moderation: kick + mute via `LiveKitClient` (RoomService HTTP API)
 - [x] Conference permission prompt + localStorage preference per room
 - [x] Remote tiles with camera/mic state indicators
 - [x] Mic-only tile (dark tile with mic icon)
@@ -363,7 +384,7 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 - [x] LLHLS autoFallback for main player
 - [ ] Watermarking
 - [x] OME stats dashboard in admin
-- [x] Room auto-cleanup on expiry (60s interval in index.js; sets status='ended', emits room:ended, cleans LiveKit)
+- [x] Room auto-cleanup on expiry (60s interval in `tasks::spawn_expiry_poller`; sets status='ended', emits room:ended event, cleans LiveKit)
 - [x] Landing page at `/`
 - [x] Resync button (tears down and reinitializes player)
 - [x] Custom branding: logo + background image upload in admin (global, stored in /data/branding/, max 5 MB; no default — blank if not set)
@@ -387,7 +408,7 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 
 ### Phase 4c — Pentester Audit Fixes ✅
 - [x] **Critical: Presenter role bypass** — `req.body.role` was trusted blindly; anyone could add `?role=presenter` to URL and get presenter privileges. Fixed by adding `presenter_key` (32-byte random hex) to each room in DB. Join endpoint validates key server-side; wrong/missing → silently joins as viewer. Presenter role is now only obtainable via `POST /api/rooms/:id/enter` (admin JWT required).
-- [x] **Medium: Kicked participants could upload/download files** — `participantAuth` in `files.js` checked `is_admitted=1` but not `is_kicked=0`. Fixed.
+- [x] **Medium: Kicked participants could upload/download files** — `participant_auth` in `routes/files.rs` checked `is_admitted=1` but not `is_kicked=0`. Fixed.
 - [x] **Medium: Client-supplied MIME type served on downloads** — `req.file.mimetype` comes from the multipart header (fully client-controlled). A malicious participant could upload a file with `Content-Type: text/html` and it would be served as HTML — stored XSS vector. Fixed by whitelisting safe MIME types on upload; unknown types stored and served as `application/octet-stream`. Added `X-Content-Type-Options: nosniff` to download response.
 - [x] **Low: Unauthenticated waiting room SSE/poll** — `GET /:slug/waiting/events/:participantId` and `GET /:slug/status/:participantId` had no token validation. Anyone knowing a participantId (UUID) could monitor admission status indefinitely. Fixed by requiring `?token=` on both endpoints; validated against DB before SSE stream opens.
 
@@ -403,14 +424,25 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 - [x] Reduced LiveKit UDP range (50000-50100) for fast container start/stop
 - [x] Works standalone (`docker compose up`) and behind external reverse proxy
 
+### Phase 6 — Rust Backend Port ✅
+- [x] Backend rewritten from Node.js/Express → Rust + Axum 0.7 (`stream-backend` crate)
+- [x] SQLite via `rusqlite` + `r2d2` connection pool (replaces `better-sqlite3`)
+- [x] Static files served by `tower-http` `ServeDir` (replaces `express.static`)
+- [x] Multipart uploads via `axum::extract::Multipart` (replaces `multer`)
+- [x] Hand-rolled LiveKit client in `src/livekit.rs` — AccessToken JWT minting + RoomService HTTP calls (replaces `livekit-server-sdk`)
+- [x] Background tasks (`tokio::spawn`) for OME poller, expiry poller, room-ended cleanup, weekly cleanup
+- [x] WebSocket hub in `src/ws.rs` — same protocol (auth → participants:update / chat / files / pointer / kick / room status), persisted in `chat_messages`
+- [x] Config validation in `AppConfig::from_env()` — fails fast on missing `JWT_SECRET` (must be ≥32 chars), `ADMIN_PASSWORD`, `OME_WEBHOOK_SECRET`
+- [x] Multi-stage Dockerfile (`rust:1-alpine` → `alpine:3.20`) producing a static musl binary
+- [x] Integration test suite in `backend/tests/` using `axum-test` (auth, rooms, rooms_public, stream_keys, files, ome, webhook, branding)
+
 ---
 
 ## Technical Notes & Pitfalls
 
 ### LiveKit
 - **`LIVEKIT_KEYS` env var format:** Must be `"key: secret"` (space after colon). In docker-compose, the line must be quoted: `"LIVEKIT_KEYS=${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"`. Without the space, LiveKit logs "Could not parse keys".
-- **`livekit-server-sdk` v2:** `AccessToken.toJwt()` is async — handler must be `async`.
-- **`RoomServiceClient` constructor:** Uses `LIVEKIT_INTERNAL_URL` env var (defaults to `http://stream-livekit:7880`) — HTTP, not WSS.
+- **No upstream Rust LiveKit SDK** — `backend/src/livekit.rs` is a hand-rolled client: AccessToken JWT minting (`jsonwebtoken` HS256) + RoomService HTTP calls (`mute_published_track`, `remove_participant`, `delete_room`) over `reqwest`. Talks to `LIVEKIT_INTERNAL_URL` (defaults to `http://stream-livekit:7880`) — HTTP, not WSS.
 - **LiveKit subdomain** must have `header_up Host {upstream_hostport}` in Caddy for WebSocket connections.
 - **Firewall:** UDP 50000-50100 and TCP 7881 must be open for LiveKit RTC.
 - **Port range:** 100 UDP ports (50000-50100) supports ~25-50 concurrent participants. Avoid large ranges (50000-60000) — Docker creates iptables rules per port, causing multi-minute start/stop.
@@ -439,8 +471,8 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 - **Admin "Enter Room"** flow: `POST /api/rooms/:id/enter` → credentials written to `localStorage['_presession_{slug}']` → viewer tab opens, immediately reads and deletes the entry, moves to `sessionStorage`. The localStorage key exists for milliseconds only.
 - **File MIME types** are validated against a whitelist on upload. Downloads are served with the stored (whitelisted) MIME type + `X-Content-Type-Options: nosniff` + `Content-Disposition: attachment` — browsers cannot render them inline.
 - **Participant auth** on file and SSE endpoints: all check `participantId + token` pair against DB, `is_admitted = 1`, and `is_kicked = 0`.
-- **SQL injection**: all DB queries use better-sqlite3 prepared statements with `?` placeholders. No string interpolation.
-- **Admin auth**: bcrypt password → JWT (HS256, 7d expiry). Password hashed at startup and plaintext deleted from env. No server-side session store.
+- **SQL injection**: all DB queries use `rusqlite` prepared statements with `?N` placeholders via `params![]`. No string interpolation.
+- **Admin auth**: bcrypt password → JWT (HS256, 7d expiry) via `jsonwebtoken`. Password hashed at startup (in a `spawn_blocking` task) and plaintext is read from env once then dropped. No server-side session store.
 
 ### Session Isolation
 - **`sessionStorage` vs `localStorage` for participant sessions:** `viewer_session_{slug}` is stored in `sessionStorage` (per-tab, survives refresh, cleared on tab close). Name/password prefill remains in `localStorage` (shared across tabs, intentional).
@@ -448,8 +480,9 @@ CREATE TABLE settings (  -- key-value store for platform config (e.g. branding m
 - **Unblocking a kicked participant:** Admin sets `is_kicked=0, is_admitted=1` via unkick endpoint. Participant must close and reopen the tab (or open a new one) to clear the sessionStorage flag and attempt rejoin.
 
 ### Docker
-- **Backend JS is baked into image** — `docker restart` does NOT pick up code changes. Must `docker compose up -d --build stream-backend`.
+- **Backend is a compiled Rust binary baked into the image** (`backend/Dockerfile` is multi-stage: `rust:1-alpine` builder → `alpine:3.20` runtime, statically linked against musl). `docker restart` does NOT pick up code changes — must `docker compose up -d --build stream-backend`.
+- **First build is slow** — the Dockerfile pre-fetches and compiles dependencies against a stub `main.rs` so subsequent builds only recompile the application crate.
 - **`$` in `.env`** — Docker Compose processes `$` in env_file values. Use `$$` to escape.
-- **Startup race fix:** `server.listen()` waits for `bcrypt.hash()` to complete before accepting connections.
+- **Startup race fix:** `axum::serve` is awaited only after the `bcrypt::hash` task (run in `tokio::task::spawn_blocking`) returns, so the listener never accepts before the admin password hash is ready.
 - **Large UDP port ranges** — mapping 50000-60000 (10K ports) causes 5+ min container start/stop. Use 50000-50100 (100 ports).
 - **Caddy behind proxy** — set `SITE_ADDRESS=:80` to disable auto-HTTPS when behind a host-level reverse proxy. Using a real domain triggers Let's Encrypt cert provisioning which fails/conflicts.
