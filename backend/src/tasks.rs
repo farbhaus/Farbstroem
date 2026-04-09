@@ -138,6 +138,100 @@ async fn poll_expiry(state: &Arc<AppState>) -> Result<(), Box<dyn std::error::Er
 }
 
 // ---------------------------------------------------------------------------
+// Room-Ended File Cleanup -- immediate cleanup when a room ends
+// ---------------------------------------------------------------------------
+
+pub fn spawn_room_ended_cleanup(state: Arc<AppState>) {
+    let mut rx = state.events.room_ended.subscribe();
+    tokio::spawn(async move {
+        loop {
+            match rx.recv().await {
+                Ok(slug) => {
+                    if let Err(e) = cleanup_room_files(&state, &slug).await {
+                        tracing::debug!("[files] Room ended cleanup error for {}: {}", slug, e);
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::debug!("[files] Room ended cleanup lagged by {} events", n);
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
+}
+
+async fn cleanup_room_files(
+    state: &Arc<AppState>,
+    slug: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let db = state.db.get()?;
+    let slug_owned = slug.to_string();
+    let data_path = state.config.data_path.clone();
+
+    let files: Vec<(String, String, String)> = tokio::task::spawn_blocking(move || {
+        let room_id: Option<String> = db
+            .query_row(
+                "SELECT id FROM rooms WHERE slug = ?1",
+                rusqlite::params![slug_owned],
+                |row| row.get(0),
+            )
+            .ok();
+
+        let room_id = match room_id {
+            Some(id) => id,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut stmt = db.prepare(
+            "SELECT id, stored_path, room_id FROM session_files WHERE room_id = ?1",
+        )?;
+        let rows: Vec<(String, String, String)> = stmt
+            .query_map(rusqlite::params![room_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // Delete DB rows
+        db.execute(
+            "DELETE FROM session_files WHERE room_id = ?1",
+            rusqlite::params![room_id],
+        )?;
+
+        Ok::<_, rusqlite::Error>(rows)
+    })
+    .await
+    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })??;
+
+    if files.is_empty() {
+        return Ok(());
+    }
+
+    let mut room_id_for_dir = String::new();
+    for (file_id, stored_path, room_id) in &files {
+        room_id_for_dir = room_id.clone();
+        let full_path = format!("{}/uploads/{}/{}", data_path, room_id, stored_path);
+        match tokio::fs::remove_file(&full_path).await {
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                tracing::debug!("[files] Failed to delete {}: {}", full_path, e);
+            }
+        }
+        let _ = file_id; // used in DB delete above
+    }
+
+    // Try to remove the empty room upload directory
+    if !room_id_for_dir.is_empty() {
+        let dir_path = format!("{}/uploads/{}", data_path, room_id_for_dir);
+        let _ = tokio::fs::remove_dir(&dir_path).await;
+    }
+
+    tracing::info!("[files] Cleaned up files for room (ended)");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Weekly File Cleanup -- 60s initial delay, then every 7 days
 // Removes files from disk for ended/expired rooms.
 // ---------------------------------------------------------------------------
@@ -184,9 +278,9 @@ async fn cleanup_files(state: &Arc<AppState>) -> Result<(), Box<dyn std::error::
 
     let mut deleted_count = 0u64;
 
-    for (file_id, stored_path, _room_id) in &files_to_delete {
+    for (file_id, stored_path, room_id) in &files_to_delete {
         // Delete file from disk
-        let full_path = format!("{}/{}", state.config.data_path, stored_path);
+        let full_path = format!("{}/uploads/{}/{}", state.config.data_path, room_id, stored_path);
         match tokio::fs::remove_file(&full_path).await {
             Ok(_) => {
                 deleted_count += 1;

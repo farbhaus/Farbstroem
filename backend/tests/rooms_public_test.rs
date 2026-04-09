@@ -114,7 +114,7 @@ async fn join_succeeds() {
     assert_eq!(res.status_code(), 200);
 
     let body: Value = res.json();
-    assert!(body.get("participantId").is_some());
+    assert!(body.get("participant_id").is_some());
     assert!(body.get("token").is_some());
     assert_eq!(body["admitted"], true);
     assert_eq!(body["role"], "viewer");
@@ -223,7 +223,6 @@ async fn status_poll_returns_admitted() {
 
     let body: Value = res.json();
     assert_eq!(body["admitted"], true);
-    assert_eq!(body["kicked"], false);
 }
 
 // ---------------------------------------------------------------------------

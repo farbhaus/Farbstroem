@@ -55,6 +55,7 @@ async fn main() {
     tasks::spawn_ome_poller(state.clone());
     tasks::spawn_expiry_poller(state.clone());
     tasks::spawn_weekly_cleanup(state.clone());
+    tasks::spawn_room_ended_cleanup(state.clone());
 
     // Spawn WebSocket event listeners
     ws::spawn_event_listeners(state.clone());

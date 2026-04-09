@@ -241,30 +241,16 @@ async fn join_room(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
-    // Generate LiveKit token if admitted
-    let lk_token = if is_admitted == 1 {
-        let livekit = LiveKitClient::new(&state.config, state.http_client.clone());
-        let metadata = json!({ "role": role }).to_string();
-        Some(
-            livekit
-                .create_access_token(&participant_id, &name, &room_slug, &metadata)
-                .map_err(|e| AppError::Internal(e))?,
-        )
-    } else {
-        None
-    };
-
     Ok(Json(json!({
-        "participantId": participant_id,
+        "participant_id": participant_id,
         "token": token,
         "role": role,
         "admitted": is_admitted == 1,
-        "deliveryMode": delivery_mode,
-        "waitingRoom": waiting_room != 0,
-        "streamKey": stream_key,
-        "roomName": room_name,
+        "delivery_mode": delivery_mode,
+        "waiting_room": waiting_room != 0,
+        "stream_key": stream_key,
+        "room_name": room_name,
         "status": status,
-        "livekitToken": lk_token,
     })))
 }
 
@@ -313,12 +299,10 @@ async fn participant_status(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
-    let (is_admitted, is_kicked, room_status) = result;
+    let (is_admitted, _is_kicked, _room_status) = result;
 
     Ok(Json(json!({
         "admitted": is_admitted == 1,
-        "kicked": is_kicked == 1,
-        "roomStatus": room_status,
     })))
 }
 
@@ -396,18 +380,10 @@ async fn waiting_events(
         .await;
 
         match result {
-            Ok(Ok((is_admitted, is_kicked, room_status))) => {
-                if is_kicked == 1 {
-                    Ok(Event::default()
-                        .event("kicked")
-                        .data(json!({}).to_string()))
-                } else if is_admitted == 1 {
+            Ok(Ok((is_admitted, _is_kicked, _room_status))) => {
+                if is_admitted == 1 {
                     Ok(Event::default()
                         .event("admitted")
-                        .data(json!({}).to_string()))
-                } else if room_status == "ended" {
-                    Ok(Event::default()
-                        .event("ended")
                         .data(json!({}).to_string()))
                 } else {
                     Ok(Event::default()
@@ -415,6 +391,7 @@ async fn waiting_events(
                         .data(json!({}).to_string()))
                 }
             }
+            // Participant not found (kicked/deleted) - send ping; client will handle
             _ => Ok(Event::default()
                 .event("ping")
                 .data(json!({}).to_string())),
@@ -490,7 +467,7 @@ async fn livekit_token(
         .create_access_token(&participant_id, &name, &room_slug, &metadata)
         .map_err(|e| AppError::Internal(e))?;
 
-    Ok(Json(json!({ "token": lk_token })))
+    Ok(Json(json!({ "token": lk_token, "url": state.config.livekit_url })))
 }
 
 #[derive(Deserialize)]

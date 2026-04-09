@@ -303,8 +303,7 @@ async fn handle_text_message(
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
-                .as_millis()
-                .to_string();
+                .as_millis() as u64;
 
             // Persist to DB
             if let Ok(conn) = state.db.get() {

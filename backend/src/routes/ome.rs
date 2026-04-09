@@ -54,27 +54,44 @@ async fn get_status(
         &state.config.ome_api_url,
         &state.config.ome_api_token,
         reqwest::Method::GET,
-        "/vhosts/default/apps/app/streams",
+        "/vhosts/default/apps/live/streams",
     )
     .await?;
 
-    // Extract stream names from OME response
-    let stream_names: Vec<String> = ome_data
+    // OME response is an array of stream name strings
+    let names: Vec<String> = ome_data
         .pointer("/response")
         .and_then(|r| r.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|s| s.get("name").and_then(|n| n.as_str()).map(String::from))
-                .filter(|name| !name.starts_with("conf-"))
+                .filter_map(|s| s.as_str().map(String::from))
                 .collect()
         })
         .unwrap_or_default();
+
+    let conf_names: Vec<&String> = names.iter().filter(|n| n.starts_with("conf-")).collect();
+    let main_names: Vec<String> = names.iter().filter(|n| !n.starts_with("conf-")).cloned().collect();
+    let conf_count = conf_names.len();
+
+    // Fetch per-stream detail from OME for each main stream
+    let client = &state.http_client;
+    let ome_url = &state.config.ome_api_url;
+    let ome_token = &state.config.ome_api_token;
+    let mut stream_details: Vec<(String, Option<Value>)> = Vec::new();
+    for name in &main_names {
+        let detail_path = format!("/vhosts/default/apps/live/streams/{}", name);
+        let detail = match ome_request(client, ome_url, ome_token, reqwest::Method::GET, &detail_path).await {
+            Ok(d) => d.get("response").cloned(),
+            Err(_) => None,
+        };
+        stream_details.push((name.clone(), detail));
+    }
 
     // Enrich with DB data
     let conn = state.db.get()?;
     let enriched = tokio::task::spawn_blocking(move || {
         let mut results = Vec::new();
-        for stream_name in &stream_names {
+        for (stream_name, detail) in &stream_details {
             let mut stmt = conn.prepare(
                 "SELECT sk.name as key_name, r.name as room_name, r.id as room_id, r.slug \
                  FROM stream_keys sk \
@@ -83,31 +100,33 @@ async fn get_status(
             )?;
             let row = stmt
                 .query_row(rusqlite::params![stream_name], |row| {
-                    Ok(serde_json::json!({
-                        "stream": stream_name,
-                        "key_name": row.get::<_, Option<String>>(0)?,
-                        "room_name": row.get::<_, Option<String>>(1)?,
-                        "room_id": row.get::<_, Option<String>>(2)?,
-                        "slug": row.get::<_, Option<String>>(3)?,
-                    }))
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                    ))
                 })
-                .unwrap_or_else(|_| {
-                    serde_json::json!({
-                        "stream": stream_name,
-                        "key_name": null,
-                        "room_name": null,
-                        "room_id": null,
-                        "slug": null,
-                    })
-                });
-            results.push(row);
+                .ok();
+            let (key_name, room_name, room_id, slug) = match row {
+                Some((kn, rn, ri, s)) => (kn, rn, ri, s),
+                None => (None, None, None, None),
+            };
+            results.push(serde_json::json!({
+                "name": stream_name,
+                "key_name": key_name,
+                "room_name": room_name,
+                "room_id": room_id,
+                "slug": slug,
+                "detail": detail,
+            }));
         }
         Ok::<_, rusqlite::Error>(results)
     })
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
-    Ok(Json(serde_json::json!({ "streams": enriched })))
+    Ok(Json(serde_json::json!({ "streams": enriched, "conf_count": conf_count })))
 }
 
 async fn list_streams(
@@ -119,7 +138,7 @@ async fn list_streams(
         &state.config.ome_api_url,
         &state.config.ome_api_token,
         reqwest::Method::GET,
-        "/vhosts/default/apps/app/streams",
+        "/vhosts/default/apps/live/streams",
     )
     .await?;
 
@@ -131,7 +150,7 @@ async fn get_stream(
     State(state): State<Arc<AppState>>,
     Path(stream_key): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    let path = format!("/vhosts/default/apps/app/streams/{}", stream_key);
+    let path = format!("/vhosts/default/apps/live/streams/{}", stream_key);
     let data = ome_request(
         &state.http_client,
         &state.config.ome_api_url,
@@ -149,7 +168,7 @@ async fn delete_stream(
     State(state): State<Arc<AppState>>,
     Path(stream_key): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    let path = format!("/vhosts/default/apps/app/streams/{}", stream_key);
+    let path = format!("/vhosts/default/apps/live/streams/{}", stream_key);
     let data = ome_request(
         &state.http_client,
         &state.config.ome_api_url,

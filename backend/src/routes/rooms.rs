@@ -494,12 +494,30 @@ async fn delete_room(
     Ok(Json(json!({ "ok": true })))
 }
 
+#[derive(Deserialize)]
+struct EnterRoomBody {
+    name: Option<String>,
+}
+
 // POST /:id/enter - admin enters as presenter
 async fn enter_room(
     _auth: AdminAuth,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Json(body): Json<EnterRoomBody>,
 ) -> Result<Json<Value>, AppError> {
+    let name = body
+        .name
+        .map(|n| {
+            let trimmed = n.trim().to_string();
+            if trimmed.is_empty() {
+                "Host".to_string()
+            } else {
+                trimmed.chars().take(50).collect()
+            }
+        })
+        .unwrap_or_else(|| "Host".to_string());
+
     let conn = state.db.get()?;
     let id_clone = id.clone();
     let room_data = tokio::task::spawn_blocking(move || {
@@ -538,34 +556,21 @@ async fn enter_room(
     let pid = participant_id.clone();
     let rid = id.clone();
     let tok = token.clone();
+    let p_name = name.clone();
     tokio::task::spawn_blocking(move || {
         conn.execute(
             "INSERT INTO participants (id, room_id, name, role, is_admitted, token) \
-             VALUES (?1, ?2, 'Admin', 'presenter', 1, ?3)",
-            rusqlite::params![pid, rid, tok],
-        )?;
-        // Also set room status to live if pending
-        conn.execute(
-            "UPDATE rooms SET status = 'live', started_at = CURRENT_TIMESTAMP \
-             WHERE id = ?1 AND status = 'pending'",
-            rusqlite::params![rid],
+             VALUES (?1, ?2, ?3, 'presenter', 1, ?4)",
+            rusqlite::params![pid, rid, p_name, tok],
         )?;
         Ok::<_, rusqlite::Error>(())
     })
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
-    let livekit = LiveKitClient::new(&state.config, state.http_client.clone());
-    let metadata = json!({ "role": "presenter" }).to_string();
-    let lk_token = livekit
-        .create_access_token(&participant_id, "Admin", &slug, &metadata)
-        .map_err(|e| AppError::Internal(e))?;
-
-    let _ = state.events.room_live.send(slug.clone());
-
     Ok(Json(json!({
         "participantId": participant_id,
-        "token": lk_token,
+        "token": token,
         "slug": slug,
         "deliveryMode": delivery_mode,
         "streamKey": stream_key,
