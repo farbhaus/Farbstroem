@@ -61,8 +61,7 @@ async fn poll_ome(state: &Arc<AppState>) -> Result<(), Box<dyn std::error::Error
          WHERE r.status = 'live'",
     )?;
     let live_rooms: Vec<(String, String, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
-        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
         .filter_map(|r| r.ok())
         .collect();
 
@@ -106,10 +105,8 @@ async fn poll_expiry(state: &Arc<AppState>) -> Result<(), Box<dyn std::error::Er
              AND expires_at < CURRENT_TIMESTAMP \
              AND status != 'ended'",
         )?;
-        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-            .unwrap()
-            .filter_map(|r| r.ok())
-            .collect()
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.filter_map(|r| r.ok()).collect()
     };
 
     if expired_rooms.is_empty() {
@@ -263,10 +260,8 @@ async fn cleanup_files(state: &Arc<AppState>) -> Result<(), Box<dyn std::error::
              WHERE r.status = 'ended' \
              OR (r.expires_at IS NOT NULL AND r.expires_at < CURRENT_TIMESTAMP)",
         )?;
-        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
-            .unwrap()
-            .filter_map(|r| r.ok())
-            .collect()
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+        rows.filter_map(|r| r.ok()).collect()
     };
 
     if files_to_delete.is_empty() {

@@ -43,7 +43,7 @@ impl LiveKitClient {
     fn service_token(&self) -> String {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
 
         let claims = LiveKitClaims {
@@ -150,7 +150,7 @@ impl LiveKitClient {
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
 
         let claims = LiveKitClaims {

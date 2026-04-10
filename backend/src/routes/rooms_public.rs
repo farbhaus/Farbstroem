@@ -626,7 +626,7 @@ fn chrono_now() -> String {
     // SQLite CURRENT_TIMESTAMP format: "YYYY-MM-DD HH:MM:SS"
     let dur = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
+        .unwrap_or_default();
     let secs = dur.as_secs();
     // Convert to broken-down time manually (UTC)
     let days = secs / 86400;
