@@ -114,10 +114,14 @@ impl LiveKitClient {
             .post(format!("{}/twirp/livekit.RoomService/MutePublishedTrack", self.api_url))
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
+            // LiveKit's Twirp server uses protojson, which serializes proto
+            // field `track_sid` as the JSON key `trackSid`. Sending snake_case
+            // here is silently discarded by the server (DiscardUnknown), which
+            // makes the mute a no-op because TrackSid ends up empty.
             .json(&serde_json::json!({
                 "room": room,
                 "identity": identity,
-                "track_sid": track_sid,
+                "trackSid": track_sid,
                 "muted": muted,
             }))
             .send()
