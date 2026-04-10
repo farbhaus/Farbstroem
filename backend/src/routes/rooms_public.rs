@@ -462,9 +462,8 @@ async fn livekit_token(
     }
 
     let livekit = LiveKitClient::new(&state.config, state.http_client.clone());
-    let metadata = json!({ "role": role }).to_string();
     let lk_token = livekit
-        .create_access_token(&participant_id, &name, &room_slug, &metadata)
+        .create_access_token(&participant_id, &name, &room_slug, &role)
         .map_err(|e| AppError::Internal(e))?;
 
     Ok(Json(json!({ "token": lk_token, "url": state.config.livekit_url })))
