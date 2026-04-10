@@ -43,7 +43,7 @@ impl LiveKitClient {
     fn service_token(&self) -> String {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
 
         let claims = LiveKitClaims {
@@ -131,16 +131,26 @@ impl LiveKitClient {
         }
     }
 
+    /// Create a LiveKit access token for a participant.
+    ///
+    /// Takes `role` directly (not free-form metadata) so it's impossible to
+    /// mint a role-less token — the client reads `metadata.role` to gate
+    /// presenter-only UI, and an empty role would silently bypass those
+    /// checks. An empty `role` returns an error.
     pub fn create_access_token(
         &self,
         identity: &str,
         name: &str,
         room: &str,
-        metadata: &str,
+        role: &str,
     ) -> Result<String, String> {
+        if role.is_empty() {
+            return Err("LiveKit access token requires a non-empty role".into());
+        }
+
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
 
         let claims = LiveKitClaims {
@@ -169,7 +179,7 @@ impl LiveKitClient {
         let full = FullClaims {
             base: claims,
             name: name.to_string(),
-            metadata: metadata.to_string(),
+            metadata: serde_json::json!({ "role": role }).to_string(),
         };
 
         encode(

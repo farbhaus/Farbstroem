@@ -1,0 +1,18 @@
+# Use mold on Linux for faster link times during local development.
+#
+# This only takes effect when building for x86_64-unknown-linux-gnu (the
+# default host triple on x86_64 Linux dev machines). macOS and Windows
+# devs are unaffected — their target triples don't match this section,
+# so they fall back to the default linker. The Docker release build uses
+# x86_64-unknown-linux-musl (alpine builder) and is also unaffected.
+#
+# Requires `mold` and `clang` to be installed locally:
+#   Debian/Ubuntu: apt install mold clang
+#   Arch:          pacman -S mold clang
+#   Fedora:        dnf install mold clang
+#
+# clang is preferred over gcc as the linker driver because `-fuse-ld=mold`
+# is supported consistently in clang, while gcc only added support in 12+.
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]

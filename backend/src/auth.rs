@@ -58,7 +58,7 @@ impl FromRequestParts<Arc<AppState>> for AdminAuth {
 pub fn create_admin_token(secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
     let exp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs() as usize
         + 7 * 24 * 60 * 60; // 7 days
 

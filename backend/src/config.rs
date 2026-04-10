@@ -15,25 +15,41 @@ pub struct AppConfig {
     pub data_path: String,
 }
 
+/// Require an env var to be set, panicking with a clear message if not.
+fn required(name: &str) -> String {
+    env::var(name).unwrap_or_else(|_| panic!("FATAL: {} must be set", name))
+}
+
+/// Require an env var to be set and meet a minimum length.
+fn required_min_len(name: &str, min_len: usize) -> String {
+    let value = required(name);
+    if value.len() < min_len {
+        panic!("FATAL: {} must be at least {} chars", name, min_len);
+    }
+    value
+}
+
 impl AppConfig {
     pub fn from_env() -> Self {
-        let jwt_secret = env::var("JWT_SECRET").expect("FATAL: JWT_SECRET must be set");
-        if jwt_secret.len() < 32 {
-            panic!("FATAL: JWT_SECRET must be at least 32 chars");
-        }
-        let admin_password = env::var("ADMIN_PASSWORD").expect("FATAL: ADMIN_PASSWORD must be set");
-        if admin_password.is_empty() {
-            panic!("FATAL: ADMIN_PASSWORD must not be empty");
-        }
-        let ome_webhook_secret = env::var("OME_WEBHOOK_SECRET").expect("FATAL: OME_WEBHOOK_SECRET must be set");
+        // Signing keys — all used as HMAC secrets, enforce 32-char minimum.
+        let jwt_secret = required_min_len("JWT_SECRET", 32);
+        let ome_webhook_secret = required_min_len("OME_WEBHOOK_SECRET", 32);
+        let livekit_api_secret = required_min_len("LIVEKIT_API_SECRET", 32);
+
+        // Admin password is bcrypt-hashed at startup; enforce a sensible minimum.
+        let _admin_password = required_min_len("ADMIN_PASSWORD", 12);
+
+        // LiveKit API key is an identifier (becomes the `iss` JWT claim), not a
+        // secret — require presence but don't enforce length.
+        let livekit_api_key = required("LIVEKIT_API_KEY");
 
         Self {
             jwt_secret,
             ome_webhook_secret,
             ome_api_url: env::var("OME_API_URL").unwrap_or_else(|_| "http://stream-ome:8081/v1".into()),
             ome_api_token: env::var("OME_API_TOKEN").unwrap_or_default(),
-            livekit_api_key: env::var("LIVEKIT_API_KEY").unwrap_or_default(),
-            livekit_api_secret: env::var("LIVEKIT_API_SECRET").unwrap_or_default(),
+            livekit_api_key,
+            livekit_api_secret,
             livekit_internal_url: env::var("LIVEKIT_INTERNAL_URL").unwrap_or_else(|_| "http://stream-livekit:7880".into()),
             livekit_url: env::var("LIVEKIT_URL").unwrap_or_else(|_| "ws://localhost:7880".into()),
             port: env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(4001),
