@@ -20,6 +20,11 @@ pub struct LiveKitVideoGrant {
     pub room: String,
     pub can_publish: bool,
     pub can_subscribe: bool,
+    /// Grants server-side admin RPCs (DeleteRoom, RemoveParticipant,
+    /// MutePublishedTrack, UpdateParticipant, ...). Only set on the
+    /// backend's own service tokens — never on participant tokens.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub room_admin: bool,
 }
 
 #[derive(Clone)]
@@ -46,13 +51,23 @@ impl LiveKitClient {
             .unwrap_or_default()
             .as_secs();
 
+        // LiveKit's RoomService RPCs (DeleteRoom, RemoveParticipant,
+        // MutePublishedTrack) all go through EnsureAdminPermission, which
+        // requires `video.roomAdmin == true`. A wildcard scope (`room == ""`)
+        // lets this single service token act on any room the backend manages.
         let claims = LiveKitClaims {
             iss: self.api_key.clone(),
             sub: String::new(),
             iat: now,
             exp: now + 600,
             nbf: now,
-            video: None,
+            video: Some(LiveKitVideoGrant {
+                room_join: false,
+                room: String::new(),
+                can_publish: false,
+                can_subscribe: false,
+                room_admin: true,
+            }),
         };
 
         encode(
@@ -168,6 +183,7 @@ impl LiveKitClient {
                 room: room.to_string(),
                 can_publish: true,
                 can_subscribe: true,
+                room_admin: false,
             }),
         };
 
