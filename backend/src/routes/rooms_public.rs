@@ -17,6 +17,8 @@ use crate::events::KickedEvent;
 use crate::livekit::LiveKitClient;
 use crate::state::AppState;
 
+use tracing::info;
+
 fn row_to_json(row: &rusqlite::Row, columns: &[&str]) -> serde_json::Value {
     let mut map = serde_json::Map::new();
     for (i, col) in columns.iter().enumerate() {
@@ -540,6 +542,14 @@ async fn kick_participant(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
+    info!(
+        room_slug = %slug,
+        actor_id = %participant_id,
+        target_id = %target_id,
+        action = "kick",
+        "participant kicked",
+    );
+
     let _ = state.events.participant_kicked.send(KickedEvent {
         slug: slug.clone(),
         participant_id: target_id.clone(),
@@ -617,6 +627,16 @@ async fn mute_participant(
         .mute_published_track(&slug, &target_id, &track_sid, muted)
         .await
         .map_err(|e| AppError::Internal(e))?;
+
+    info!(
+        room_slug = %slug,
+        actor_id = %participant_id,
+        target_id = %target_id,
+        track_sid = %track_sid,
+        muted,
+        action = "mute",
+        "participant track muted",
+    );
 
     Ok(Json(json!({ "ok": true })))
 }

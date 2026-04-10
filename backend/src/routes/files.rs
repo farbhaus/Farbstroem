@@ -10,6 +10,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
+use tracing::info;
+
 use crate::error::AppError;
 use crate::events::FileSharedEvent;
 use crate::state::AppState;
@@ -146,6 +148,17 @@ async fn upload_file(
             let size = data.len() as u64;
             let file_id = uuid::Uuid::new_v4().to_string();
 
+            info!(
+                room_slug = %participant.slug,
+                actor_id = %participant.id,
+                file_id = %file_id,
+                name = %original_name,
+                size,
+                mime = %mime,
+                action = "upload_start",
+                "file upload starting",
+            );
+
             // Determine extension from original filename
             let ext = original_name
                 .rsplit('.')
@@ -210,6 +223,15 @@ async fn upload_file(
                 mime: mime.clone(),
                 ts,
             });
+
+            info!(
+                room_slug = %participant.slug,
+                actor_id = %participant.id,
+                file_id = %file_id,
+                size,
+                action = "upload_complete",
+                "file upload complete",
+            );
 
             return Ok(Json(json!({
                 "id": file_id,
