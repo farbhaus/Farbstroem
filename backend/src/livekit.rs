@@ -117,7 +117,7 @@ impl LiveKitClient {
             .json(&serde_json::json!({
                 "room": room,
                 "identity": identity,
-                "track_sid": track_sid,
+                "trackSid": track_sid,
                 "muted": muted,
             }))
             .send()

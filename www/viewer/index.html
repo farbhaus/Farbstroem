@@ -1110,7 +1110,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
                 participantId = savedSession.participantId;
                 myToken       = savedSession.token;
                 myRole        = isPresenter ? 'presenter' : (savedSession.role || 'viewer');
-                deliveryMode  = savedSession.deliveryMode || 'webrtc';
+                deliveryMode  = roomInfo.delivery_mode || savedSession.deliveryMode || 'webrtc';
                 streamKey     = savedSession.streamKey;
                 showApp(roomInfo.status);
             } else if (savedSession && roomInfo.status === 'ended') {
@@ -1557,13 +1557,18 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             if (msg.type === 'participants:update') updateWatchOnlyList(msg.participants);
             if (msg.type === 'chat:history') {
                 msg.messages.forEach(m => {
-                    const list = document.getElementById('chat-messages');
-                    const d = document.createElement('div');
-                    d.className = 'chat-msg';
-                    const t = new Date(m.ts);
-                    const hhmm = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
-                    d.innerHTML = `<div class="chat-meta"><span class="chat-who ${esc(m.role)}">${esc(m.name)}</span><span class="chat-time">${hhmm}</span></div><div class="chat-text">${esc(m.text)}</div>`;
-                    list.appendChild(d);
+                    if (m.type === 'file:shared') {
+                        appendFileMessage(m);
+                        addFileToSection(m);
+                    } else {
+                        const list = document.getElementById('chat-messages');
+                        const d = document.createElement('div');
+                        d.className = 'chat-msg';
+                        const t = new Date(m.ts);
+                        const hhmm = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
+                        d.innerHTML = `<div class="chat-meta"><span class="chat-who ${esc(m.role)}">${esc(m.name)}</span><span class="chat-time">${hhmm}</span></div><div class="chat-text">${esc(m.text)}</div>`;
+                        list.appendChild(d);
+                    }
                 });
                 const list = document.getElementById('chat-messages');
                 list.scrollTop = list.scrollHeight;
@@ -1627,11 +1632,11 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
                 });
             }
             if (hasBg) {
-                const bgUrl = 'url(/api/branding/bg) center/cover no-repeat';
+                const bg = 'url(/api/branding/bg) center/cover no-repeat #000';
                 document.querySelectorAll('.screen').forEach(el => {
-                    el.style.background = '#000 ' + bgUrl;
+                    el.style.background = bg;
                 });
-                document.getElementById('landing-screen').style.background = '#000 ' + bgUrl;
+                document.getElementById('landing-screen').style.background = bg;
             }
         } catch {}
     })();
