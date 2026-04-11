@@ -166,13 +166,15 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     overflow: hidden;
 }
 #player-wrap { flex-shrink: 0; }
-#player { width: 100%; height: 100%; }
+#player { width: 100%; height: 100%; position: relative; overflow: hidden; }
 
-/* Hide all OvenPlayer built-in UI */
+/* Hide all OvenPlayer built-in UI and prevent hover-triggered layout shifts */
 #player .op-ui-container, #player .op-loading-container,
 #player .op-controls-container, #player .op-bottom-area,
 #player .op-watermark, #player .op-message-container,
 #player .op-notification-container { display: none !important; }
+#player .op-player { position: absolute !important; inset: 0 !important; }
+#player video { width: 100% !important; height: 100% !important; object-fit: contain !important; }
 
 #offline-screen {
     position: absolute; inset: 0; z-index: 5;
@@ -260,12 +262,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
 .conf-empty { color: var(--dim); font-size: 12px; text-align: center; padding: 24px 8px; }
 
-/* Watch-only viewer list in conference panel */
-#conf-viewers { padding: 0 10px 10px; }
-.conf-viewers-label { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 8px 0 4px; border-top: 1px solid var(--border); margin-top: 4px; }
-.conf-viewer-item { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 12px; color: var(--dim); }
-.conf-viewer-item svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; flex-shrink: 0; opacity: 0.5; }
-
 /* Presenter action buttons on tiles */
 .tile-actions {
     position: absolute; top: 6px; right: 6px;
@@ -294,7 +290,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 /* Remote tile cam-off */
 .conf-mic-icon { display: none; color: var(--green); }
 .conf-mic-icon svg { width: 22px; height: 22px; }
-.conf-tile.cam-off .conf-mic-icon { display: flex; align-items: center; justify-content: center; margin-bottom: 4px; }
+.conf-user-icon { display: none; color: var(--dim); }
+.conf-user-icon svg { width: 28px; height: 28px; stroke-width: 1.6; }
+.conf-tile.cam-off .conf-mic-icon { align-items: center; justify-content: center; margin-bottom: 4px; }
+.conf-tile.cam-off .conf-user-icon { align-items: center; justify-content: center; margin-bottom: 4px; }
 .conf-tile.cam-off .conf-player-inner { display: none; }
 .conf-tile.cam-off { background: var(--surface2); display: flex !important; flex-direction: column; align-items: center; justify-content: center; }
 .conf-tile.cam-off .conf-name { position: static; background: none; font-size: 13px; padding: 0; }
@@ -461,7 +460,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         min-height: 0;
     }
     #conf-empty { min-width: max-content; padding: 36px 16px; }
-    #conf-viewers { display: none; }
 
     /* Video area fills remaining space */
     #center-area { flex: 1; min-height: 0; }
@@ -636,7 +634,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
                 </div>
                 <div class="conf-empty" id="conf-empty">No active participants.</div>
             </div>
-            <div id="conf-viewers"></div>
         </div>
 
         <!-- Video area (center) -->
@@ -785,6 +782,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     let offlineTimer = null;
     let roomStatus  = 'pending';
 
+    // Roster from participants:update WS messages. Drives the conference tile
+    // list so watch-only participants (who never join LiveKit) still render.
+    let lastRoster = [];
+
     // Panel state
     let chatOpen = false;
     let confOpen = false;
@@ -822,6 +823,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     const SVG_PAPERCLIP = '<svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
     const SVG_MIC = '<svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="1" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
     const SVG_MIC_OFF = '<svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+    const SVG_USER = '<svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>';
 
     // ---- LiveKit conference ----
 
@@ -933,51 +935,75 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     }
 
     function syncConferenceTiles() {
-        if (!livekitRoom) return;
         const tilesEl = document.getElementById('conf-tiles');
         const emptyEl = document.getElementById('conf-empty');
 
-        const remoteParticipants = Array.from(livekitRoom.remoteParticipants.values());
+        // LiveKit peers keyed by identity (== participantId on the server side).
+        const lkMap = livekitRoom
+            ? new Map(Array.from(livekitRoom.remoteParticipants.values()).map(p => [p.identity, p]))
+            : new Map();
 
-        // Remove tiles for participants who left
-        for (const tile of [...tilesEl.querySelectorAll('.conf-tile[id^="conf-tile-"]')]) {
-            const id = tile.id.slice('conf-tile-'.length);
-            if (!remoteParticipants.find(p => p.identity === id)) tile.remove();
+        // Every remote participant from the roster gets a tile. Watch-only
+        // users (not in LiveKit) render as a placeholder; LK peers attach
+        // their cam/mic to the same tile.
+        const byId = new Map();
+        for (const p of lastRoster) {
+            if (p.id !== participantId) byId.set(p.id, p);
+        }
+        // Race safety: a LK peer might briefly be missing from the roster
+        // (e.g. participants:update lagging). Synthesize a minimal entry.
+        for (const [id, lkp] of lkMap) {
+            if (!byId.has(id)) {
+                const meta = (() => { try { return JSON.parse(lkp.metadata || '{}'); } catch { return {}; } })();
+                byId.set(id, { id, name: lkp.name || id, role: meta.role || 'viewer' });
+            }
         }
 
-        for (const p of remoteParticipants) {
-            const camPub = p.getTrackPublication(LivekitClient.Track.Source.Camera);
-            const micPub = p.getTrackPublication(LivekitClient.Track.Source.Microphone);
-            const hasCam = camPub && !camPub.isMuted;
-            const hasMic = micPub && !micPub.isMuted;
+        // Remove tiles for participants no longer present
+        for (const tile of [...tilesEl.querySelectorAll('.conf-tile[id^="conf-tile-"]')]) {
+            const id = tile.id.slice('conf-tile-'.length);
+            if (!byId.has(id)) tile.remove();
+        }
 
-            let tile = document.getElementById(`conf-tile-${p.identity}`);
+        for (const [pid, rp] of byId) {
+            const lkp = lkMap.get(pid);
+            const camPub = lkp?.getTrackPublication(LivekitClient.Track.Source.Camera);
+            const micPub = lkp?.getTrackPublication(LivekitClient.Track.Source.Microphone);
+            const hasCam = !!(camPub && !camPub.isMuted);
+            const hasMic = !!(micPub && !micPub.isMuted);
+
+            let tile = document.getElementById(`conf-tile-${pid}`);
             if (!tile) {
                 tile = document.createElement('div');
-                tile.id = `conf-tile-${p.identity}`;
+                tile.id = `conf-tile-${pid}`;
                 tile.className = 'conf-tile';
 
-                const meta = (() => { try { return JSON.parse(p.metadata || '{}'); } catch { return {}; } })();
-                const isTargetPresenter = meta.role === 'presenter';
+                const isTargetPresenter = rp.role === 'presenter';
                 const micSid    = micPub?.trackSid || '';
                 const micMuted  = micPub?.isMuted ?? true;
 
                 tile.innerHTML =
-                    `<div id="conf-player-${p.identity}" class="conf-player-inner">` +
+                    `<div id="conf-player-${pid}" class="conf-player-inner">` +
                     `<video autoplay playsinline style="width:100%;height:100%;object-fit:cover"></video></div>` +
+                    `<div class="conf-user-icon">${SVG_USER}</div>` +
                     `<div class="conf-mic-icon" style="display:none">${SVG_MIC}</div>` +
-                    `<div class="conf-name">${esc(p.name || p.identity)}</div>` +
+                    `<div class="conf-name">${esc(rp.name || pid)}</div>` +
                     (myRole === 'presenter' && !isTargetPresenter ? (
                         `<div class="tile-actions">` +
                         `<button class="tile-btn${micMuted ? ' muted-indicator' : ''}" title="${micMuted ? 'Unmute' : 'Mute'}" ` +
-                        `data-action="mute" data-identity="${esc(p.identity)}" data-sid="${esc(micSid)}">${micMuted ? SVG_MIC_OFF : SVG_MIC}</button>` +
+                        `data-action="mute" data-identity="${esc(pid)}" data-sid="${esc(micSid)}">${micMuted ? SVG_MIC_OFF : SVG_MIC}</button>` +
                         `<button class="tile-btn danger" title="Remove from conference" ` +
-                        `data-action="kick" data-identity="${esc(p.identity)}">` +
+                        `data-action="kick" data-identity="${esc(pid)}">` +
                         `<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>` +
                         `</div>`
                     ) : '');
                 tilesEl.insertBefore(tile, emptyEl);
             }
+
+            // Keep the display name in sync with roster updates
+            const nameEl = tile.querySelector('.conf-name');
+            const nextName = rp.name || pid;
+            if (nameEl && nameEl.textContent !== nextName) nameEl.textContent = nextName;
 
             // Update mute button state if tile already exists
             if (myRole === 'presenter') {
@@ -993,10 +1019,12 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             }
 
             tile.classList.toggle('cam-off', !hasCam);
-            tile.querySelector('.conf-mic-icon').style.display = (hasMic && !hasCam) ? '' : 'none';
+            tile.querySelector('.conf-mic-icon').style.display = (hasMic && !hasCam) ? 'flex' : 'none';
+            tile.querySelector('.conf-user-icon').style.display = (!hasMic && !hasCam) ? 'flex' : 'none';
         }
 
-        emptyEl.style.display = (remoteParticipants.length > 0 || cameraOn || micOn) ? 'none' : '';
+        const hasRemoteTiles = byId.size > 0;
+        emptyEl.style.display = (hasRemoteTiles || cameraOn || micOn) ? 'none' : '';
     }
 
     function attachTrack(track, participant) {
@@ -1554,7 +1582,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             if (msg.type === 'room:live')    { clearTimeout(offlineTimer); setRoomStatus('live'); reloadPlayer(); }
             if (msg.type === 'room:pending') { setRoomStatus('pending'); }
             if (msg.type === 'room:ended')   { setRoomStatus('ended'); sessionStorage.removeItem(`viewer_session_${slug}`); }
-            if (msg.type === 'participants:update') updateWatchOnlyList(msg.participants);
+            if (msg.type === 'participants:update') updateRoster(msg.participants);
             if (msg.type === 'chat:history') {
                 msg.messages.forEach(m => {
                     const list = document.getElementById('chat-messages');
@@ -1793,37 +1821,20 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         );
     }
 
-    function updateWatchOnlyList(participants) {
+    function updateRoster(participants) {
+        lastRoster = Array.isArray(participants) ? participants : [];
+
         const numEl = document.getElementById('participant-num');
-        if (numEl) numEl.textContent = participants.length;
+        if (numEl) numEl.textContent = lastRoster.length;
 
         // Clean up pointers for participants who left
-        const currentPids = new Set(participants.map(p => p.id));
+        const currentPids = new Set(lastRoster.map(p => p.id));
         for (const pid of pointerCursors.keys()) {
             if (!currentPids.has(pid)) hidePointer(pid);
         }
 
-        const viewersEl = document.getElementById('conf-viewers');
-        const lkIds = livekitRoom
-            ? new Set(Array.from(livekitRoom.remoteParticipants.keys()))
-            : new Set();
-        const watchOnly = participants.filter(p => p.id !== participantId && !lkIds.has(p.id));
-
-        if (!watchOnly.length) { viewersEl.innerHTML = ''; return; }
-        const kickBtn = (p) => myRole === 'presenter'
-            ? `<button class="tile-btn danger" data-action="kick" data-identity="${esc(p.id)}" title="Remove" style="width:22px;height:22px;flex-shrink:0;">` +
-              `<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`
-            : '';
-        viewersEl.innerHTML =
-            `<div class="conf-viewers-label">Watch only</div>` +
-            watchOnly.map(p =>
-                `<div class="conf-viewer-item" style="justify-content:space-between;">` +
-                `<span style="display:flex;align-items:center;gap:6px;min-width:0;">` +
-                `<svg viewBox="0 0 24 24" style="flex-shrink:0"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>` +
-                `<circle cx="9" cy="7" r="4"/></svg><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.name)}</span></span>` +
-                kickBtn(p) +
-                `</div>`
-            ).join('');
+        // Every participant (including watch-only) now gets a conference tile.
+        syncConferenceTiles();
     }
 
     // ---- Pointer overlay ----
