@@ -96,7 +96,7 @@ pub fn spawn_expiry_poller(state: Arc<AppState>) {
     });
 }
 
-async fn poll_expiry(state: &Arc<AppState>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn poll_expiry(state: &Arc<AppState>) -> Result<(), Box<dyn std::error::Error>> {
     let expired_rooms: Vec<(String, String)> = {
         let db = state.db.get()?;
         let mut stmt = db.prepare(
@@ -157,7 +157,7 @@ pub fn spawn_room_ended_cleanup(state: Arc<AppState>) {
     });
 }
 
-async fn cleanup_room_files(
+pub async fn cleanup_room_files(
     state: &Arc<AppState>,
     slug: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
