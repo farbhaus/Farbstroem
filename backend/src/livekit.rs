@@ -16,6 +16,8 @@ struct LiveKitClaims {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LiveKitVideoGrant {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub room_admin: Option<bool>,
     pub room_join: bool,
     pub room: String,
     pub can_publish: bool,
@@ -52,7 +54,13 @@ impl LiveKitClient {
             iat: now,
             exp: now + 600,
             nbf: now,
-            video: None,
+            video: Some(LiveKitVideoGrant {
+                room_admin: Some(true),
+                room_join: false,
+                room: String::new(),
+                can_publish: false,
+                can_subscribe: false,
+            }),
         };
 
         encode(
@@ -160,6 +168,7 @@ impl LiveKitClient {
             exp: now + 86400, // 24 hours
             nbf: now,
             video: Some(LiveKitVideoGrant {
+                room_admin: None,
                 room_join: true,
                 room: room.to_string(),
                 can_publish: true,

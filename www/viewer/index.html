@@ -1558,7 +1558,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             if (msg.type === 'chat:history') {
                 msg.messages.forEach(m => {
                     if (m.type === 'file:shared') {
-                        appendFileMessage(m);
+                        appendFileMessage(m, false);
                         addFileToSection(m);
                     } else {
                         const list = document.getElementById('chat-messages');
@@ -1582,6 +1582,12 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         };
         ws.onclose = (e) => {
             clearAllPointers();
+            // Room ended/deleted — stop reconnecting
+            if (e.code === 1001) {
+                setRoomStatus('ended');
+                sessionStorage.removeItem(`viewer_session_${slug}`);
+                return;
+            }
             if (e.code === 1008) {
                 sessionStorage.removeItem(`viewer_session_${slug}`);
                 // If kicked message already showed the kicked screen, don't override it
@@ -1632,11 +1638,15 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
                 });
             }
             if (hasBg) {
-                const bg = 'url(/api/branding/bg) center/cover no-repeat #000';
-                document.querySelectorAll('.screen').forEach(el => {
-                    el.style.background = bg;
-                });
-                document.getElementById('landing-screen').style.background = bg;
+                const applyBg = (el) => {
+                    el.style.backgroundColor = '#000';
+                    el.style.backgroundImage = 'url(/api/branding/bg)';
+                    el.style.backgroundSize = 'cover';
+                    el.style.backgroundPosition = 'center';
+                    el.style.backgroundRepeat = 'no-repeat';
+                };
+                document.querySelectorAll('.screen').forEach(applyBg);
+                applyBg(document.getElementById('landing-screen'));
             }
         } catch {}
     })();
@@ -1684,7 +1694,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         return (n / (1024 * 1024)).toFixed(1) + ' MB';
     }
 
-    function appendFileMessage(msg) {
+    function appendFileMessage(msg, notify = true) {
         const list = document.getElementById('chat-messages');
         const t = new Date(msg.ts);
         const hhmm = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
@@ -1701,7 +1711,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             `</div>`;
         list.appendChild(d);
         list.scrollTop = list.scrollHeight;
-        notifyChat();
+        if (notify) notifyChat();
     }
 
     function addFileToSection(f) {
