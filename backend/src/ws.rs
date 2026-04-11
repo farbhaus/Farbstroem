@@ -588,6 +588,10 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
                     }
                 }
 
+                // Delete LiveKit room (best-effort, may already be done by caller)
+                let livekit = crate::livekit::LiveKitClient::new(&state.config, state.http_client.clone());
+                let _ = livekit.delete_room(&slug).await;
+
                 // Delete chat messages for this room
                 if let Ok(conn) = state.db.get() {
                     let _ = conn.execute(
