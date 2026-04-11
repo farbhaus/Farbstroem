@@ -166,13 +166,15 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     overflow: hidden;
 }
 #player-wrap { flex-shrink: 0; }
-#player { width: 100%; height: 100%; }
+#player { width: 100%; height: 100%; position: relative; overflow: hidden; }
 
-/* Hide all OvenPlayer built-in UI */
+/* Hide all OvenPlayer built-in UI and prevent hover-triggered layout shifts */
 #player .op-ui-container, #player .op-loading-container,
 #player .op-controls-container, #player .op-bottom-area,
 #player .op-watermark, #player .op-message-container,
 #player .op-notification-container { display: none !important; }
+#player .op-player { position: absolute !important; inset: 0 !important; }
+#player video { width: 100% !important; height: 100% !important; object-fit: contain !important; }
 
 #offline-screen {
     position: absolute; inset: 0; z-index: 5;
