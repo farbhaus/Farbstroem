@@ -1398,6 +1398,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         else if (pref === 'mic')  { cameraOn = false; micOn = true;  }
         else                      { cameraOn = false; micOn = false; }
 
+        // Auto-open conference panel when camera or mic is enabled
+        if ((cameraOn || micOn) && !confOpen) toggleConf();
+
         refreshConfButtons();
         setConfBtns({ disabled: true }, { disabled: true });
         try {
@@ -1407,8 +1410,6 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             cameraOn = false; micOn = false;
         }
         refreshConfButtons();
-        // Auto-open conference panel when camera is enabled
-        if (cameraOn && !confOpen) toggleConf();
     }
 
     document.getElementById('prompt-both').addEventListener('click', () => applyConfPref('both'));
