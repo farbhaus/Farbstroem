@@ -42,7 +42,7 @@ impl LiveKitClient {
         }
     }
 
-    fn service_token(&self) -> String {
+    fn service_token(&self, room: &str) -> String {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -57,7 +57,7 @@ impl LiveKitClient {
             video: Some(LiveKitVideoGrant {
                 room_admin: Some(true),
                 room_join: false,
-                room: String::new(),
+                room: room.to_string(),
                 can_publish: false,
                 can_subscribe: false,
             }),
@@ -72,7 +72,7 @@ impl LiveKitClient {
     }
 
     pub async fn delete_room(&self, room_name: &str) -> Result<(), String> {
-        let token = self.service_token();
+        let token = self.service_token(room_name);
         let res = self
             .http
             .post(format!("{}/twirp/livekit.RoomService/DeleteRoom", self.api_url))
@@ -91,7 +91,7 @@ impl LiveKitClient {
     }
 
     pub async fn remove_participant(&self, room: &str, identity: &str) -> Result<(), String> {
-        let token = self.service_token();
+        let token = self.service_token(room);
         let res = self
             .http
             .post(format!("{}/twirp/livekit.RoomService/RemoveParticipant", self.api_url))
@@ -116,7 +116,7 @@ impl LiveKitClient {
         track_sid: &str,
         muted: bool,
     ) -> Result<(), String> {
-        let token = self.service_token();
+        let token = self.service_token(room);
         let res = self
             .http
             .post(format!("{}/twirp/livekit.RoomService/MutePublishedTrack", self.api_url))
