@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, State},
-    routing::{delete, get, post, put},
+    routing::{get, post},
     Json, Router,
 };
 use rand::RngExt;
@@ -185,7 +185,7 @@ async fn create_room(
     } else {
         0
     };
-    let expires_at = body.expires_at;
+    let expires_at = body.expires_at.map(|s| normalize_datetime(&s));
     let stream_key_id = body.stream_key_id;
 
     let password_hash = match body.password {
@@ -306,7 +306,7 @@ async fn update_room(
         let val = body
             .get("expires_at")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(|s| normalize_datetime(s));
         set_clauses.push(format!("expires_at = ?{}", set_clauses.len() + 1));
         params.push(Box::new(val));
     }
@@ -705,4 +705,16 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/{id}/admit-all", post(admit_all))
         .route("/{id}/kicked", get(get_kicked))
         .route("/{id}/unkick/{participantId}", post(unkick_participant))
+}
+
+/// Normalize ISO 8601 datetime (e.g. "2025-04-15T22:00:00.000Z") to SQLite
+/// CURRENT_TIMESTAMP format ("2025-04-15 22:00:00") so string comparisons work.
+fn normalize_datetime(s: &str) -> String {
+    // "2025-04-15T22:00:00.000Z" → "2025-04-15 22:00:00"
+    let s = s.replace('T', " ");
+    // Strip fractional seconds and trailing Z
+    match s.find('.') {
+        Some(i) => s[..i].to_string(),
+        None => s.trim_end_matches('Z').to_string(),
+    }
 }

@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, State},
-    routing::{delete, get, post, put},
+    routing::{get, put},
     Json, Router,
 };
 use rand::RngExt;

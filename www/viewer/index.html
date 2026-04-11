@@ -1138,7 +1138,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
                 participantId = savedSession.participantId;
                 myToken       = savedSession.token;
                 myRole        = isPresenter ? 'presenter' : (savedSession.role || 'viewer');
-                deliveryMode  = savedSession.deliveryMode || 'webrtc';
+                deliveryMode  = roomInfo.delivery_mode || savedSession.deliveryMode || 'webrtc';
                 streamKey     = savedSession.streamKey;
                 showApp(roomInfo.status);
             } else if (savedSession && roomInfo.status === 'ended') {
@@ -1585,13 +1585,18 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             if (msg.type === 'participants:update') updateRoster(msg.participants);
             if (msg.type === 'chat:history') {
                 msg.messages.forEach(m => {
-                    const list = document.getElementById('chat-messages');
-                    const d = document.createElement('div');
-                    d.className = 'chat-msg';
-                    const t = new Date(m.ts);
-                    const hhmm = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
-                    d.innerHTML = `<div class="chat-meta"><span class="chat-who ${esc(m.role)}">${esc(m.name)}</span><span class="chat-time">${hhmm}</span></div><div class="chat-text">${esc(m.text)}</div>`;
-                    list.appendChild(d);
+                    if (m.type === 'file:shared') {
+                        appendFileMessage(m, false);
+                        addFileToSection(m);
+                    } else {
+                        const list = document.getElementById('chat-messages');
+                        const d = document.createElement('div');
+                        d.className = 'chat-msg';
+                        const t = new Date(m.ts);
+                        const hhmm = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
+                        d.innerHTML = `<div class="chat-meta"><span class="chat-who ${esc(m.role)}">${esc(m.name)}</span><span class="chat-time">${hhmm}</span></div><div class="chat-text">${esc(m.text)}</div>`;
+                        list.appendChild(d);
+                    }
                 });
                 const list = document.getElementById('chat-messages');
                 list.scrollTop = list.scrollHeight;
@@ -1605,6 +1610,12 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         };
         ws.onclose = (e) => {
             clearAllPointers();
+            // Room ended/deleted — stop reconnecting
+            if (e.code === 1001) {
+                setRoomStatus('ended');
+                sessionStorage.removeItem(`viewer_session_${slug}`);
+                return;
+            }
             if (e.code === 1008) {
                 sessionStorage.removeItem(`viewer_session_${slug}`);
                 // If kicked message already showed the kicked screen, don't override it
@@ -1655,11 +1666,15 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
                 });
             }
             if (hasBg) {
-                const bgUrl = 'url(/api/branding/bg) center/cover no-repeat';
-                document.querySelectorAll('.screen').forEach(el => {
-                    el.style.background = '#000 ' + bgUrl;
-                });
-                document.getElementById('landing-screen').style.background = '#000 ' + bgUrl;
+                const applyBg = (el) => {
+                    el.style.backgroundColor = '#000';
+                    el.style.backgroundImage = 'url(/api/branding/bg)';
+                    el.style.backgroundSize = 'cover';
+                    el.style.backgroundPosition = 'center';
+                    el.style.backgroundRepeat = 'no-repeat';
+                };
+                document.querySelectorAll('.screen').forEach(applyBg);
+                applyBg(document.getElementById('landing-screen'));
             }
         } catch {}
     })();
@@ -1707,7 +1722,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         return (n / (1024 * 1024)).toFixed(1) + ' MB';
     }
 
-    function appendFileMessage(msg) {
+    function appendFileMessage(msg, notify = true) {
         const list = document.getElementById('chat-messages');
         const t = new Date(msg.ts);
         const hhmm = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
@@ -1724,7 +1739,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             `</div>`;
         list.appendChild(d);
         list.scrollTop = list.scrollHeight;
-        notifyChat();
+        if (notify) notifyChat();
     }
 
     function addFileToSection(f) {

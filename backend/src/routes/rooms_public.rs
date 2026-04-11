@@ -135,7 +135,7 @@ async fn join_room(
     let (
         room_id,
         room_name,
-        room_slug,
+        _room_slug,
         password_hash,
         presenter_key,
         delivery_mode,

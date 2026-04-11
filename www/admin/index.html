@@ -775,7 +775,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
         const delivery_mode = document.getElementById('room-delivery').value;
         const waiting_room  = document.getElementById('room-waiting').checked;
         const expiresRaw    = document.getElementById('room-expires').value;
-        const expires_at    = expiresRaw ? new Date(expiresRaw).toISOString() : null;
+        const expires_at    = expiresRaw ? new Date(expiresRaw).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '') : null;
         const streamKeyId   = document.getElementById('room-stream-key').value;
 
         if (!name) { toast('Room name required'); return; }
