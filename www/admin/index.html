@@ -1089,12 +1089,14 @@ main { margin-top: var(--nav-h); padding: 32px; }
         document.getElementById('bg-empty').style.display   = hasBg ? 'none' : '';
         if (hasBg) document.getElementById('bg-preview').src = '/api/branding/bg?' + Date.now();
 
-        // Load color palette
+        // Load color palette and apply to admin UI
         if (colors) {
+            const cssMap = { accent: '--accent', bg: '--bg', surface: '--surface', text: '--text', danger: '--danger', green: '--green' };
             for (const f of COLOR_FIELDS) {
                 const val = colors[`color_${f}`] || COLOR_DEFAULTS[f];
                 document.getElementById(`color-${f}`).value = val;
                 document.getElementById(`color-${f}-hex`).value = val;
+                if (colors[`color_${f}`]) document.documentElement.style.setProperty(cssMap[f], val);
             }
         }
     }
@@ -1174,6 +1176,15 @@ main { margin-top: var(--nav-h); padding: 32px; }
     window.copy = copy;
 
     // ---- Init ----
+
+    // Apply branding colors on page load
+    fetch('/api/branding').then(r => r.ok ? r.json() : null).then(data => {
+        if (!data?.colors) return;
+        const cssMap = { accent: '--accent', bg: '--bg', surface: '--surface', text: '--text', danger: '--danger', green: '--green' };
+        for (const [f, cssVar] of Object.entries(cssMap)) {
+            if (data.colors[`color_${f}`]) document.documentElement.style.setProperty(cssVar, data.colors[`color_${f}`]);
+        }
+    }).catch(() => {});
 
     if (token) {
         fetch(API + '/api/rooms', { headers: { Authorization: `Bearer ${token}` } })

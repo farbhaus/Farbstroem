@@ -122,6 +122,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     width: 100%; padding: 8px 10px; font: inherit; font-size: 13px;
     background: var(--surface2); color: var(--text); border: 1px solid var(--border);
     border-radius: 6px; outline: none;
+    -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23777' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center;
+    padding-right: 28px;
 }
 .device-picker-row select:focus { border-color: var(--dim); }
 
@@ -2050,12 +2054,14 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         if (!livekitRoom) return;
         try {
             await livekitRoom.switchActiveDevice('videoinput', e.target.value);
+            updateSelfTile();
         } catch (err) { console.error('[device switch cam]', err); }
     });
     document.getElementById('device-mic').addEventListener('change', async (e) => {
         if (!livekitRoom) return;
         try {
             await livekitRoom.switchActiveDevice('audioinput', e.target.value);
+            updateSelfTile();
         } catch (err) { console.error('[device switch mic]', err); }
     });
     document.getElementById('device-speaker').addEventListener('change', async (e) => {
