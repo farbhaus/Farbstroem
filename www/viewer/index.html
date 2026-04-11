@@ -105,6 +105,30 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .conf-prompt-skip:hover { color: var(--text); background: none; border-color: transparent; }
 
+/* ---- Device picker ---- */
+#device-picker-overlay {
+    position: fixed; inset: 0; z-index: 150;
+    background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+#device-picker-overlay.hidden { display: none; }
+.device-picker-row { margin-bottom: 14px; text-align: left; }
+.device-picker-row label {
+    display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--dim); margin-bottom: 4px;
+}
+.device-picker-row select {
+    width: 100%; padding: 8px 10px; font: inherit; font-size: 13px;
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; outline: none;
+    -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23777' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center;
+    padding-right: 28px;
+}
+.device-picker-row select:focus { border-color: var(--dim); }
+
 /* ---- App layout ---- */
 #app { display: none; flex-direction: column; height: 100vh; height: 100dvh; }
 #app.visible { display: flex; }
@@ -590,6 +614,28 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     </div>
 </div>
 
+<!-- Device picker modal -->
+<div id="device-picker-overlay" class="hidden">
+    <div class="conf-prompt-box" style="width:340px">
+        <div class="conf-prompt-title">Device Settings</div>
+        <div class="device-picker-row">
+            <label>Camera</label>
+            <select id="device-camera"></select>
+        </div>
+        <div class="device-picker-row">
+            <label>Microphone</label>
+            <select id="device-mic"></select>
+        </div>
+        <div class="device-picker-row">
+            <label>Speaker</label>
+            <select id="device-speaker"></select>
+        </div>
+        <div style="text-align:right;margin-top:16px">
+            <button class="conf-prompt-btn" id="device-picker-close" style="width:auto;padding:8px 24px">Done</button>
+        </div>
+    </div>
+</div>
+
 <!-- Main app -->
 <div id="app">
 
@@ -700,6 +746,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             </button>
             <button class="tb-btn" id="screen-btn" title="Share Screen">
                 <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+            </button>
+            <button class="tb-btn" id="device-btn" title="Devices">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
         </div>
         <div class="tb-sep"></div>
@@ -1377,6 +1426,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         else if (pref === 'mic')  { cameraOn = false; micOn = true;  }
         else                      { cameraOn = false; micOn = false; }
 
+        // Auto-open conference panel when camera or mic is enabled
+        if ((cameraOn || micOn) && !confOpen) toggleConf();
+
         refreshConfButtons();
         setConfBtns({ disabled: true }, { disabled: true });
         try {
@@ -1659,7 +1711,14 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         try {
             const res = await fetch('/api/branding');
             if (!res.ok) return;
-            const { hasLogo, hasBg } = await res.json();
+            const { hasLogo, hasBg, colors } = await res.json();
+            // Apply custom color palette
+            if (colors) {
+                const map = { color_accent: '--accent', color_bg: '--bg', color_surface: '--surface', color_text: '--text', color_danger: '--danger', color_green: '--green' };
+                for (const [key, cssVar] of Object.entries(map)) {
+                    if (colors[key]) document.documentElement.style.setProperty(cssVar, colors[key]);
+                }
+            }
             if (hasLogo) {
                 document.querySelectorAll('.screen-logo, .brand-logo').forEach(img => {
                     img.src = '/api/branding/logo';
@@ -1970,6 +2029,74 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         }
         refreshConfButtons();
     }
+
+    // ---- Device picker ----
+
+    document.getElementById('device-btn').addEventListener('click', openDevicePicker);
+    document.getElementById('device-picker-close').addEventListener('click', () => {
+        document.getElementById('device-picker-overlay').classList.add('hidden');
+    });
+    document.getElementById('device-picker-overlay').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('device-picker-overlay'))
+            document.getElementById('device-picker-overlay').classList.add('hidden');
+    });
+
+    async function openDevicePicker() {
+        const overlay = document.getElementById('device-picker-overlay');
+        overlay.classList.remove('hidden');
+        try {
+            // Request permission first to get labeled devices
+            await navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(s => s.getTracks().forEach(t => t.stop()));
+        } catch {}
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        populateDeviceSelect('device-camera', devices.filter(d => d.kind === 'videoinput'));
+        populateDeviceSelect('device-mic', devices.filter(d => d.kind === 'audioinput'));
+        populateDeviceSelect('device-speaker', devices.filter(d => d.kind === 'audiooutput'));
+
+        // Pre-select current devices
+        if (livekitRoom) {
+            const camTrack = livekitRoom.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera)?.track;
+            const micTrack = livekitRoom.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone)?.track;
+            if (camTrack?.mediaStreamTrack) document.getElementById('device-camera').value = camTrack.mediaStreamTrack.getSettings().deviceId || '';
+            if (micTrack?.mediaStreamTrack) document.getElementById('device-mic').value = micTrack.mediaStreamTrack.getSettings().deviceId || '';
+        }
+    }
+
+    function populateDeviceSelect(selectId, devices) {
+        const sel = document.getElementById(selectId);
+        sel.innerHTML = '';
+        if (!devices.length) {
+            sel.innerHTML = '<option>No devices found</option>';
+            return;
+        }
+        devices.forEach((d, i) => {
+            const opt = document.createElement('option');
+            opt.value = d.deviceId;
+            opt.textContent = d.label || `Device ${i + 1}`;
+            sel.appendChild(opt);
+        });
+    }
+
+    document.getElementById('device-camera').addEventListener('change', async (e) => {
+        if (!livekitRoom) return;
+        try {
+            await livekitRoom.switchActiveDevice('videoinput', e.target.value);
+            updateSelfTile();
+        } catch (err) { console.error('[device switch cam]', err); }
+    });
+    document.getElementById('device-mic').addEventListener('change', async (e) => {
+        if (!livekitRoom) return;
+        try {
+            await livekitRoom.switchActiveDevice('audioinput', e.target.value);
+            updateSelfTile();
+        } catch (err) { console.error('[device switch mic]', err); }
+    });
+    document.getElementById('device-speaker').addEventListener('change', async (e) => {
+        if (!livekitRoom) return;
+        try {
+            await livekitRoom.switchActiveDevice('audiooutput', e.target.value);
+        } catch (err) { console.error('[device switch speaker]', err); }
+    });
 
     // ---- Presenter moderation (kick / mute) ----
 
