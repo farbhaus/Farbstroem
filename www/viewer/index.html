@@ -226,7 +226,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     position: absolute; inset: 0; z-index: 7;
     pointer-events: none; overflow: hidden;
 }
-#pointer-overlay.active { pointer-events: auto; cursor: crosshair; touch-action: none; }
+#pointer-overlay.active { pointer-events: auto; touch-action: none; }
 .remote-pointer {
     position: absolute; pointer-events: none;
     transition: left 0.05s linear, top 0.05s linear, opacity 0.5s ease;
@@ -1948,10 +1948,17 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         for (const pid of pointerCursors.keys()) hidePointer(pid);
     }
 
+    function pointerCursorUrl() {
+        const color = getPointerColor(participantId || 'me');
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="${color}" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6" stroke-linecap="round"/></svg>`;
+        return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}") 2 2, crosshair`;
+    }
+
     document.getElementById('pointer-btn').addEventListener('click', () => {
         pointerMode = !pointerMode;
         document.getElementById('pointer-btn').classList.toggle('active', pointerMode);
         pOverlay.classList.toggle('active', pointerMode);
+        pOverlay.style.cursor = pointerMode ? pointerCursorUrl() : '';
         if (!pointerMode && ws?.readyState === 1) {
             ws.send(JSON.stringify({ type: 'pointer:hide' }));
         }
