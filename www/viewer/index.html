@@ -376,17 +376,17 @@ body.mode-call #stream-assigned-banner.visible { display: flex; }
     border-radius: 5px; font: inherit; font-weight: 600; cursor: pointer;
 }
 
+/* Matches #offline-screen styling — same background / dot / label layout
+   so the "stream ended" state looks like the familiar "waiting for source"
+   state, just with different copy. */
 #stream-removed-overlay {
     position: absolute; inset: 0; z-index: 10;
-    display: none; flex-direction: column; align-items: center; justify-content: center;
-    gap: 16px; background: rgba(0,0,0,0.92); padding: 24px; text-align: center;
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: var(--bg); gap: 12px; padding: 24px; text-align: center;
 }
 body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
-#stream-removed-overlay .offline-label { color: #fff; font-size: 16px; max-width: 520px; line-height: 1.4; }
-#stream-removed-overlay button {
-    padding: 10px 22px; border: none; background: var(--danger); color: #fff;
-    border-radius: 6px; font: inherit; font-weight: 600; cursor: pointer;
-}
+#stream-removed-overlay .offline-label { max-width: 520px; line-height: 1.4; }
 
 /* Call-room badge on landing screen */
 .call-room-badge {
@@ -778,8 +778,8 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 <button type="button" id="stream-assigned-refresh">Refresh</button>
             </div>
             <div id="stream-removed-overlay">
+                <div class="offline-dot"></div>
                 <div class="offline-label">Stream has ended. This room is now call-only — please exit and rejoin.</div>
-                <button type="button" id="stream-removed-exit">Exit room</button>
             </div>
         </div>
 
@@ -1325,9 +1325,10 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             }
             const savedSession = JSON.parse(sessionStorage.getItem(`viewer_session_${slug}`) || 'null');
             // If the room's broadcast mode flipped since we joined (admin
-            // attached or cleared a stream key), the saved session is stale —
-            // it carries the old streamKey and would lock the page into the
-            // wrong mode. Drop it and fall through to the auto-rejoin branch.
+            // attached or cleared a stream key), the saved session is stale:
+            // its streamKey would lock the page into the old mode. Drop it,
+            // then fall through to the auto-rejoin path so the user is put
+            // back into the room without having to re-enter their name.
             const savedHasKey = !!(savedSession && savedSession.streamKey);
             const serverHasKey = !!roomInfo.has_stream_key;
             const modeFlipped = savedSession && (savedHasKey !== serverHasKey);
@@ -1343,9 +1344,14 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             } else if (savedSession && !modeFlipped && roomInfo.status === 'ended') {
                 sessionStorage.removeItem(`viewer_session_${slug}`);
                 document.getElementById('join-screen').classList.remove('hidden');
-            } else if (autoName) {
-                document.getElementById('name-input').value = autoName;
-                if (autoPassword) document.getElementById('password-input').value = autoPassword;
+            } else if (autoName || (modeFlipped && savedName)) {
+                // ?n= from admin one-shot links OR a known returning user
+                // whose session we just invalidated — skip the join form.
+                // URL params (role, pk) survive location.reload(), so host
+                // privilege is preserved automatically.
+                document.getElementById('name-input').value = autoName || savedName;
+                const pw = autoPassword || savedPass;
+                if (pw) document.getElementById('password-input').value = pw;
                 doJoin();
             } else {
                 document.getElementById('join-screen').classList.remove('hidden');
@@ -1653,8 +1659,6 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 
     document.getElementById('stream-assigned-refresh')
         .addEventListener('click', () => location.reload());
-    document.getElementById('stream-removed-exit')
-        .addEventListener('click', () => document.getElementById('leave-btn').click());
 
     // ---- Main player ----
 
@@ -2284,7 +2288,9 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 
     // ---- Presenter moderation (kick / mute) ----
 
-    document.getElementById('left-panel').addEventListener('click', async (e) => {
+    // Delegated at the app level because tiles live in #left-panel in
+    // broadcast mode and #call-grid in call mode. One listener handles both.
+    document.getElementById('app').addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn || myRole !== 'presenter') return;
         e.stopPropagation();
