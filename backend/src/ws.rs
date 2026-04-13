@@ -603,6 +603,28 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
         });
     }
 
+    // stream:assigned
+    {
+        let mut rx = state.events.stream_key_assigned.subscribe();
+        tokio::spawn(async move {
+            while let Ok(slug) = rx.recv().await {
+                let msg = json!({"type": "stream:assigned"}).to_string();
+                broadcast_to_room(&WS_ROOMS, &slug, &msg).await;
+            }
+        });
+    }
+
+    // stream:removed
+    {
+        let mut rx = state.events.stream_key_removed.subscribe();
+        tokio::spawn(async move {
+            while let Ok(slug) = rx.recv().await {
+                let msg = json!({"type": "stream:removed"}).to_string();
+                broadcast_to_room(&WS_ROOMS, &slug, &msg).await;
+            }
+        });
+    }
+
     // file:shared
     {
         let mut rx = state.events.file_shared.subscribe();

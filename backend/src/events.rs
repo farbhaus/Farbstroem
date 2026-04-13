@@ -25,6 +25,8 @@ pub struct EventChannels {
     pub room_live: broadcast::Sender<String>,
     pub room_pending: broadcast::Sender<String>,
     pub room_ended: broadcast::Sender<String>,
+    pub stream_key_assigned: broadcast::Sender<String>,
+    pub stream_key_removed: broadcast::Sender<String>,
     pub file_shared: broadcast::Sender<FileSharedEvent>,
     pub participant_kicked: broadcast::Sender<KickedEvent>,
 }
@@ -35,6 +37,8 @@ impl EventChannels {
             room_live: broadcast::channel(64).0,
             room_pending: broadcast::channel(64).0,
             room_ended: broadcast::channel(64).0,
+            stream_key_assigned: broadcast::channel(64).0,
+            stream_key_removed: broadcast::channel(64).0,
             file_shared: broadcast::channel(64).0,
             participant_kicked: broadcast::channel(64).0,
         }
