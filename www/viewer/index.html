@@ -234,13 +234,13 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .remote-pointer.faded { opacity: 0; }
 .remote-pointer-dot {
-    width: 14px; height: 14px; border-radius: 50%;
-    border: 2px solid #fff;
-    box-shadow: 0 0 4px rgba(0,0,0,0.5);
-    margin-left: -7px; margin-top: -7px;
+    width: 20px; height: 20px;
+    margin-left: -2px; margin-top: -2px;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
 }
+.remote-pointer-dot svg { width: 100%; height: 100%; stroke: #fff; stroke-width: 1.5; stroke-linejoin: round; }
 .remote-pointer-label {
-    position: absolute; left: 10px; top: -4px;
+    position: absolute; left: 16px; top: 8px;
     font-size: 10px; font-weight: 700; color: #fff;
     white-space: nowrap; padding: 1px 6px; border-radius: 3px;
     pointer-events: none;
@@ -1922,7 +1922,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             el.className = 'remote-pointer';
             const color = getPointerColor(pid);
             el.innerHTML =
-                `<div class="remote-pointer-dot" style="background:${color}"></div>` +
+                `<div class="remote-pointer-dot"><svg viewBox="0 0 24 24" fill="${color}"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6" stroke-linecap="round"/></svg></div>` +
                 `<div class="remote-pointer-label" style="background:${color}">${esc(name)}</div>`;
             pOverlay.appendChild(el);
             entry = { el, fadeTimer: null };
