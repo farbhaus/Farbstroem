@@ -1324,14 +1324,23 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 return;
             }
             const savedSession = JSON.parse(sessionStorage.getItem(`viewer_session_${slug}`) || 'null');
-            if (savedSession && roomInfo.status !== 'ended') {
+            // If the room's broadcast mode flipped since we joined (admin
+            // attached or cleared a stream key), the saved session is stale —
+            // it carries the old streamKey and would lock the page into the
+            // wrong mode. Drop it and fall through to the auto-rejoin branch.
+            const savedHasKey = !!(savedSession && savedSession.streamKey);
+            const serverHasKey = !!roomInfo.has_stream_key;
+            const modeFlipped = savedSession && (savedHasKey !== serverHasKey);
+            if (modeFlipped) sessionStorage.removeItem(`viewer_session_${slug}`);
+
+            if (savedSession && !modeFlipped && roomInfo.status !== 'ended') {
                 participantId = savedSession.participantId;
                 myToken       = savedSession.token;
                 myRole        = isPresenter ? 'presenter' : (savedSession.role || 'viewer');
                 deliveryMode  = roomInfo.delivery_mode || savedSession.deliveryMode || 'webrtc';
                 streamKey     = savedSession.streamKey;
                 showApp(roomInfo.status);
-            } else if (savedSession && roomInfo.status === 'ended') {
+            } else if (savedSession && !modeFlipped && roomInfo.status === 'ended') {
                 sessionStorage.removeItem(`viewer_session_${slug}`);
                 document.getElementById('join-screen').classList.remove('hidden');
             } else if (autoName) {
