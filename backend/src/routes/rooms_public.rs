@@ -49,6 +49,7 @@ async fn room_info(
         let mut stmt = conn.prepare(
             "SELECT id, name, slug, delivery_mode, waiting_room, \
              CASE WHEN password_hash IS NOT NULL AND password_hash != '' THEN 1 ELSE 0 END as has_password, \
+             CASE WHEN stream_key_id IS NOT NULL THEN 1 ELSE 0 END as has_stream_key, \
              status \
              FROM rooms WHERE slug = ?1",
         )?;
@@ -59,6 +60,7 @@ async fn room_info(
             "delivery_mode",
             "waiting_room",
             "has_password",
+            "has_stream_key",
             "status",
         ];
         let row = stmt

@@ -20,11 +20,23 @@ pub struct KickedEvent {
     pub participant_id: String,
 }
 
+/// Emitted when an admin attaches a stream key to a room. Carries the new
+/// key_token so connected clients can swap it into their session and reload
+/// the player without bouncing through /join (which would require re-auth
+/// and, for presenters handed off via pre-session, would lose the role).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamKeyAssignedEvent {
+    pub slug: String,
+    pub stream_key: String,
+}
+
 #[derive(Clone)]
 pub struct EventChannels {
     pub room_live: broadcast::Sender<String>,
     pub room_pending: broadcast::Sender<String>,
     pub room_ended: broadcast::Sender<String>,
+    pub stream_key_assigned: broadcast::Sender<StreamKeyAssignedEvent>,
+    pub stream_key_removed: broadcast::Sender<String>,
     pub file_shared: broadcast::Sender<FileSharedEvent>,
     pub participant_kicked: broadcast::Sender<KickedEvent>,
 }
@@ -35,6 +47,8 @@ impl EventChannels {
             room_live: broadcast::channel(64).0,
             room_pending: broadcast::channel(64).0,
             room_ended: broadcast::channel(64).0,
+            stream_key_assigned: broadcast::channel(64).0,
+            stream_key_removed: broadcast::channel(64).0,
             file_shared: broadcast::channel(64).0,
             participant_kicked: broadcast::channel(64).0,
         }

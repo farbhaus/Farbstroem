@@ -322,6 +322,82 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .conf-tile.cam-off { background: var(--surface2); display: flex !important; flex-direction: column; align-items: center; justify-content: center; }
 .conf-tile.cam-off .conf-name { position: static; background: none; font-size: 13px; padding: 0; }
 
+/* ---- Call-only room mode ---- */
+/* A room with no stream key attached: no OvenPlayer, no offline screen,
+   no left-panel sidebar. Conference tiles render into #call-grid which
+   fills the center stage. */
+body.mode-call #player-wrap,
+body.mode-call #offline-screen,
+body.mode-call #left-panel,
+body.mode-call #conf-toggle { display: none !important; }
+body.mode-broadcast #call-grid,
+body.mode-broadcast #layout-btn,
+body.mode-broadcast #stream-assigned-banner,
+body.mode-call #stream-removed-overlay { display: none !important; }
+
+#call-grid {
+    position: absolute; inset: 0;
+    display: none;
+    padding: 8px; gap: 8px;
+    overflow: auto; align-content: start;
+    background: var(--bg);
+}
+body.mode-call #call-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-auto-rows: 1fr;
+}
+body.mode-call #call-grid .conf-tile { width: 100%; height: auto; aspect-ratio: 16/9; }
+body.mode-call #call-grid .conf-empty { grid-column: 1 / -1; }
+
+/* Presenter sub-layout: screen share owns the stage; tiles drop to a
+   filmstrip at the bottom. */
+body.mode-call.call-layout-presenter #call-grid {
+    inset: auto 0 0 0; height: 128px;
+    grid-template-columns: repeat(auto-fit, 200px);
+    grid-auto-rows: 112px;
+    padding: 4px 8px;
+    background: rgba(0,0,0,0.6);
+    z-index: 8;
+}
+body.mode-call.call-layout-presenter #call-grid .conf-tile { height: 100%; aspect-ratio: auto; }
+
+/* Stream-key transition affordances */
+#stream-assigned-banner {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 9;
+    display: none; align-items: center; justify-content: center; gap: 12px;
+    padding: 10px 14px; background: rgba(20,20,20,0.95);
+    border-bottom: 1px solid var(--border);
+    color: #fff; font-size: 13px;
+}
+body.mode-call #stream-assigned-banner.visible { display: flex; }
+#stream-assigned-banner button {
+    padding: 6px 14px; border: none; background: var(--text); color: var(--bg);
+    border-radius: 5px; font: inherit; font-weight: 600; cursor: pointer;
+}
+
+/* Matches #offline-screen styling — same background / dot / label layout
+   so the "stream ended" state looks like the familiar "waiting for source"
+   state, just with different copy. */
+#stream-removed-overlay {
+    position: absolute; inset: 0; z-index: 10;
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: var(--bg); gap: 12px; padding: 24px; text-align: center;
+}
+body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
+#stream-removed-overlay .offline-label { max-width: 520px; line-height: 1.4; }
+
+/* Call-room badge on landing screen */
+.call-room-badge {
+    display: inline-block; margin-left: 8px;
+    padding: 2px 8px; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    background: var(--surface2); color: var(--dim);
+    border: 1px solid var(--border); border-radius: 3px;
+    vertical-align: middle;
+}
+
 /* ---- Chat ---- */
 #chat-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 
@@ -687,6 +763,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             <div id="player-wrap">
                 <div id="player"></div>
             </div>
+            <div id="call-grid"></div>
             <div id="screenshare-wrap">
                 <video id="screenshare-video" autoplay playsinline></video>
                 <div id="screenshare-label"></div>
@@ -695,6 +772,14 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             <div id="offline-screen">
                 <div class="offline-dot"></div>
                 <div class="offline-label" id="offline-msg">Waiting for livestream source...</div>
+            </div>
+            <div id="stream-assigned-banner">
+                <span>The session has started — please refresh the page.</span>
+                <button type="button" id="stream-assigned-refresh">Refresh</button>
+            </div>
+            <div id="stream-removed-overlay">
+                <div class="offline-dot"></div>
+                <div class="offline-label">This session has ended but the room can still be used for call purposes, please exit and rejoin the room.</div>
             </div>
         </div>
 
@@ -756,6 +841,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             <button class="tb-btn" id="pointer-btn" title="Pointer">
                 <svg viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6" stroke-linecap="round"/></svg>
             </button>
+            <button class="tb-btn" id="layout-btn" title="Switch layout">
+                <svg viewBox="0 0 24 24" id="layout-btn-icon-grid"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                <svg viewBox="0 0 24 24" id="layout-btn-icon-presenter" style="display:none"><rect x="3" y="3" width="18" height="13"/><rect x="3" y="18" width="5" height="3"/><rect x="10" y="18" width="5" height="3"/><rect x="17" y="18" width="4" height="3"/></svg>
+            </button>
             <button class="tb-btn" id="conf-toggle" title="Participants">
                 <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </button>
@@ -815,6 +904,15 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     let streamKey     = null;
     let player        = null;
     let statusInterval = null;
+
+    // 'broadcast' (OvenPlayer stage) or 'call' (LiveKit-only grid).
+    let roomMode      = 'broadcast';
+    // Call-mode sub-layout: 'grid' (tiles fill stage) or 'presenter'
+    // (screen share fills stage, tiles filmstrip).
+    let callLayout    = 'grid';
+    // True once the user manually toggles the layout. Prevents auto-switch
+    // from fighting the user mid-screen-share. Cleared when the share ends.
+    let layoutOverride = false;
 
     let myRole = isPresenter ? 'presenter' : 'viewer';
 
@@ -882,6 +980,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         track.attach(document.getElementById('screenshare-video'));
         document.getElementById('screenshare-label').textContent = label;
         document.getElementById('screenshare-wrap').classList.add('active');
+        // Auto-switch call-mode to Presenter unless the user has manually
+        // picked a layout for this share session.
+        if (roomMode === 'call' && !layoutOverride) setCallLayout('presenter');
     }
 
     function hideScreenShare() {
@@ -891,7 +992,34 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         }
         document.getElementById('screenshare-wrap').classList.remove('active');
         activeScreenShareId = null;
+        // Share ended → return to Grid and drop the manual-override flag so
+        // the next share can auto-switch again.
+        if (roomMode === 'call') {
+            layoutOverride = false;
+            setCallLayout('grid');
+        }
     }
+
+    function setCallLayout(layout) {
+        callLayout = layout;
+        document.body.classList.toggle('call-layout-grid', layout === 'grid');
+        document.body.classList.toggle('call-layout-presenter', layout === 'presenter');
+        const gridIcon = document.getElementById('layout-btn-icon-grid');
+        const presIcon = document.getElementById('layout-btn-icon-presenter');
+        // Show the icon of the layout you'd switch *to* on click.
+        if (gridIcon && presIcon) {
+            gridIcon.style.display = layout === 'presenter' ? '' : 'none';
+            presIcon.style.display = layout === 'presenter' ? 'none' : '';
+        }
+    }
+
+    document.getElementById('layout-btn').addEventListener('click', () => {
+        if (roomMode !== 'call') return;
+        setCallLayout(callLayout === 'grid' ? 'presenter' : 'grid');
+        // If a share is active, remember the user's choice so auto-switch
+        // doesn't clobber it until the share ends.
+        if (activeScreenShareTrack) layoutOverride = true;
+    });
 
     async function initLiveKit() {
         if (livekitRoom) { await livekitRoom.disconnect(); livekitRoom = null; }
@@ -984,8 +1112,14 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     }
 
     function syncConferenceTiles() {
-        const tilesEl = document.getElementById('conf-tiles');
+        // In call mode the tiles live in the center-stage grid; otherwise in
+        // the left sidebar. Move #self-tile + #conf-empty into the active
+        // container so existing code (and CSS) keeps working unchanged.
+        const tilesEl = document.getElementById(roomMode === 'call' ? 'call-grid' : 'conf-tiles');
         const emptyEl = document.getElementById('conf-empty');
+        const selfTile = document.getElementById('self-tile');
+        if (selfTile && selfTile.parentElement !== tilesEl) tilesEl.appendChild(selfTile);
+        if (emptyEl && emptyEl.parentElement !== tilesEl) tilesEl.appendChild(emptyEl);
 
         // LiveKit peers keyed by identity (== participantId on the server side).
         const lkMap = livekitRoom
@@ -1175,7 +1309,14 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             }
             roomInfo = await res.json();
             document.title = roomInfo.name + ' — Ze Maria';
-            document.getElementById('join-room-name').textContent = roomInfo.name;
+            const nameEl = document.getElementById('join-room-name');
+            nameEl.textContent = roomInfo.name;
+            if (!roomInfo.has_stream_key) {
+                const badge = document.createElement('span');
+                badge.className = 'call-room-badge';
+                badge.textContent = 'Call room';
+                nameEl.appendChild(badge);
+            }
             if (roomInfo.has_password) document.getElementById('password-row').style.display = '';
             // If this tab was kicked, stay on kicked screen until manually cleared
             if (sessionStorage.getItem(`viewer_kicked_${slug}`)) {
@@ -1183,19 +1324,34 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
                 return;
             }
             const savedSession = JSON.parse(sessionStorage.getItem(`viewer_session_${slug}`) || 'null');
-            if (savedSession && roomInfo.status !== 'ended') {
+            // If the room's broadcast mode flipped since we joined (admin
+            // attached or cleared a stream key), the saved session is stale:
+            // its streamKey would lock the page into the old mode. Drop it,
+            // then fall through to the auto-rejoin path so the user is put
+            // back into the room without having to re-enter their name.
+            const savedHasKey = !!(savedSession && savedSession.streamKey);
+            const serverHasKey = !!roomInfo.has_stream_key;
+            const modeFlipped = savedSession && (savedHasKey !== serverHasKey);
+            if (modeFlipped) sessionStorage.removeItem(`viewer_session_${slug}`);
+
+            if (savedSession && !modeFlipped && roomInfo.status !== 'ended') {
                 participantId = savedSession.participantId;
                 myToken       = savedSession.token;
                 myRole        = isPresenter ? 'presenter' : (savedSession.role || 'viewer');
                 deliveryMode  = roomInfo.delivery_mode || savedSession.deliveryMode || 'webrtc';
                 streamKey     = savedSession.streamKey;
                 showApp(roomInfo.status);
-            } else if (savedSession && roomInfo.status === 'ended') {
+            } else if (savedSession && !modeFlipped && roomInfo.status === 'ended') {
                 sessionStorage.removeItem(`viewer_session_${slug}`);
                 document.getElementById('join-screen').classList.remove('hidden');
-            } else if (autoName) {
-                document.getElementById('name-input').value = autoName;
-                if (autoPassword) document.getElementById('password-input').value = autoPassword;
+            } else if (autoName || (modeFlipped && savedName)) {
+                // ?n= from admin one-shot links OR a known returning user
+                // whose session we just invalidated — skip the join form.
+                // URL params (role, pk) survive location.reload(), so host
+                // privilege is preserved automatically.
+                document.getElementById('name-input').value = autoName || savedName;
+                const pw = autoPassword || savedPass;
+                if (pw) document.getElementById('password-input').value = pw;
                 doJoin();
             } else {
                 document.getElementById('join-screen').classList.remove('hidden');
@@ -1387,6 +1543,13 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
         document.getElementById('room-name-label').textContent = roomInfo?.name || slug;
 
+        // Room mode: 'broadcast' (OvenPlayer stage) or 'call' (LiveKit-only grid).
+        // Driven by presence of a stream key — no separate flag in the DB.
+        roomMode = streamKey ? 'broadcast' : 'call';
+        document.body.classList.remove('mode-broadcast', 'mode-call');
+        document.body.classList.add(`mode-${roomMode}`);
+        if (roomMode === 'call') setCallLayout('grid');
+
         setRoomStatus(initialStatus || 'pending');
 
         requestAnimationFrame(() => { sizePlayer(); initPlayer(); });
@@ -1472,6 +1635,56 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         }
     }
 
+    // ---- Stream-key transitions ----
+    //
+    // Both handlers update the saved session in place so that a refresh
+    // (or a leave+rejoin) drops the user into the right mode without a
+    // re-auth. Re-auth would fail to preserve presenter privilege for
+    // hosts handed off via admin pre-session (no presenter_key in URL).
+
+    function updateSavedStreamKey(newKey) {
+        streamKey = newKey || null;
+        const raw = sessionStorage.getItem(`viewer_session_${slug}`);
+        if (!raw) return;
+        try {
+            const s = JSON.parse(raw);
+            s.streamKey = streamKey;
+            sessionStorage.setItem(`viewer_session_${slug}`, JSON.stringify(s));
+        } catch {}
+    }
+
+    function handleStreamAssigned(newKey) {
+        updateSavedStreamKey(newKey);
+        // A stream was attached while this client was sitting on the
+        // "stream ended" overlay — reload the player and dismiss it
+        // instead of keeping them stuck.
+        const overlay = document.getElementById('stream-removed-overlay');
+        if (overlay.classList.contains('visible')) {
+            overlay.classList.remove('visible');
+            reloadPlayer();
+            return;
+        }
+        // Call-mode client: prompt refresh so the page boots into
+        // broadcast mode with OvenPlayer.
+        if (roomMode === 'call') {
+            document.getElementById('stream-assigned-banner').classList.add('visible');
+        }
+    }
+
+    function handleStreamRemoved() {
+        updateSavedStreamKey(null);
+        // Broadcast-mode client: freeze the player and show the overlay.
+        if (roomMode !== 'broadcast') return;
+        if (player) {
+            try { player.remove(); } catch {}
+            player = null;
+        }
+        document.getElementById('stream-removed-overlay').classList.add('visible');
+    }
+
+    document.getElementById('stream-assigned-refresh')
+        .addEventListener('click', () => location.reload());
+
     // ---- Main player ----
 
     function reloadPlayer() {
@@ -1490,12 +1703,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
     function initPlayer() {
         if (player) return;
-
-        if (!streamKey) {
-            document.getElementById('offline-screen').classList.add('visible');
-            document.getElementById('offline-msg').textContent = 'No stream configured for this room.';
-            return;
-        }
+        // Call-only rooms never instantiate OvenPlayer — the conference grid
+        // is the stage. The offline-screen is a broadcast-mode concept and
+        // stays hidden.
+        if (roomMode === 'call') return;
 
         const host    = location.host;
         const proto   = location.protocol === 'https:' ? 'https' : 'http';
@@ -1634,6 +1845,8 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             if (msg.type === 'room:live')    { clearTimeout(offlineTimer); setRoomStatus('live'); reloadPlayer(); }
             if (msg.type === 'room:pending') { setRoomStatus('pending'); }
             if (msg.type === 'room:ended')   { setRoomStatus('ended'); sessionStorage.removeItem(`viewer_session_${slug}`); }
+            if (msg.type === 'stream:assigned') handleStreamAssigned(msg.streamKey);
+            if (msg.type === 'stream:removed')  handleStreamRemoved();
             if (msg.type === 'participants:update') updateRoster(msg.participants);
             if (msg.type === 'chat:history') {
                 msg.messages.forEach(m => {
@@ -2107,7 +2320,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
     // ---- Presenter moderation (kick / mute) ----
 
-    document.getElementById('left-panel').addEventListener('click', async (e) => {
+    // Delegated at the app level because tiles live in #left-panel in
+    // broadcast mode and #call-grid in call mode. One listener handles both.
+    document.getElementById('app').addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn || myRole !== 'presenter') return;
         e.stopPropagation();

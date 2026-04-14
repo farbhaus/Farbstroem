@@ -281,6 +281,27 @@ async fn update_room(
         return Err(AppError::NotFound("Room not found".into()));
     }
 
+    // Capture the current stream_key_id + slug so we can emit the right
+    // WS event (stream:assigned / stream:removed) after the UPDATE commits.
+    // Only queried when the request actually touches stream_key_id.
+    let wants_stream_key_change = body.get("stream_key_id").is_some();
+    let (old_sk_id, slug_for_event): (Option<String>, String) = if wants_stream_key_change {
+        let conn = state.db.get()?;
+        let id_q = id.clone();
+        tokio::task::spawn_blocking(move || {
+            conn.query_row(
+                "SELECT stream_key_id, slug FROM rooms WHERE id = ?1",
+                rusqlite::params![id_q],
+                |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, String>(1)?)),
+            )
+        })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    } else {
+        (None, String::new())
+    };
+
     // Build dynamic SET clauses
     let mut set_clauses: Vec<String> = Vec::new();
     let mut params: Vec<Box<dyn rusqlite::types::ToSql + Send>> = Vec::new();
@@ -423,6 +444,35 @@ async fn update_room(
     })
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
+
+    if wants_stream_key_change {
+        let new_sk_id = body
+            .get("stream_key_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        match (old_sk_id.is_some(), new_sk_id.is_some()) {
+            (false, true) => {
+                // Pull the fresh key_token off the row we just returned so
+                // the WS event can ship it to clients (avoids a second query
+                // and keeps the value consistent with what /join would give).
+                let key_token = room
+                    .get("key_token")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let _ = state.events.stream_key_assigned.send(
+                    crate::events::StreamKeyAssignedEvent {
+                        slug: slug_for_event,
+                        stream_key: key_token,
+                    },
+                );
+            }
+            (true, false) => {
+                let _ = state.events.stream_key_removed.send(slug_for_event);
+            }
+            _ => {}
+        }
+    }
 
     Ok(Json(room))
 }
