@@ -779,7 +779,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             </div>
             <div id="stream-removed-overlay">
                 <div class="offline-dot"></div>
-                <div class="offline-label">Stream has ended. This room is now call-only — please exit and rejoin.</div>
+                <div class="offline-label">This session has ended but the room can still be used for call purposes, please exit and rejoin the room.</div>
             </div>
         </div>
 
@@ -1636,20 +1636,45 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     }
 
     // ---- Stream-key transitions ----
+    //
+    // Both handlers update the saved session in place so that a refresh
+    // (or a leave+rejoin) drops the user into the right mode without a
+    // re-auth. Re-auth would fail to preserve presenter privilege for
+    // hosts handed off via admin pre-session (no presenter_key in URL).
 
-    function showStreamAssignedBanner() {
-        // Only meaningful in call mode — broadcast-mode clients already
-        // have the stream, they just reconnected after a change.
-        if (roomMode !== 'call') return;
-        document.getElementById('stream-assigned-banner').classList.add('visible');
+    function updateSavedStreamKey(newKey) {
+        streamKey = newKey || null;
+        const raw = sessionStorage.getItem(`viewer_session_${slug}`);
+        if (!raw) return;
+        try {
+            const s = JSON.parse(raw);
+            s.streamKey = streamKey;
+            sessionStorage.setItem(`viewer_session_${slug}`, JSON.stringify(s));
+        } catch {}
     }
 
-    function showStreamRemovedOverlay() {
-        // Only meaningful in broadcast mode — call-mode clients never had
-        // a stream to lose.
+    function handleStreamAssigned(newKey) {
+        updateSavedStreamKey(newKey);
+        // A stream was attached while this client was sitting on the
+        // "stream ended" overlay — reload the player and dismiss it
+        // instead of keeping them stuck.
+        const overlay = document.getElementById('stream-removed-overlay');
+        if (overlay.classList.contains('visible')) {
+            overlay.classList.remove('visible');
+            reloadPlayer();
+            return;
+        }
+        // Call-mode client: prompt refresh so the page boots into
+        // broadcast mode with OvenPlayer.
+        if (roomMode === 'call') {
+            document.getElementById('stream-assigned-banner').classList.add('visible');
+        }
+    }
+
+    function handleStreamRemoved() {
+        updateSavedStreamKey(null);
+        // Broadcast-mode client: freeze the player and show the overlay.
         if (roomMode !== 'broadcast') return;
-        // Freeze the player behind the overlay instead of letting it keep
-        // buffering a stream that no longer exists.
         if (player) {
             try { player.remove(); } catch {}
             player = null;
@@ -1820,8 +1845,8 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             if (msg.type === 'room:live')    { clearTimeout(offlineTimer); setRoomStatus('live'); reloadPlayer(); }
             if (msg.type === 'room:pending') { setRoomStatus('pending'); }
             if (msg.type === 'room:ended')   { setRoomStatus('ended'); sessionStorage.removeItem(`viewer_session_${slug}`); }
-            if (msg.type === 'stream:assigned') showStreamAssignedBanner();
-            if (msg.type === 'stream:removed')  showStreamRemovedOverlay();
+            if (msg.type === 'stream:assigned') handleStreamAssigned(msg.streamKey);
+            if (msg.type === 'stream:removed')  handleStreamRemoved();
             if (msg.type === 'participants:update') updateRoster(msg.participants);
             if (msg.type === 'chat:history') {
                 msg.messages.forEach(m => {

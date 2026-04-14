@@ -607,9 +607,13 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
     {
         let mut rx = state.events.stream_key_assigned.subscribe();
         tokio::spawn(async move {
-            while let Ok(slug) = rx.recv().await {
-                let msg = json!({"type": "stream:assigned"}).to_string();
-                broadcast_to_room(&WS_ROOMS, &slug, &msg).await;
+            while let Ok(event) = rx.recv().await {
+                let msg = json!({
+                    "type": "stream:assigned",
+                    "streamKey": event.stream_key,
+                })
+                .to_string();
+                broadcast_to_room(&WS_ROOMS, &event.slug, &msg).await;
             }
         });
     }

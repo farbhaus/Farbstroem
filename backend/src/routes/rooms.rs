@@ -452,7 +452,20 @@ async fn update_room(
             .map(|s| s.to_string());
         match (old_sk_id.is_some(), new_sk_id.is_some()) {
             (false, true) => {
-                let _ = state.events.stream_key_assigned.send(slug_for_event);
+                // Pull the fresh key_token off the row we just returned so
+                // the WS event can ship it to clients (avoids a second query
+                // and keeps the value consistent with what /join would give).
+                let key_token = room
+                    .get("key_token")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let _ = state.events.stream_key_assigned.send(
+                    crate::events::StreamKeyAssignedEvent {
+                        slug: slug_for_event,
+                        stream_key: key_token,
+                    },
+                );
             }
             (true, false) => {
                 let _ = state.events.stream_key_removed.send(slug_for_event);
