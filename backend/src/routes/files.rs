@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Multipart, Path, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{header, StatusCode},
     response::IntoResponse,
     routing::{get, post},
@@ -27,6 +27,7 @@ const SAFE_MIMES: &[&str] = &[
     "image/avif",
     "video/mp4",
     "video/quicktime",
+    "video/x-quicktime",
     "video/webm",
     "audio/mpeg",
     "audio/wav",
@@ -362,4 +363,5 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/{slug}/files", post(upload_file).get(list_files))
         .route("/{slug}/files/{fileId}/download", get(download_file))
+        .layer(DefaultBodyLimit::max(MAX_FILE_SIZE))
 }

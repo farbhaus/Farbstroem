@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, State},
-    routing::{delete, get},
+    routing::get,
     Json, Router,
 };
 use base64::Engine;

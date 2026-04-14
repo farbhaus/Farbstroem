@@ -16,6 +16,8 @@ struct LiveKitClaims {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LiveKitVideoGrant {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub room_admin: Option<bool>,
     pub room_join: bool,
     pub room: String,
     pub can_publish: bool,
@@ -40,7 +42,7 @@ impl LiveKitClient {
         }
     }
 
-    fn service_token(&self) -> String {
+    fn service_token(&self, room: &str) -> String {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -52,7 +54,13 @@ impl LiveKitClient {
             iat: now,
             exp: now + 600,
             nbf: now,
-            video: None,
+            video: Some(LiveKitVideoGrant {
+                room_admin: Some(true),
+                room_join: false,
+                room: room.to_string(),
+                can_publish: false,
+                can_subscribe: false,
+            }),
         };
 
         encode(
@@ -64,7 +72,7 @@ impl LiveKitClient {
     }
 
     pub async fn delete_room(&self, room_name: &str) -> Result<(), String> {
-        let token = self.service_token();
+        let token = self.service_token(room_name);
         let res = self
             .http
             .post(format!("{}/twirp/livekit.RoomService/DeleteRoom", self.api_url))
@@ -83,7 +91,7 @@ impl LiveKitClient {
     }
 
     pub async fn remove_participant(&self, room: &str, identity: &str) -> Result<(), String> {
-        let token = self.service_token();
+        let token = self.service_token(room);
         let res = self
             .http
             .post(format!("{}/twirp/livekit.RoomService/RemoveParticipant", self.api_url))
@@ -108,7 +116,7 @@ impl LiveKitClient {
         track_sid: &str,
         muted: bool,
     ) -> Result<(), String> {
-        let token = self.service_token();
+        let token = self.service_token(room);
         let res = self
             .http
             .post(format!("{}/twirp/livekit.RoomService/MutePublishedTrack", self.api_url))
@@ -117,7 +125,7 @@ impl LiveKitClient {
             .json(&serde_json::json!({
                 "room": room,
                 "identity": identity,
-                "track_sid": track_sid,
+                "trackSid": track_sid,
                 "muted": muted,
             }))
             .send()
@@ -160,6 +168,7 @@ impl LiveKitClient {
             exp: now + 86400, // 24 hours
             nbf: now,
             video: Some(LiveKitVideoGrant {
+                room_admin: None,
                 room_join: true,
                 room: room.to_string(),
                 can_publish: true,

@@ -358,6 +358,65 @@ main { margin-top: var(--nav-h); padding: 32px; }
                 <input type="file" id="bg-file-input" accept="image/*" style="display:none">
             </div>
         </div>
+
+        <div class="room-card" style="margin-top:12px">
+            <div class="room-card-header">
+                <div class="room-card-info">
+                    <div class="room-card-name">Color Palette</div>
+                    <div class="room-card-meta">Customize colors for both admin and room UI. Leave blank to use defaults.</div>
+                </div>
+                <div class="room-card-actions">
+                    <button class="btn btn-sm" id="colors-save-btn">Save</button>
+                    <button class="btn btn-sm btn-danger" id="colors-reset-btn">Reset</button>
+                </div>
+            </div>
+            <div class="room-card-body" style="padding:16px 20px 20px">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+                    <div class="form-row" style="margin:0">
+                        <label>Accent</label>
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <input type="color" id="color-accent" value="#FFAA00" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-accent-hex" placeholder="#FFAA00" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                        </div>
+                    </div>
+                    <div class="form-row" style="margin:0">
+                        <label>Background</label>
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <input type="color" id="color-bg" value="#0e0e0e" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-bg-hex" placeholder="#0e0e0e" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                        </div>
+                    </div>
+                    <div class="form-row" style="margin:0">
+                        <label>Surface</label>
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <input type="color" id="color-surface" value="#141414" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-surface-hex" placeholder="#141414" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                        </div>
+                    </div>
+                    <div class="form-row" style="margin:0">
+                        <label>Text</label>
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <input type="color" id="color-text" value="#eeeeee" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-text-hex" placeholder="#eeeeee" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                        </div>
+                    </div>
+                    <div class="form-row" style="margin:0">
+                        <label>Danger</label>
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <input type="color" id="color-danger" value="#E53935" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-danger-hex" placeholder="#E53935" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                        </div>
+                    </div>
+                    <div class="form-row" style="margin:0">
+                        <label>Success</label>
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <input type="color" id="color-green" value="#1A9B5A" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-green-hex" placeholder="#1A9B5A" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
 </div>
@@ -426,6 +485,24 @@ main { margin-top: var(--nav-h); padding: 32px; }
         <div class="modal-footer">
             <button class="btn" id="key-modal-cancel">Cancel</button>
             <button class="btn btn-primary" id="key-modal-save">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Enter Room (presenter name) modal -->
+<div class="modal-overlay" id="enter-modal" style="display:none">
+    <div class="modal" style="width:380px">
+        <div class="modal-header">
+            <span class="modal-title">Enter Room</span>
+            <button class="btn btn-sm" id="enter-modal-close">✕</button>
+        </div>
+        <div class="form-row">
+            <label>Your Name</label>
+            <input type="text" id="enter-name" placeholder="Host" value="Host">
+        </div>
+        <div class="modal-footer">
+            <button class="btn" id="enter-modal-cancel">Cancel</button>
+            <button class="btn btn-primary" id="enter-modal-go">Enter</button>
         </div>
     </div>
 </div>
@@ -775,7 +852,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
         const delivery_mode = document.getElementById('room-delivery').value;
         const waiting_room  = document.getElementById('room-waiting').checked;
         const expiresRaw    = document.getElementById('room-expires').value;
-        const expires_at    = expiresRaw ? new Date(expiresRaw).toISOString() : null;
+        const expires_at    = expiresRaw ? new Date(expiresRaw).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '') : null;
         const streamKeyId   = document.getElementById('room-stream-key').value;
 
         if (!name) { toast('Room name required'); return; }
@@ -805,16 +882,23 @@ main { margin-top: var(--nav-h); padding: 32px; }
 
     window.editRoom   = (id) => openRoomModal(id);
 
-    window.enterAsPresenter = async (id) => {
-        const name = prompt('Your name in the room:', 'Host');
-        if (name === null) return;
-        const res = await apiFetch(`/api/rooms/${id}/enter`, {
+    let enterRoomId = null;
+    window.enterAsPresenter = (id) => {
+        enterRoomId = id;
+        document.getElementById('enter-name').value = 'Host';
+        document.getElementById('enter-modal').style.display = '';
+        document.getElementById('enter-name').focus();
+        document.getElementById('enter-name').select();
+    };
+    async function doEnterRoom() {
+        const name = document.getElementById('enter-name').value.trim() || 'Host';
+        document.getElementById('enter-modal').style.display = 'none';
+        const res = await apiFetch(`/api/rooms/${enterRoomId}/enter`, {
             method: 'POST',
-            body: JSON.stringify({ name: name.trim() || 'Host' }),
+            body: JSON.stringify({ name }),
         });
         if (!res || !res.ok) { toast('Failed to enter room'); return; }
         const data = await res.json();
-        // Hand off credentials to the viewer tab via localStorage (consumed on first read)
         localStorage.setItem(`_presession_${data.slug}`, JSON.stringify({
             participantId: data.participantId,
             token:         data.token,
@@ -823,7 +907,11 @@ main { margin-top: var(--nav-h); padding: 32px; }
             role:          'presenter',
         }));
         window.open(`/watch/${data.slug}`, '_blank');
-    };
+    }
+    document.getElementById('enter-modal-go').addEventListener('click', doEnterRoom);
+    document.getElementById('enter-modal-cancel').addEventListener('click', () => document.getElementById('enter-modal').style.display = 'none');
+    document.getElementById('enter-modal-close').addEventListener('click', () => document.getElementById('enter-modal').style.display = 'none');
+    document.getElementById('enter-name').addEventListener('keydown', e => { if (e.key === 'Enter') doEnterRoom(); });
 
     window.deleteRoom = async (id) => {
         if (!confirm('Delete this room?')) return;
@@ -985,10 +1073,13 @@ main { margin-top: var(--nav-h); padding: 32px; }
 
     // ---- Branding ----
 
+    const COLOR_FIELDS = ['accent', 'bg', 'surface', 'text', 'danger', 'green'];
+    const COLOR_DEFAULTS = { accent: '#FFAA00', bg: '#0e0e0e', surface: '#141414', text: '#eeeeee', danger: '#E53935', green: '#1A9B5A' };
+
     async function loadBranding() {
         const res = await fetch('/api/branding');
         if (!res.ok) return;
-        const { hasLogo, hasBg } = await res.json();
+        const { hasLogo, hasBg, colors } = await res.json();
 
         document.getElementById('logo-preview').style.display = hasLogo ? '' : 'none';
         document.getElementById('logo-empty').style.display   = hasLogo ? 'none' : '';
@@ -997,7 +1088,58 @@ main { margin-top: var(--nav-h); padding: 32px; }
         document.getElementById('bg-preview').style.display = hasBg ? '' : 'none';
         document.getElementById('bg-empty').style.display   = hasBg ? 'none' : '';
         if (hasBg) document.getElementById('bg-preview').src = '/api/branding/bg?' + Date.now();
+
+        // Load color palette and apply to admin UI
+        if (colors) {
+            const cssMap = { accent: '--accent', bg: '--bg', surface: '--surface', text: '--text', danger: '--danger', green: '--green' };
+            for (const f of COLOR_FIELDS) {
+                const val = colors[`color_${f}`] || COLOR_DEFAULTS[f];
+                document.getElementById(`color-${f}`).value = val;
+                document.getElementById(`color-${f}-hex`).value = val;
+                if (colors[`color_${f}`]) document.documentElement.style.setProperty(cssMap[f], val);
+            }
+        }
     }
+
+    // Sync color picker ↔ hex input
+    for (const f of COLOR_FIELDS) {
+        document.getElementById(`color-${f}`).addEventListener('input', e => {
+            document.getElementById(`color-${f}-hex`).value = e.target.value;
+        });
+        document.getElementById(`color-${f}-hex`).addEventListener('input', e => {
+            if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) {
+                document.getElementById(`color-${f}`).value = e.target.value;
+            }
+        });
+    }
+
+    document.getElementById('colors-save-btn').addEventListener('click', async () => {
+        const body = {};
+        for (const f of COLOR_FIELDS) {
+            body[`color_${f}`] = document.getElementById(`color-${f}-hex`).value || '';
+        }
+        const res = await apiFetch('/api/admin/branding/colors', {
+            method: 'POST',
+            body: JSON.stringify(body),
+        });
+        if (res && res.ok) toast('Colors saved');
+        else toast('Save failed');
+    });
+
+    document.getElementById('colors-reset-btn').addEventListener('click', async () => {
+        const body = {};
+        for (const f of COLOR_FIELDS) {
+            body[`color_${f}`] = '';
+            document.getElementById(`color-${f}`).value = COLOR_DEFAULTS[f];
+            document.getElementById(`color-${f}-hex`).value = COLOR_DEFAULTS[f];
+        }
+        const res = await apiFetch('/api/admin/branding/colors', {
+            method: 'POST',
+            body: JSON.stringify(body),
+        });
+        if (res && res.ok) toast('Colors reset to defaults');
+        else toast('Reset failed');
+    });
 
     async function uploadBrandingAsset(asset) {
         const input = document.getElementById(`${asset}-file-input`);
@@ -1034,6 +1176,15 @@ main { margin-top: var(--nav-h); padding: 32px; }
     window.copy = copy;
 
     // ---- Init ----
+
+    // Apply branding colors on page load
+    fetch('/api/branding').then(r => r.ok ? r.json() : null).then(data => {
+        if (!data?.colors) return;
+        const cssMap = { accent: '--accent', bg: '--bg', surface: '--surface', text: '--text', danger: '--danger', green: '--green' };
+        for (const [f, cssVar] of Object.entries(cssMap)) {
+            if (data.colors[`color_${f}`]) document.documentElement.style.setProperty(cssVar, data.colors[`color_${f}`]);
+        }
+    }).catch(() => {});
 
     if (token) {
         fetch(API + '/api/rooms', { headers: { Authorization: `Bearer ${token}` } })

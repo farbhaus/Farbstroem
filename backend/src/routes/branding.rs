@@ -2,7 +2,7 @@ use axum::{
     extract::{Multipart, Path, State},
     http::{header, StatusCode},
     response::IntoResponse,
-    routing::{delete, get, post},
+    routing::{get, post},
     Json, Router,
 };
 use rusqlite::params;
@@ -26,9 +26,28 @@ async fn get_branding_status(
             .await
             .is_ok();
 
+    // Include color palette in branding status for one-call loading
+    let conn = state.db.get()?;
+    let colors = tokio::task::spawn_blocking(move || {
+        let mut result = serde_json::Map::new();
+        for &key in COLOR_KEYS {
+            if let Ok(val) = conn.query_row(
+                "SELECT value FROM settings WHERE key = ?1",
+                params![key],
+                |row| row.get::<_, String>(0),
+            ) {
+                result.insert(key.to_string(), Value::String(val));
+            }
+        }
+        result
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?;
+
     Ok(Json(json!({
         "hasLogo": has_logo,
         "hasBg": has_bg,
+        "colors": colors,
     })))
 }
 
@@ -148,12 +167,74 @@ async fn delete_asset(
     Ok(Json(json!({ "ok": true })))
 }
 
+const COLOR_KEYS: &[&str] = &[
+    "color_accent",
+    "color_bg",
+    "color_surface",
+    "color_text",
+    "color_danger",
+    "color_green",
+];
+
+async fn get_colors(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Value>, AppError> {
+    let conn = state.db.get()?;
+    let colors = tokio::task::spawn_blocking(move || {
+        let mut result = serde_json::Map::new();
+        for &key in COLOR_KEYS {
+            if let Ok(val) = conn.query_row(
+                "SELECT value FROM settings WHERE key = ?1",
+                params![key],
+                |row| row.get::<_, String>(0),
+            ) {
+                result.insert(key.to_string(), Value::String(val));
+            }
+        }
+        result
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    Ok(Json(Value::Object(colors)))
+}
+
+async fn save_colors(
+    _auth: AdminAuth,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, AppError> {
+    let conn = state.db.get()?;
+    tokio::task::spawn_blocking(move || {
+        for &key in COLOR_KEYS {
+            if let Some(val) = body.get(key).and_then(|v| v.as_str()) {
+                if val.is_empty() {
+                    conn.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
+                } else {
+                    conn.execute(
+                        "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+                        params![key, val],
+                    )?;
+                }
+            }
+        }
+        Ok::<_, rusqlite::Error>(())
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))??;
+
+    Ok(Json(json!({ "ok": true })))
+}
+
 pub fn public_router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(get_branding_status))
+        .route("/colors", get(get_colors))
         .route("/{asset}", get(get_asset))
 }
 
 pub fn admin_router() -> Router<Arc<AppState>> {
-    Router::new().route("/{asset}", post(upload_asset).delete(delete_asset))
+    Router::new()
+        .route("/colors", post(save_colors))
+        .route("/{asset}", post(upload_asset).delete(delete_asset))
 }

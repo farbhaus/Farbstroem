@@ -8,14 +8,13 @@ use axum::{
     Router,
 };
 use futures::{SinkExt, StreamExt};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 use tokio::sync::{mpsc, RwLock};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
-use crate::events::{FileSharedEvent, KickedEvent};
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -369,12 +368,27 @@ fn send_chat_history(
         Err(_) => return,
     };
 
+    // Interleave chat messages and file uploads by timestamp so files
+    // appear in their original chat-sequence position on rejoin.
     let mut stmt = match conn.prepare(
-        "SELECT cm.id, cm.name, cm.role, cm.text, cm.created_at
-         FROM chat_messages cm
-         JOIN rooms r ON r.id = cm.room_id
-         WHERE r.slug = ?1
-         ORDER BY cm.created_at DESC
+        "SELECT kind, id, name, role, text, file_name, size_bytes, mime_type, ts \
+         FROM ( \
+             SELECT 'chat' AS kind, cm.id, cm.name, cm.role, cm.text, \
+                    NULL AS file_name, NULL AS size_bytes, NULL AS mime_type, \
+                    cm.created_at AS ts \
+             FROM chat_messages cm \
+             JOIN rooms r ON r.id = cm.room_id \
+             WHERE r.slug = ?1 \
+             UNION ALL \
+             SELECT 'file' AS kind, sf.id, p.name, p.role, NULL AS text, \
+                    sf.original_name AS file_name, sf.size_bytes, sf.mime_type, \
+                    sf.created_at AS ts \
+             FROM session_files sf \
+             JOIN rooms r ON r.id = sf.room_id \
+             LEFT JOIN participants p ON p.id = sf.uploader_id \
+             WHERE r.slug = ?1 \
+         ) combined \
+         ORDER BY ts DESC \
          LIMIT 50",
     ) {
         Ok(s) => s,
@@ -383,13 +397,27 @@ fn send_chat_history(
 
     let messages: Vec<Value> = stmt
         .query_map(rusqlite::params![slug], |row| {
-            Ok(json!({
-                "id": row.get::<_, String>(0)?,
-                "name": row.get::<_, String>(1)?,
-                "role": row.get::<_, String>(2)?,
-                "text": row.get::<_, String>(3)?,
-                "ts": row.get::<_, String>(4)?,
-            }))
+            let kind: String = row.get(0)?;
+            if kind == "file" {
+                Ok(json!({
+                    "type": "file:shared",
+                    "id": row.get::<_, String>(1)?,
+                    "uploaderName": row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    "role": row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                    "name": row.get::<_, String>(5)?,
+                    "size": row.get::<_, i64>(6)?,
+                    "mime": row.get::<_, String>(7)?,
+                    "ts": row.get::<_, String>(8)?,
+                }))
+            } else {
+                Ok(json!({
+                    "id": row.get::<_, String>(1)?,
+                    "name": row.get::<_, String>(2)?,
+                    "role": row.get::<_, String>(3)?,
+                    "text": row.get::<_, String>(4)?,
+                    "ts": row.get::<_, String>(8)?,
+                }))
+            }
         })
         .ok()
         .map(|rows| rows.filter_map(|r| r.ok()).collect())
@@ -542,7 +570,27 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
         tokio::spawn(async move {
             while let Ok(slug) = rx.recv().await {
                 let msg = json!({"type": "room:ended"}).to_string();
-                broadcast_to_room(&WS_ROOMS, &slug, &msg).await;
+
+                // Send ended message + Close frame to every participant, then remove room
+                {
+                    let mut rooms = WS_ROOMS.write().await;
+                    if let Some(room) = rooms.remove(&slug) {
+                        for (_pid, participant) in room {
+                            let _ = participant.tx.send(Message::Text(msg.clone().into()));
+                            let _ = participant.tx.send(Message::Close(Some(CloseFrame {
+                                code: 1001,
+                                reason: "Room ended".into(),
+                            })));
+                            if let Some(timer) = participant.disconnect_timer {
+                                timer.abort();
+                            }
+                        }
+                    }
+                }
+
+                // Delete LiveKit room (best-effort, may already be done by caller)
+                let livekit = crate::livekit::LiveKitClient::new(&state.config, state.http_client.clone());
+                let _ = livekit.delete_room(&slug).await;
 
                 // Delete chat messages for this room
                 if let Ok(conn) = state.db.get() {
@@ -551,10 +599,32 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
                         rusqlite::params![slug],
                     );
                 }
+            }
+        });
+    }
 
-                // Remove the room from WS_ROOMS
-                let mut rooms = WS_ROOMS.write().await;
-                rooms.remove(&slug);
+    // stream:assigned
+    {
+        let mut rx = state.events.stream_key_assigned.subscribe();
+        tokio::spawn(async move {
+            while let Ok(event) = rx.recv().await {
+                let msg = json!({
+                    "type": "stream:assigned",
+                    "streamKey": event.stream_key,
+                })
+                .to_string();
+                broadcast_to_room(&WS_ROOMS, &event.slug, &msg).await;
+            }
+        });
+    }
+
+    // stream:removed
+    {
+        let mut rx = state.events.stream_key_removed.subscribe();
+        tokio::spawn(async move {
+            while let Ok(slug) = rx.recv().await {
+                let msg = json!({"type": "stream:removed"}).to_string();
+                broadcast_to_room(&WS_ROOMS, &slug, &msg).await;
             }
         });
     }
