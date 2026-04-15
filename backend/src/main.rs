@@ -45,6 +45,7 @@ async fn main() {
         config,
         http_client,
         admin_password_hash,
+        metrics_samples: tokio::sync::Mutex::new(state::MetricsSamples::default()),
     });
 
     // Ensure branding directory exists

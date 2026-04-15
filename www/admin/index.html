@@ -126,6 +126,20 @@ main { margin-top: var(--nav-h); padding: 32px; }
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* ---- Dashboard stat cards ---- */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.stat-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 24px;
+}
+.stat-label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); margin-bottom: 12px; }
+.stat-value { font-size: 28px; font-weight: 600; }
+.stat-value-sm { font-size: 18px; margin-bottom: 4px; }
+.stat-sub { font-size: 12px; color: var(--dim); margin-top: 4px; }
+.stat-dim { color: var(--dim); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-left: 6px; }
+.stat-bar { height: 6px; background: var(--surface2); border-radius: 3px; margin-top: 14px; overflow: hidden; }
+.stat-bar-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.3s; }
+
 /* ---- Room cards ---- */
 .room-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
@@ -278,6 +292,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
         <button class="btn btn-tab active" data-tab="rooms">Rooms</button>
         <button class="btn btn-tab" data-tab="keys">Stream Keys</button>
         <button class="btn btn-tab" data-tab="ome">Stats</button>
+        <button class="btn btn-tab" data-tab="dashboard">Dashboard</button>
         <button class="btn btn-tab" data-tab="branding">Branding</button>
     </div>
     <div class="nav-right">
@@ -318,6 +333,31 @@ main { margin-top: var(--nav-h); padding: 32px; }
         </div>
         <div id="keys-list">
             <div class="empty">Loading…</div>
+        </div>
+    </div>
+
+    <!-- Dashboard tab -->
+    <div id="tab-dashboard" style="display:none">
+        <div class="section-header">
+            <span class="section-title">Dashboard</span>
+        </div>
+        <div class="stat-grid">
+            <div class="stat-card">
+                <div class="stat-label">CPU</div>
+                <div class="stat-value" id="stat-cpu-value">—</div>
+                <div class="stat-bar"><div class="stat-bar-fill" id="stat-cpu-bar"></div></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Memory</div>
+                <div class="stat-value" id="stat-mem-value">—</div>
+                <div class="stat-sub" id="stat-mem-sub"></div>
+                <div class="stat-bar"><div class="stat-bar-fill" id="stat-mem-bar"></div></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Network</div>
+                <div class="stat-value stat-value-sm"><span id="stat-net-rx">—</span> <span class="stat-dim">rx</span></div>
+                <div class="stat-value stat-value-sm"><span id="stat-net-tx">—</span> <span class="stat-dim">tx</span></div>
+            </div>
         </div>
     </div>
 
@@ -609,11 +649,13 @@ main { margin-top: var(--nav-h); padding: 32px; }
             document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             activeTab = btn.dataset.tab;
-            document.getElementById('tab-rooms').style.display    = activeTab === 'rooms'    ? '' : 'none';
-            document.getElementById('tab-keys').style.display     = activeTab === 'keys'     ? '' : 'none';
-            document.getElementById('tab-ome').style.display      = activeTab === 'ome'      ? '' : 'none';
-            document.getElementById('tab-branding').style.display = activeTab === 'branding' ? '' : 'none';
+            document.getElementById('tab-rooms').style.display     = activeTab === 'rooms'     ? '' : 'none';
+            document.getElementById('tab-keys').style.display      = activeTab === 'keys'      ? '' : 'none';
+            document.getElementById('tab-ome').style.display       = activeTab === 'ome'       ? '' : 'none';
+            document.getElementById('tab-dashboard').style.display = activeTab === 'dashboard' ? '' : 'none';
+            document.getElementById('tab-branding').style.display  = activeTab === 'branding'  ? '' : 'none';
             if (activeTab === 'ome') renderOme();
+            if (activeTab === 'dashboard') loadDashboard();
             if (activeTab === 'branding') loadBranding();
         });
     });
@@ -621,7 +663,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
     // ---- Load data ----
 
     async function loadAll() {
-        await Promise.all([loadRooms(), loadKeys(), loadOme(), loadBranding()]);
+        await Promise.all([loadRooms(), loadKeys(), loadOme(), loadBranding(), loadDashboard()]);
     }
 
     async function loadRooms() {
@@ -1053,6 +1095,44 @@ main { margin-top: var(--nav-h); padding: 32px; }
         if (!bps) return '—';
         if (bps >= 1_000_000) return (bps / 1_000_000).toFixed(1) + ' Mbps';
         return Math.round(bps / 1000) + ' kbps';
+    }
+
+    function fmtBytes(bytes) {
+        if (bytes >= 1_073_741_824) return (bytes / 1_073_741_824).toFixed(1) + ' GB';
+        if (bytes >= 1_048_576)     return (bytes / 1_048_576).toFixed(1) + ' MB';
+        if (bytes >= 1024)          return (bytes / 1024).toFixed(1) + ' KB';
+        return bytes + ' B';
+    }
+
+    function fmtByteRate(bps) {
+        if (bps >= 1_048_576) return (bps / 1_048_576).toFixed(1) + ' MB/s';
+        if (bps >= 1024)      return (bps / 1024).toFixed(1) + ' KB/s';
+        return bps + ' B/s';
+    }
+
+    // ---- Dashboard ----
+
+    let metricsData = null;
+
+    async function loadDashboard() {
+        const res = await apiFetch('/api/admin/metrics');
+        if (!res || !res.ok) return;
+        metricsData = await res.json();
+        renderDashboard();
+    }
+
+    function renderDashboard() {
+        if (!metricsData) return;
+        const { cpu, memory, network } = metricsData;
+        const cpuPct = cpu.percent || 0;
+        const memPct = memory.percent || 0;
+        document.getElementById('stat-cpu-value').textContent = cpuPct.toFixed(1) + '%';
+        document.getElementById('stat-cpu-bar').style.width   = Math.min(100, cpuPct) + '%';
+        document.getElementById('stat-mem-value').textContent = memPct.toFixed(1) + '%';
+        document.getElementById('stat-mem-sub').textContent   = `${fmtBytes(memory.used_bytes)} / ${fmtBytes(memory.total_bytes)}`;
+        document.getElementById('stat-mem-bar').style.width   = Math.min(100, memPct) + '%';
+        document.getElementById('stat-net-rx').textContent    = fmtByteRate(network.rx_bps);
+        document.getElementById('stat-net-tx').textContent    = fmtByteRate(network.tx_bps);
     }
 
     function fmtSourceIp(url) {
