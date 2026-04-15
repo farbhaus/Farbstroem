@@ -41,7 +41,8 @@ nav {
     display: flex; align-items: center; justify-content: space-between;
     padding: 0 32px; position: fixed; top: 0; left: 0; right: 0; z-index: 100;
 }
-.brand { font-weight: 700; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+.brand { font-weight: 700; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; display: inline-flex; align-items: center; }
+.brand img { height: 20px; display: block; }
 .nav-right { display: flex; gap: 8px; align-items: center; }
 .nav-tabs { display: flex; gap: 4px; }
 
@@ -269,7 +270,10 @@ main { margin-top: var(--nav-h); padding: 32px; }
 </div>
 
 <nav id="main-nav" style="display:none">
-    <span class="brand">Stream — Admin</span>
+    <div class="brand">
+        <img id="brand-logo" alt="" style="display:none">
+        <!-- <span id="brand-text">Admin</span> -->
+    </div>
     <div class="nav-tabs">
         <button class="btn btn-tab active" data-tab="rooms">Rooms</button>
         <button class="btn btn-tab" data-tab="keys">Stream Keys</button>
@@ -617,7 +621,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
     // ---- Load data ----
 
     async function loadAll() {
-        await Promise.all([loadRooms(), loadKeys(), loadOme()]);
+        await Promise.all([loadRooms(), loadKeys(), loadOme(), loadBranding()]);
     }
 
     async function loadRooms() {
@@ -1084,6 +1088,17 @@ main { margin-top: var(--nav-h); padding: 32px; }
         document.getElementById('logo-preview').style.display = hasLogo ? '' : 'none';
         document.getElementById('logo-empty').style.display   = hasLogo ? 'none' : '';
         if (hasLogo) document.getElementById('logo-preview').src = '/api/branding/logo?' + Date.now();
+
+        const brandImg  = document.getElementById('brand-logo');
+        const brandText = document.getElementById('brand-text');
+        if (hasLogo) {
+            brandImg.src = '/api/branding/logo?' + Date.now();
+            brandImg.style.display  = '';
+            brandText.style.display = 'none';
+        } else {
+            brandImg.style.display  = 'none';
+            brandText.style.display = '';
+        }
 
         document.getElementById('bg-preview').style.display = hasBg ? '' : 'none';
         document.getElementById('bg-empty').style.display   = hasBg ? 'none' : '';
