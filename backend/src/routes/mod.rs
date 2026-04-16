@@ -1,8 +1,6 @@
-pub mod admin_files;
 pub mod auth;
 pub mod branding;
 pub mod files;
-pub mod metrics;
 pub mod ome;
 pub mod rooms;
 pub mod rooms_public;
@@ -24,10 +22,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .nest("/api/public/rooms", files::router())
         .nest("/api/webhook/admission", webhook::router())
         .nest("/api/branding", branding::public_router())
-        .nest("/api/admin/branding", branding::admin_router())
-        .nest("/api/admin/metrics", metrics::router())
-        .nest("/api/admin/files", admin_files::files_router())
-        .nest("/api/admin/rooms", admin_files::room_assign_router());
+        .nest("/api/admin/branding", branding::admin_router());
 
     api.with_state(state)
 }

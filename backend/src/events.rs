@@ -15,12 +15,6 @@ pub struct FileSharedEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileUnsharedEvent {
-    pub slug: String,
-    pub id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KickedEvent {
     pub slug: String,
     pub participant_id: String,
@@ -44,7 +38,6 @@ pub struct EventChannels {
     pub stream_key_assigned: broadcast::Sender<StreamKeyAssignedEvent>,
     pub stream_key_removed: broadcast::Sender<String>,
     pub file_shared: broadcast::Sender<FileSharedEvent>,
-    pub file_unshared: broadcast::Sender<FileUnsharedEvent>,
     pub participant_kicked: broadcast::Sender<KickedEvent>,
 }
 
@@ -57,7 +50,6 @@ impl EventChannels {
             stream_key_assigned: broadcast::channel(64).0,
             stream_key_removed: broadcast::channel(64).0,
             file_shared: broadcast::channel(64).0,
-            file_unshared: broadcast::channel(64).0,
             participant_kicked: broadcast::channel(64).0,
         }
     }

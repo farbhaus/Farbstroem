@@ -75,9 +75,7 @@ services:
       - DATA_PATH=/data
       - OME_API_URL=http://stream-ome:8081/v1
       - LIVEKIT_INTERNAL_URL=http://stream-livekit:7880
-      - PROC_PATH=/host/proc
     volumes:
       - ./data:/data
       - ./www:/www
-      - /proc:/host/proc:ro
     depends_on: [stream-redis]

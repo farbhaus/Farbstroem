@@ -651,21 +651,6 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
         });
     }
 
-    // file:removed
-    {
-        let mut rx = state.events.file_unshared.subscribe();
-        tokio::spawn(async move {
-            while let Ok(event) = rx.recv().await {
-                let msg = json!({
-                    "type": "file:removed",
-                    "id": event.id,
-                })
-                .to_string();
-                broadcast_to_room(&WS_ROOMS, &event.slug, &msg).await;
-            }
-        });
-    }
-
     // participant:kicked
     {
         let mut rx = state.events.participant_kicked.subscribe();

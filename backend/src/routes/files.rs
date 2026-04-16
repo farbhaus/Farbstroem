@@ -8,7 +8,6 @@ use axum::{
 use rusqlite::{params, OptionalExtension};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 use tracing::info;
@@ -19,7 +18,7 @@ use crate::state::AppState;
 
 const MAX_FILE_SIZE: usize = 100 * 1024 * 1024; // 100MB
 
-pub const SAFE_MIMES: &[&str] = &[
+const SAFE_MIMES: &[&str] = &[
     "image/jpeg",
     "image/png",
     "image/gif",
@@ -87,23 +86,12 @@ fn validate_participant(
     Ok(row)
 }
 
-pub fn sanitize_mime(mime: &str) -> String {
+fn sanitize_mime(mime: &str) -> String {
     if SAFE_MIMES.contains(&mime) {
         mime.to_string()
     } else {
         "application/octet-stream".to_string()
     }
-}
-
-/// Derive a `.ext` suffix (including leading dot) from a filename, or "" if
-/// the filename has no distinguishable extension. Used for the stored blob
-/// filename so downloads can hint at the type.
-pub fn extract_extension(name: &str) -> String {
-    name.rsplit('.')
-        .next()
-        .filter(|e| *e != name)
-        .map(|e| format!(".{}", e))
-        .unwrap_or_default()
 }
 
 async fn upload_file(
@@ -159,104 +147,70 @@ async fn upload_file(
             }
 
             let size = data.len() as u64;
+            let file_id = uuid::Uuid::new_v4().to_string();
 
-            // Content-addressable hash for dedup
-            let mut hasher = Sha256::new();
-            hasher.update(&data);
-            let content_hash = format!("{:x}", hasher.finalize());
+            info!(
+                room_slug = %participant.slug,
+                actor_id = %participant.id,
+                file_id = %file_id,
+                name = %original_name,
+                size,
+                mime = %mime,
+                action = "upload_start",
+                "file upload starting",
+            );
 
-            let files_dir = format!("{}/files", state.config.data_path);
-            tokio::fs::create_dir_all(&files_dir)
+            // Determine extension from original filename
+            let ext = original_name
+                .rsplit('.')
+                .next()
+                .filter(|e| *e != original_name.as_str())
+                .map(|e| format!(".{}", e))
+                .unwrap_or_default();
+
+            let stored_name = format!("{}{}", file_id, ext);
+            let upload_dir = format!(
+                "{}/uploads/{}",
+                state.config.data_path, participant.room_id
+            );
+            tokio::fs::create_dir_all(&upload_dir)
                 .await
                 .map_err(|e| AppError::Internal(e.to_string()))?;
-
-            // Look for an existing row with the same hash. If found, reuse
-            // its id and blob; otherwise mint a new file_id and write bytes.
-            let conn = state.db.get()?;
-            let hash_lookup = content_hash.clone();
-            let existing: Option<String> = tokio::task::spawn_blocking(move || {
-                conn.query_row(
-                    "SELECT id FROM session_files WHERE content_hash = ?1 LIMIT 1",
-                    params![hash_lookup],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()
-                .map_err(|e| AppError::Internal(e.to_string()))
-            })
-            .await
-            .map_err(|e| AppError::Internal(e.to_string()))??;
+            tokio::fs::write(format!("{}/{}", upload_dir, stored_name), &data)
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?;
 
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
 
-            let (file_id, effective_name) = if let Some(id) = existing {
-                info!(
-                    room_slug = %participant.slug,
-                    actor_id = %participant.id,
-                    file_id = %id,
-                    action = "upload_dedup",
-                    "participant upload hit existing blob",
-                );
-                (id, original_name.clone())
-            } else {
-                let new_id = uuid::Uuid::new_v4().to_string();
-                let ext = extract_extension(&original_name);
-                let stored_name = format!("{}{}", new_id, ext);
-
-                tokio::fs::write(format!("{}/{}", files_dir, stored_name), &data)
-                    .await
-                    .map_err(|e| AppError::Internal(e.to_string()))?;
-
-                let conn = state.db.get()?;
-                let new_id_clone = new_id.clone();
-                let original_name_clone = original_name.clone();
-                let stored_name_clone = stored_name.clone();
-                let mime_clone = mime.clone();
-                let room_id = participant.room_id.clone();
-                let pid_db = participant.id.clone();
-                let hash_clone = content_hash.clone();
-                tokio::task::spawn_blocking(move || {
-                    conn.execute(
-                        "INSERT INTO session_files (id, room_id, uploader_id, original_name, stored_path, mime_type, size_bytes, content_hash, created_at) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime(?9, 'unixepoch'))",
-                        params![
-                            new_id_clone,
-                            room_id,
-                            pid_db,
-                            original_name_clone,
-                            stored_name_clone,
-                            mime_clone,
-                            size as i64,
-                            hash_clone,
-                            ts as i64,
-                        ],
-                    )
-                })
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()))??;
-
-                (new_id, original_name.clone())
-            };
-
-            // Best-effort mirror into room_files so the admin library surfaces
-            // the same file with its room chip. A failure here (e.g. schema
-            // drift) must never block the upload or suppress the live WS
-            // event — surface it as a warning and continue.
+            // Insert into session_files
             let conn = state.db.get()?;
-            let file_id_mirror = file_id.clone();
-            let room_id_mirror = participant.room_id.clone();
-            let mirror_res = tokio::task::spawn_blocking(move || {
+            let file_id_clone = file_id.clone();
+            let original_name_clone = original_name.clone();
+            let stored_name_clone = stored_name.clone();
+            let mime_clone = mime.clone();
+            let room_id = participant.room_id.clone();
+            let pid_db = participant.id.clone();
+            tokio::task::spawn_blocking(move || {
                 conn.execute(
-                    "INSERT OR IGNORE INTO room_files (room_id, file_id) VALUES (?1, ?2)",
-                    params![room_id_mirror, file_id_mirror],
+                    "INSERT INTO session_files (id, room_id, uploader_id, original_name, stored_path, mime_type, size_bytes, created_at) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime(?8, 'unixepoch'))",
+                    params![
+                        file_id_clone,
+                        room_id,
+                        pid_db,
+                        original_name_clone,
+                        stored_name_clone,
+                        mime_clone,
+                        size as i64,
+                        ts as i64,
+                    ],
                 )
             })
-            .await;
-            if let Ok(Err(e)) = mirror_res {
-                tracing::warn!("room_files mirror failed for {}: {}", file_id, e);
-            }
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))??;
 
             // Emit file:shared event
             let _ = state.events.file_shared.send(FileSharedEvent {
@@ -265,7 +219,7 @@ async fn upload_file(
                 participant_id: participant.id.clone(),
                 uploader_name: participant.name.clone(),
                 role: participant.role.clone(),
-                name: effective_name.clone(),
+                name: original_name.clone(),
                 size,
                 mime: mime.clone(),
                 ts,
@@ -282,7 +236,7 @@ async fn upload_file(
 
             return Ok(Json(json!({
                 "id": file_id,
-                "name": effective_name,
+                "name": original_name,
                 "size": size,
             })));
         }
@@ -312,16 +266,12 @@ async fn list_files(
     let files = tokio::task::spawn_blocking(move || {
         let participant = validate_participant(&conn, &pid, &token, &slug_clone)?;
 
-        // Union of (a) files whose room_id matches this room (legacy path)
-        // and (b) files linked via room_files (library + mirrored participant
-        // uploads). DISTINCT because both sources overlap after migration.
         let mut stmt = conn.prepare(
-            "SELECT DISTINCT sf.id, sf.original_name, sf.mime_type, sf.size_bytes, sf.created_at, \
+            "SELECT sf.id, sf.original_name, sf.mime_type, sf.size_bytes, sf.created_at, \
              p.name AS uploader_name, p.role AS uploader_role \
              FROM session_files sf \
-             LEFT JOIN participants p ON p.id = sf.uploader_id \
+             JOIN participants p ON p.id = sf.uploader_id \
              WHERE sf.room_id = ?1 \
-                OR sf.id IN (SELECT file_id FROM room_files WHERE room_id = ?1) \
              ORDER BY sf.created_at ASC",
         )?;
         let rows = stmt
@@ -332,8 +282,8 @@ async fn list_files(
                     "mime": row.get::<_, String>(2)?,
                     "size": row.get::<_, i64>(3)?,
                     "createdAt": row.get::<_, String>(4)?,
-                    "uploaderName": row.get::<_, Option<String>>(5)?.unwrap_or_else(|| "Admin".into()),
-                    "uploaderRole": row.get::<_, Option<String>>(6)?.unwrap_or_else(|| "admin".into()),
+                    "uploaderName": row.get::<_, String>(5)?,
+                    "uploaderRole": row.get::<_, String>(6)?,
                 }))
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -366,13 +316,10 @@ async fn download_file(
     let (file_data, original_name, mime) = tokio::task::spawn_blocking(move || {
         let participant = validate_participant(&conn, &pid, &token, &slug)?;
 
-        // Authorised if the file is directly attached to the room OR assigned
-        // to it via room_files (admin library).
         let (stored_name, original_name, mime): (String, String, String) = conn
             .query_row(
                 "SELECT stored_path, original_name, mime_type FROM session_files \
-                 WHERE id = ?1 AND (room_id = ?2 \
-                    OR id IN (SELECT file_id FROM room_files WHERE room_id = ?2))",
+                 WHERE id = ?1 AND room_id = ?2",
                 params![file_id, participant.room_id],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
@@ -380,7 +327,10 @@ async fn download_file(
             .map_err(|e| AppError::Internal(e.to_string()))?
             .ok_or_else(|| AppError::NotFound("File not found".into()))?;
 
-        let file_path = format!("{}/files/{}", data_path, stored_name);
+        let file_path = format!(
+            "{}/uploads/{}/{}",
+            data_path, participant.room_id, stored_name
+        );
         Ok::<_, AppError>((file_path, original_name, mime))
     })
     .await
