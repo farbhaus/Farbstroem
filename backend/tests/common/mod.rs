@@ -31,7 +31,7 @@ pub fn test_config() -> AppConfig {
 
 pub fn test_state() -> Arc<AppState> {
     let config = test_config();
-    let pool = db::init_pool(&config.db_path);
+    let pool = db::init_pool(&config.db_path, &config.data_path);
     let events = EventChannels::new();
     let admin_password_hash = bcrypt::hash("test-admin-password", 4).unwrap();
 
