@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::sync::Arc;
 use axum_test::TestServer;
 
@@ -65,7 +67,6 @@ pub fn seed_stream_key(state: &Arc<AppState>, name: &str) -> (String, String) {
     (id, key_token)
 }
 
-#[allow(dead_code)]
 pub fn seed_room(state: &Arc<AppState>, name: &str, slug: &str) -> String {
     let conn = state.db.get().unwrap();
     let id = uuid::Uuid::new_v4().to_string();
@@ -77,7 +78,6 @@ pub fn seed_room(state: &Arc<AppState>, name: &str, slug: &str) -> String {
     id
 }
 
-#[allow(dead_code)]
 pub fn seed_room_with_password(state: &Arc<AppState>, name: &str, slug: &str, password: &str) -> String {
     let conn = state.db.get().unwrap();
     let id = uuid::Uuid::new_v4().to_string();
