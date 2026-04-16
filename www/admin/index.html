@@ -213,6 +213,143 @@ main { margin-top: var(--nav-h); padding: 32px; }
 .badge-source { background: #0d2211; color: var(--green); }
 .ome-subheader { font-size: 12px; color: var(--dim); margin-bottom: 20px; min-height: 18px; }
 
+/* ---- Files tab ---- */
+.files-storage-widget {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 24px; margin-bottom: 16px;
+}
+.files-storage-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.files-storage-total { font-size: 18px; font-weight: 700; }
+.files-storage-count { font-size: 12px; color: var(--dim); }
+.files-storage-bar { display: flex; height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+.files-storage-bar > span { height: 100%; transition: width 0.3s; }
+.files-storage-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 11px; color: var(--dim); }
+.files-storage-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.files-storage-legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+.files-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+.files-toolbar input[type=text], .files-toolbar select {
+    padding: 8px 12px; border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text); font: inherit; font-size: 13px; border-radius: 6px; outline: none;
+}
+.files-toolbar input[type=text]:focus, .files-toolbar select:focus { border-color: var(--dim); }
+.files-toolbar .search-input { min-width: 220px; flex: 1; }
+.files-toolbar .spacer { flex: 1; }
+.files-toolbar label.inline { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); cursor: pointer; }
+
+.files-bulk-bar {
+    display: none; align-items: center; gap: 10px; padding: 10px 14px;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    margin-bottom: 12px; font-size: 13px;
+}
+.files-bulk-bar.active { display: flex; }
+.files-bulk-count { font-weight: 700; color: var(--accent); }
+.files-bulk-spacer { flex: 1; }
+
+.files-dropzone {
+    background: var(--surface); border: 1px dashed var(--border); border-radius: 10px;
+    min-height: 80px; transition: border-color 0.15s, background 0.15s;
+}
+.files-dropzone.dragover { border-color: var(--accent); background: #1a1508; }
+
+.files-upload-queue { margin-bottom: 12px; display: none; }
+.files-upload-queue.active { display: block; }
+.upload-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 90px 60px 28px;
+    gap: 12px; align-items: center;
+    padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface); margin-bottom: 6px;
+}
+.upload-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+.upload-item-bar { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+.upload-item-bar > span { display: block; height: 100%; width: 0%; background: var(--accent); transition: width 0.15s; }
+.upload-item-bar.error > span { background: var(--danger); }
+.upload-item-bar.done > span  { background: var(--green); }
+.upload-item-pct { font-size: 12px; color: var(--dim); text-align: right; font-variant-numeric: tabular-nums; }
+.upload-item-cancel {
+    background: none; border: none; color: var(--dim); cursor: pointer;
+    font-size: 16px; line-height: 1; padding: 2px 4px; border-radius: 4px;
+}
+.upload-item-cancel:hover { color: var(--danger); background: var(--surface2); }
+.upload-item-cancel:disabled { visibility: hidden; }
+
+.file-row {
+    display: grid;
+    grid-template-columns: 30px 36px minmax(0, 2fr) 90px 80px 140px minmax(0, 1fr) auto;
+    align-items: center; gap: 14px; padding: 10px 16px;
+    border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.file-row:last-child { border-bottom: none; }
+.file-row:hover { background: var(--surface2); }
+.file-row.selected { background: #1a1508; }
+.file-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+.file-icon {
+    width: 36px; height: 36px; border-radius: 6px; background: var(--surface2);
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+    cursor: pointer; user-select: none; flex-shrink: 0;
+}
+.file-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+.file-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
+.file-name.editing { cursor: text; }
+.file-name-input { width: 100%; padding: 4px 6px; background: var(--surface); border: 1px solid var(--accent); color: var(--text); font: inherit; font-size: 13px; border-radius: 4px; outline: none; }
+.file-meta { font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-chips { display: flex; flex-wrap: wrap; gap: 4px; overflow: hidden; }
+.file-chip {
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+    background: #1a1508; color: var(--accent); border-radius: 10px;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.file-chip button {
+    background: none; border: none; color: var(--accent); cursor: pointer;
+    font-size: 13px; line-height: 1; padding: 0; opacity: 0.6;
+}
+.file-chip button:hover { opacity: 1; }
+.file-chip-empty { color: var(--faint); font-size: 11px; font-style: italic; }
+.file-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+.files-list-head {
+    display: grid;
+    grid-template-columns: 30px 36px minmax(0, 2fr) 90px 80px 140px minmax(0, 1fr) auto;
+    align-items: center; gap: 14px; padding: 10px 16px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--dim); border-bottom: 1px solid var(--border); background: var(--surface2);
+}
+.files-list-actions-spacer { width: 180px; }
+
+.assign-room-row {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px;
+    cursor: pointer; font-size: 13px;
+}
+.assign-room-row:hover { background: var(--surface2); }
+.assign-room-row input { width: 16px; height: 16px; }
+.assign-room-name { flex: 1; }
+.assign-room-slug { font-family: monospace; font-size: 11px; color: var(--dim); }
+
+.preview-body {
+    min-height: 240px; max-height: 70vh; display: flex; align-items: center; justify-content: center;
+    background: #000; border-radius: 8px; overflow: hidden; margin-bottom: 16px;
+}
+.preview-body img, .preview-body video { max-width: 100%; max-height: 70vh; }
+.preview-body audio { width: 100%; }
+.preview-body iframe { width: 100%; height: 70vh; border: none; background: #fff; }
+.preview-unsupported { color: var(--dim); font-size: 13px; padding: 40px; text-align: center; }
+
+@media (max-width: 900px) {
+    .file-row, .files-list-head {
+        grid-template-columns: 24px 32px minmax(0, 1fr) auto;
+    }
+    .file-row > .file-meta-type,
+    .file-row > .file-meta-size,
+    .file-row > .file-meta-date,
+    .file-row > .file-chips,
+    .files-list-head > span:nth-child(4),
+    .files-list-head > span:nth-child(5),
+    .files-list-head > span:nth-child(6),
+    .files-list-head > span:nth-child(7) { display: none; }
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 700px) {
     /* Nav: stack brand + tabs + actions vertically */
@@ -294,6 +431,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
         <button class="btn btn-tab" data-tab="ome">Stats</button>
         <button class="btn btn-tab" data-tab="dashboard">Dashboard</button>
         <button class="btn btn-tab" data-tab="branding">Branding</button>
+        <button class="btn btn-tab" data-tab="files">Files</button>
     </div>
     <div class="nav-right">
         <button class="btn btn-sm" id="logout-btn">Sign out</button>
@@ -463,6 +601,70 @@ main { margin-top: var(--nav-h); padding: 32px; }
         </div>
     </div>
 
+    <!-- Files tab -->
+    <div id="tab-files" style="display:none">
+        <div class="section-header">
+            <span class="section-title">Files</span>
+            <button class="btn btn-primary btn-sm" id="files-upload-btn">+ Upload</button>
+        </div>
+
+        <div class="files-storage-widget" id="files-storage-widget">
+            <div class="files-storage-head">
+                <span class="files-storage-total" id="files-storage-total">—</span>
+                <span class="files-storage-count" id="files-storage-count"></span>
+            </div>
+            <div class="files-storage-bar" id="files-storage-bar"></div>
+            <div class="files-storage-legend" id="files-storage-legend"></div>
+        </div>
+
+        <div class="files-toolbar">
+            <input type="text" class="search-input" id="files-search" placeholder="Search filename…">
+            <select id="files-type-filter">
+                <option value="">All types</option>
+                <option value="image/">Images</option>
+                <option value="video/">Video</option>
+                <option value="audio/">Audio</option>
+                <option value="application/pdf">PDF</option>
+                <option value="application/vnd.openxmlformats-officedocument">Docs</option>
+            </select>
+            <select id="files-sort">
+                <option value="created_at|desc">Newest first</option>
+                <option value="created_at|asc">Oldest first</option>
+                <option value="original_name|asc">Name A–Z</option>
+                <option value="original_name|desc">Name Z–A</option>
+                <option value="mime_type|asc">Type</option>
+                <option value="size_bytes|desc">Largest first</option>
+                <option value="size_bytes|asc">Smallest first</option>
+            </select>
+            <label class="inline"><input type="checkbox" id="files-unassigned-only"> Unassigned only</label>
+            <input type="file" id="files-file-input" multiple style="display:none">
+        </div>
+
+        <div class="files-bulk-bar" id="files-bulk-bar">
+            <span><span class="files-bulk-count" id="files-bulk-count">0</span> selected</span>
+            <div class="files-bulk-spacer"></div>
+            <button class="btn btn-sm" id="files-bulk-assign">Assign to room…</button>
+            <button class="btn btn-sm btn-danger" id="files-bulk-delete">Delete selected</button>
+            <button class="btn btn-sm" id="files-bulk-clear">Clear</button>
+        </div>
+
+        <div class="files-upload-queue" id="files-upload-queue"></div>
+
+        <div class="files-dropzone" id="files-dropzone">
+            <div class="files-list-head">
+                <span></span>
+                <span></span>
+                <span>Name</span>
+                <span>Type</span>
+                <span>Size</span>
+                <span>Uploaded</span>
+                <span>Rooms</span>
+                <span class="files-list-actions-spacer"></span>
+            </div>
+            <div id="files-list"><div class="empty">Loading…</div></div>
+        </div>
+    </div>
+
 </div>
 </main>
 
@@ -529,6 +731,71 @@ main { margin-top: var(--nav-h); padding: 32px; }
         <div class="modal-footer">
             <button class="btn" id="key-modal-cancel">Cancel</button>
             <button class="btn btn-primary" id="key-modal-save">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Files: Assign to Rooms modal -->
+<div class="modal-overlay" id="files-assign-modal" style="display:none">
+    <div class="modal">
+        <div class="modal-header">
+            <span class="modal-title" id="files-assign-title">Assign to Rooms</span>
+            <button class="btn btn-sm" id="files-assign-close">✕</button>
+        </div>
+        <div id="files-assign-list" style="max-height:50vh;overflow-y:auto"></div>
+        <div class="modal-footer">
+            <button class="btn" id="files-assign-cancel">Cancel</button>
+            <button class="btn btn-primary" id="files-assign-save">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Files: Preview modal -->
+<div class="modal-overlay" id="files-preview-modal" style="display:none">
+    <div class="modal" style="width:900px">
+        <div class="modal-header">
+            <span class="modal-title" id="files-preview-title">Preview</span>
+            <button class="btn btn-sm" id="files-preview-close">✕</button>
+        </div>
+        <div class="preview-body" id="files-preview-body"></div>
+        <div class="modal-footer">
+            <button class="btn" id="files-preview-download">Download</button>
+            <button class="btn" id="files-preview-dismiss">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Files: Confirm Delete modal -->
+<div class="modal-overlay" id="files-delete-modal" style="display:none">
+    <div class="modal" style="width:480px">
+        <div class="modal-header">
+            <span class="modal-title">Delete Files</span>
+            <button class="btn btn-sm" id="files-delete-close">✕</button>
+        </div>
+        <div id="files-delete-body" style="font-size:13px;line-height:1.55"></div>
+        <div class="modal-footer">
+            <button class="btn" id="files-delete-cancel">Cancel</button>
+            <button class="btn btn-danger" id="files-delete-confirm">Delete</button>
+        </div>
+    </div>
+</div>
+
+<!-- Files: Replace modal -->
+<div class="modal-overlay" id="files-replace-modal" style="display:none">
+    <div class="modal" style="width:480px">
+        <div class="modal-header">
+            <span class="modal-title">Replace File</span>
+            <button class="btn btn-sm" id="files-replace-close">✕</button>
+        </div>
+        <div id="files-replace-old" style="font-size:13px;margin-bottom:16px;color:var(--dim)"></div>
+        <div class="form-row">
+            <label>New File</label>
+            <input type="file" id="files-replace-input">
+        </div>
+        <div id="files-replace-new" style="font-size:12px;color:var(--dim)"></div>
+        <div class="modal-footer">
+            <button class="btn" id="files-replace-cancel">Cancel</button>
+            <button class="btn btn-primary" id="files-replace-confirm">Replace</button>
         </div>
     </div>
 </div>
@@ -654,9 +921,11 @@ main { margin-top: var(--nav-h); padding: 32px; }
             document.getElementById('tab-ome').style.display       = activeTab === 'ome'       ? '' : 'none';
             document.getElementById('tab-dashboard').style.display = activeTab === 'dashboard' ? '' : 'none';
             document.getElementById('tab-branding').style.display  = activeTab === 'branding'  ? '' : 'none';
+            document.getElementById('tab-files').style.display     = activeTab === 'files'     ? '' : 'none';
             if (activeTab === 'ome') renderOme();
             if (activeTab === 'dashboard') loadDashboard();
             if (activeTab === 'branding') loadBranding();
+            if (activeTab === 'files') { loadFiles(); loadStorageStats(); }
         });
     });
 
@@ -1174,10 +1443,10 @@ main { margin-top: var(--nav-h); padding: 32px; }
         if (hasLogo) {
             brandImg.src = '/api/branding/logo?' + Date.now();
             brandImg.style.display  = '';
-            brandText.style.display = 'none';
+            if (brandText) brandText.style.display = 'none';
         } else {
             brandImg.style.display  = 'none';
-            brandText.style.display = '';
+            if (brandText) brandText.style.display = '';
         }
 
         document.getElementById('bg-preview').style.display = hasBg ? '' : 'none';
@@ -1265,6 +1534,503 @@ main { margin-top: var(--nav-h); padding: 32px; }
     document.getElementById('bg-upload-btn').addEventListener('click', () => document.getElementById('bg-file-input').click());
     document.getElementById('bg-file-input').addEventListener('change', () => uploadBrandingAsset('bg'));
     document.getElementById('bg-remove-btn').addEventListener('click', () => removeBrandingAsset('bg'));
+
+    // ---- Files tab ----
+
+    const MIME_CATEGORIES = [
+        { key: 'image',    label: 'Images', color: '#5ab8ff', match: m => m.startsWith('image/') },
+        { key: 'video',    label: 'Video',  color: '#ff7e5f', match: m => m.startsWith('video/') },
+        { key: 'audio',    label: 'Audio',  color: '#c76bff', match: m => m.startsWith('audio/') },
+        { key: 'pdf',      label: 'PDF',    color: '#ff5252', match: m => m === 'application/pdf' },
+        { key: 'doc',      label: 'Docs',   color: '#4caf50', match: m => m.includes('openxmlformats') || m === 'text/plain' },
+        { key: 'other',    label: 'Other',  color: '#777',    match: () => true },
+    ];
+
+    function mimeCategory(mime) {
+        for (const c of MIME_CATEGORIES) if (c.match(mime)) return c;
+        return MIME_CATEGORIES[MIME_CATEGORIES.length - 1];
+    }
+
+    function fileIconEmoji(mime) {
+        if (mime.startsWith('image/')) return '🖼';
+        if (mime.startsWith('video/')) return '🎬';
+        if (mime.startsWith('audio/')) return '🎵';
+        if (mime === 'application/pdf') return '📕';
+        if (mime.includes('openxmlformats-officedocument.wordprocessingml')) return '📄';
+        if (mime.includes('openxmlformats-officedocument.spreadsheetml')) return '📊';
+        if (mime.includes('zip')) return '🗜';
+        return '📁';
+    }
+
+    let filesList = [];
+    let filesSelected = new Set();
+    let filesSearchTimer = null;
+    let filesReplaceId = null;
+    let filesAssignTargetIds = [];
+
+    function filesQueryString() {
+        const params = new URLSearchParams();
+        const s = document.getElementById('files-search').value.trim();
+        const m = document.getElementById('files-type-filter').value;
+        const sortVal = document.getElementById('files-sort').value;
+        const [sort, order] = sortVal.split('|');
+        const unassigned = document.getElementById('files-unassigned-only').checked;
+        if (s) params.set('search', s);
+        if (m) params.set('mimePrefix', m);
+        if (sort) params.set('sort', sort);
+        if (order) params.set('order', order);
+        if (unassigned) params.set('unassigned', '1');
+        const qs = params.toString();
+        return qs ? '?' + qs : '';
+    }
+
+    async function loadFiles() {
+        const res = await apiFetch('/api/admin/files' + filesQueryString());
+        if (!res || !res.ok) return;
+        filesList = await res.json();
+        renderFiles();
+    }
+
+    async function loadStorageStats() {
+        const res = await apiFetch('/api/admin/files/stats');
+        if (!res || !res.ok) return;
+        const stats = await res.json();
+        renderStorageWidget(stats);
+    }
+
+    function renderStorageWidget(stats) {
+        const total = stats.totalBytes || 0;
+        const count = stats.totalCount || 0;
+        document.getElementById('files-storage-total').textContent = fmtBytes(total);
+        document.getElementById('files-storage-count').textContent = `${count} file${count === 1 ? '' : 's'}`;
+
+        const buckets = {};
+        for (const c of MIME_CATEGORIES) buckets[c.key] = { count: 0, bytes: 0, label: c.label, color: c.color };
+        for (const b of (stats.byMime || [])) {
+            const cat = mimeCategory(b.prefix || '');
+            buckets[cat.key].count += b.count || 0;
+            buckets[cat.key].bytes += b.bytes || 0;
+        }
+        const bar = document.getElementById('files-storage-bar');
+        const legend = document.getElementById('files-storage-legend');
+        if (total === 0) {
+            bar.innerHTML = '<span style="width:100%;background:var(--surface2)"></span>';
+            legend.innerHTML = '<span class="files-storage-legend-item" style="color:var(--faint)">No files yet</span>';
+            return;
+        }
+        bar.innerHTML = Object.values(buckets)
+            .filter(b => b.bytes > 0)
+            .map(b => `<span style="width:${(b.bytes / total * 100).toFixed(2)}%;background:${b.color}" title="${esc(b.label)}: ${fmtBytes(b.bytes)}"></span>`)
+            .join('');
+        legend.innerHTML = Object.values(buckets)
+            .filter(b => b.count > 0)
+            .map(b => `<span class="files-storage-legend-item"><span class="files-storage-legend-dot" style="background:${b.color}"></span>${esc(b.label)} · ${b.count} · ${fmtBytes(b.bytes)}</span>`)
+            .join('');
+    }
+
+    function renderFiles() {
+        const container = document.getElementById('files-list');
+        if (!filesList.length) {
+            container.innerHTML = '<div class="empty">No files. Drop files here or click Upload.</div>';
+            updateBulkBar();
+            return;
+        }
+        container.innerHTML = filesList.map(f => {
+            const checked = filesSelected.has(f.id) ? 'checked' : '';
+            const selClass = filesSelected.has(f.id) ? ' selected' : '';
+            const icon = f.mime && f.mime.startsWith('image/')
+                ? `<div class="file-icon" data-preview="${esc(f.id)}"><img src="/api/admin/files/${esc(f.id)}/preview?token=${encodeURIComponent(token)}" alt=""></div>`
+                : `<div class="file-icon" data-preview="${esc(f.id)}">${fileIconEmoji(f.mime || '')}</div>`;
+            const chips = (f.assignedRooms && f.assignedRooms.length)
+                ? f.assignedRooms.map(r => `<span class="file-chip">${esc(r.name || r.slug)}<button data-unassign="${esc(r.id)}|${esc(f.id)}" title="Unassign">×</button></span>`).join('')
+                : '<span class="file-chip-empty">Unassigned</span>';
+            const dateStr = f.createdAt ? fmtDate(f.createdAt) : '';
+            return `
+            <div class="file-row${selClass}" data-id="${esc(f.id)}">
+                <input type="checkbox" data-select="${esc(f.id)}" ${checked}>
+                ${icon}
+                <div class="file-name" data-rename="${esc(f.id)}" title="${esc(f.name)}">${esc(f.name)}</div>
+                <div class="file-meta file-meta-type">${esc((f.mime || '').split('/').pop() || '—')}</div>
+                <div class="file-meta file-meta-size">${fmtBytes(f.size || 0)}</div>
+                <div class="file-meta file-meta-date">${esc(dateStr)}</div>
+                <div class="file-chips">${chips}</div>
+                <div class="file-actions">
+                    <button class="btn btn-sm" data-assign="${esc(f.id)}" title="Assign">Assign</button>
+                    <button class="btn btn-sm" data-replace="${esc(f.id)}" title="Replace">Replace</button>
+                    <button class="btn btn-sm" data-download="${esc(f.id)}" title="Download">↓</button>
+                    <button class="btn btn-sm btn-danger" data-delete="${esc(f.id)}" title="Delete">✕</button>
+                </div>
+            </div>`;
+        }).join('');
+        updateBulkBar();
+    }
+
+    function updateBulkBar() {
+        const bar = document.getElementById('files-bulk-bar');
+        if (filesSelected.size > 0) {
+            bar.classList.add('active');
+            document.getElementById('files-bulk-count').textContent = filesSelected.size;
+        } else {
+            bar.classList.remove('active');
+        }
+    }
+
+    // Delegated click handler for the Files list area
+    document.getElementById('files-dropzone').addEventListener('click', (e) => {
+        const t = e.target.closest('[data-select], [data-preview], [data-rename], [data-assign], [data-replace], [data-download], [data-delete], [data-unassign]');
+        if (!t) return;
+        if (t.hasAttribute('data-select')) {
+            const id = t.getAttribute('data-select');
+            if (t.checked) filesSelected.add(id); else filesSelected.delete(id);
+            t.closest('.file-row').classList.toggle('selected', t.checked);
+            updateBulkBar();
+        } else if (t.hasAttribute('data-preview')) {
+            openPreviewModal(t.getAttribute('data-preview'));
+        } else if (t.hasAttribute('data-rename')) {
+            startRename(t);
+        } else if (t.hasAttribute('data-assign')) {
+            openAssignModal([t.getAttribute('data-assign')]);
+        } else if (t.hasAttribute('data-replace')) {
+            openReplaceModal(t.getAttribute('data-replace'));
+        } else if (t.hasAttribute('data-download')) {
+            window.open(`/api/admin/files/${t.getAttribute('data-download')}/download?token=${encodeURIComponent(token)}`, '_blank');
+        } else if (t.hasAttribute('data-delete')) {
+            openDeleteModal([t.getAttribute('data-delete')]);
+        } else if (t.hasAttribute('data-unassign')) {
+            const [roomId, fileId] = t.getAttribute('data-unassign').split('|');
+            unassignFile(roomId, fileId);
+        }
+    });
+
+    // Toolbar listeners
+    document.getElementById('files-search').addEventListener('input', () => {
+        clearTimeout(filesSearchTimer);
+        filesSearchTimer = setTimeout(loadFiles, 250);
+    });
+    document.getElementById('files-type-filter').addEventListener('change', loadFiles);
+    document.getElementById('files-sort').addEventListener('change', loadFiles);
+    document.getElementById('files-unassigned-only').addEventListener('change', loadFiles);
+
+    // Upload button / file picker
+    document.getElementById('files-upload-btn').addEventListener('click', () => {
+        document.getElementById('files-file-input').click();
+    });
+    document.getElementById('files-file-input').addEventListener('change', (e) => {
+        uploadFiles(Array.from(e.target.files));
+        e.target.value = '';
+    });
+
+    // Upload queue: one XHR per file, per-row progress + cancel. Queue rows
+    // linger briefly in a terminal state (done/error/cancelled) so users can
+    // see the outcome before the row disappears.
+    let uploadQueueSeq = 0;
+    const uploadsInFlight = new Map(); // queueId → xhr
+
+    function ensureUploadQueueVisible() {
+        const q = document.getElementById('files-upload-queue');
+        q.classList.toggle('active', q.children.length > 0);
+    }
+
+    function addUploadRow(file) {
+        const id = 'up-' + (++uploadQueueSeq);
+        const row = document.createElement('div');
+        row.className = 'upload-item';
+        row.id = id;
+        row.innerHTML =
+            `<div class="upload-item-name" title="${esc(file.name)}">${esc(file.name)}</div>` +
+            `<div class="upload-item-bar"><span></span></div>` +
+            `<div class="upload-item-pct">0%</div>` +
+            `<button class="upload-item-cancel" title="Cancel">✕</button>`;
+        document.getElementById('files-upload-queue').appendChild(row);
+        ensureUploadQueueVisible();
+        return id;
+    }
+
+    function setUploadProgress(rowId, pct) {
+        const row = document.getElementById(rowId);
+        if (!row) return;
+        row.querySelector('.upload-item-bar > span').style.width = pct + '%';
+        row.querySelector('.upload-item-pct').textContent = pct + '%';
+    }
+
+    function finishUploadRow(rowId, outcome /* 'done' | 'error' | 'cancelled' */) {
+        const row = document.getElementById(rowId);
+        if (!row) return;
+        const bar = row.querySelector('.upload-item-bar');
+        bar.classList.remove('done', 'error');
+        if (outcome === 'done')  { bar.classList.add('done');  row.querySelector('.upload-item-pct').textContent = 'Done'; }
+        if (outcome === 'error') { bar.classList.add('error'); row.querySelector('.upload-item-pct').textContent = 'Failed'; }
+        if (outcome === 'cancelled') { bar.classList.add('error'); row.querySelector('.upload-item-pct').textContent = 'Cancelled'; }
+        const btn = row.querySelector('.upload-item-cancel');
+        btn.disabled = true;
+        setTimeout(() => { row.remove(); ensureUploadQueueVisible(); }, 2500);
+    }
+
+    function uploadOne(file) {
+        const rowId = addUploadRow(file);
+        const xhr = new XMLHttpRequest();
+        uploadsInFlight.set(rowId, xhr);
+
+        const row = document.getElementById(rowId);
+        row.querySelector('.upload-item-cancel').addEventListener('click', () => {
+            xhr.abort();
+        });
+
+        xhr.open('POST', '/api/admin/files');
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.upload.addEventListener('progress', e => {
+            if (e.lengthComputable) {
+                setUploadProgress(rowId, Math.round((e.loaded / e.total) * 100));
+            }
+        });
+
+        return new Promise(resolve => {
+            xhr.onload = () => {
+                uploadsInFlight.delete(rowId);
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    setUploadProgress(rowId, 100);
+                    finishUploadRow(rowId, 'done');
+                    resolve(true);
+                } else {
+                    finishUploadRow(rowId, 'error');
+                    resolve(false);
+                }
+            };
+            xhr.onerror = () => { uploadsInFlight.delete(rowId); finishUploadRow(rowId, 'error'); resolve(false); };
+            xhr.onabort = () => { uploadsInFlight.delete(rowId); finishUploadRow(rowId, 'cancelled'); resolve(false); };
+
+            const fd = new FormData();
+            fd.append('file', file);
+            xhr.send(fd);
+        });
+    }
+
+    async function uploadFiles(files) {
+        if (!files.length) return;
+        // Start all uploads in parallel — XHR is concurrent, users can cancel each.
+        const results = await Promise.all(Array.from(files).map(uploadOne));
+        const ok = results.filter(Boolean).length;
+        if (ok > 0) { loadFiles(); loadStorageStats(); }
+        if (ok < files.length) toast(`${ok}/${files.length} uploaded`);
+    }
+
+    // Drag and drop
+    const dropzone = document.getElementById('files-dropzone');
+    ['dragenter', 'dragover'].forEach(ev => {
+        dropzone.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); dropzone.classList.add('dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(ev => {
+        dropzone.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); if (ev === 'dragleave' && e.target !== dropzone) return; dropzone.classList.remove('dragover'); });
+    });
+    dropzone.addEventListener('drop', (e) => {
+        const files = Array.from(e.dataTransfer?.files || []);
+        if (files.length) uploadFiles(files);
+    });
+
+    // Rename inline
+    function startRename(cell) {
+        if (cell.classList.contains('editing')) return;
+        const id = cell.getAttribute('data-rename');
+        const current = cell.textContent;
+        cell.classList.add('editing');
+        cell.innerHTML = `<input class="file-name-input" type="text" value="${esc(current)}">`;
+        const input = cell.querySelector('input');
+        input.focus();
+        input.select();
+        const finish = async (commit) => {
+            cell.classList.remove('editing');
+            if (commit && input.value.trim() && input.value !== current) {
+                const res = await apiFetch(`/api/admin/files/${id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ originalName: input.value.trim() }),
+                });
+                if (res && res.ok) { toast('Renamed'); loadFiles(); return; }
+                else toast('Rename failed');
+            }
+            cell.textContent = current;
+        };
+        input.addEventListener('blur', () => finish(true));
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+        });
+    }
+
+    // Bulk bar
+    document.getElementById('files-bulk-clear').addEventListener('click', () => {
+        filesSelected.clear();
+        renderFiles();
+    });
+    document.getElementById('files-bulk-delete').addEventListener('click', () => {
+        if (!filesSelected.size) return;
+        openDeleteModal(Array.from(filesSelected));
+    });
+    document.getElementById('files-bulk-assign').addEventListener('click', () => {
+        if (!filesSelected.size) return;
+        openAssignModal(Array.from(filesSelected));
+    });
+
+    // Assign modal
+    function openAssignModal(fileIds) {
+        filesAssignTargetIds = fileIds;
+        const title = fileIds.length === 1 ? 'Assign to Rooms' : `Assign ${fileIds.length} Files to Rooms`;
+        document.getElementById('files-assign-title').textContent = title;
+
+        // Pre-check rooms if assigning a single file already linked somewhere
+        const preChecked = new Set();
+        if (fileIds.length === 1) {
+            const f = filesList.find(x => x.id === fileIds[0]);
+            if (f && f.assignedRooms) f.assignedRooms.forEach(r => preChecked.add(r.id));
+        }
+        const list = document.getElementById('files-assign-list');
+        if (!rooms.length) {
+            list.innerHTML = '<div class="empty">No rooms yet. Create one first.</div>';
+        } else {
+            list.innerHTML = rooms.map(r => `
+                <label class="assign-room-row">
+                    <input type="checkbox" value="${esc(r.id)}" ${preChecked.has(r.id) ? 'checked' : ''}>
+                    <span class="assign-room-name">${esc(r.name)}</span>
+                    <span class="assign-room-slug">/${esc(r.slug)}</span>
+                </label>
+            `).join('');
+        }
+        document.getElementById('files-assign-modal').style.display = 'flex';
+    }
+    function closeAssignModal() { document.getElementById('files-assign-modal').style.display = 'none'; }
+    document.getElementById('files-assign-close').addEventListener('click', closeAssignModal);
+    document.getElementById('files-assign-cancel').addEventListener('click', closeAssignModal);
+    document.getElementById('files-assign-save').addEventListener('click', async () => {
+        const checked = Array.from(document.querySelectorAll('#files-assign-list input[type=checkbox]:checked')).map(c => c.value);
+        const unchecked = Array.from(document.querySelectorAll('#files-assign-list input[type=checkbox]:not(:checked)')).map(c => c.value);
+
+        // Single-file diff: compute adds/removes vs current assignments
+        if (filesAssignTargetIds.length === 1) {
+            const f = filesList.find(x => x.id === filesAssignTargetIds[0]);
+            const current = new Set((f?.assignedRooms || []).map(r => r.id));
+            const toAdd = checked.filter(id => !current.has(id));
+            const toRemove = unchecked.filter(id => current.has(id));
+            for (const rid of toAdd) {
+                await apiFetch(`/api/admin/rooms/${rid}/files`, { method: 'POST', body: JSON.stringify({ fileIds: [f.id] }) });
+            }
+            for (const rid of toRemove) {
+                await apiFetch(`/api/admin/rooms/${rid}/files/${f.id}`, { method: 'DELETE' });
+            }
+        } else {
+            // Bulk: only add — don't mess with each file's existing assignments
+            for (const rid of checked) {
+                await apiFetch(`/api/admin/rooms/${rid}/files`, { method: 'POST', body: JSON.stringify({ fileIds: filesAssignTargetIds }) });
+            }
+        }
+        closeAssignModal();
+        filesSelected.clear();
+        toast('Assignments updated');
+        loadFiles();
+    });
+
+    async function unassignFile(roomId, fileId) {
+        const res = await apiFetch(`/api/admin/rooms/${roomId}/files/${fileId}`, { method: 'DELETE' });
+        if (res && res.ok) { toast('Unassigned'); loadFiles(); }
+        else toast('Unassign failed');
+    }
+
+    // Preview modal
+    function openPreviewModal(id) {
+        const f = filesList.find(x => x.id === id);
+        if (!f) return;
+        document.getElementById('files-preview-title').textContent = f.name;
+        const body = document.getElementById('files-preview-body');
+        const url = `/api/admin/files/${id}/preview?token=${encodeURIComponent(token)}`;
+        const mime = f.mime || '';
+        if (mime.startsWith('image/')) {
+            body.innerHTML = `<img src="${url}" alt="">`;
+        } else if (mime.startsWith('video/')) {
+            body.innerHTML = `<video src="${url}" controls></video>`;
+        } else if (mime.startsWith('audio/')) {
+            body.innerHTML = `<audio src="${url}" controls></audio>`;
+        } else if (mime === 'application/pdf') {
+            body.innerHTML = `<iframe src="${url}"></iframe>`;
+        } else {
+            body.innerHTML = `<div class="preview-unsupported">Preview not available for this file type. Use Download.</div>`;
+        }
+        document.getElementById('files-preview-download').onclick = () => {
+            window.open(`/api/admin/files/${id}/download?token=${encodeURIComponent(token)}`, '_blank');
+        };
+        document.getElementById('files-preview-modal').style.display = 'flex';
+    }
+    function closePreviewModal() {
+        document.getElementById('files-preview-modal').style.display = 'none';
+        document.getElementById('files-preview-body').innerHTML = '';
+    }
+    document.getElementById('files-preview-close').addEventListener('click', closePreviewModal);
+    document.getElementById('files-preview-dismiss').addEventListener('click', closePreviewModal);
+
+    // Delete modal
+    let filesDeleteTargetIds = [];
+    function openDeleteModal(ids) {
+        filesDeleteTargetIds = ids;
+        const targets = filesList.filter(f => ids.includes(f.id));
+        const lines = targets.map(f => {
+            const chips = (f.assignedRooms && f.assignedRooms.length)
+                ? f.assignedRooms.map(r => esc(r.name || r.slug)).join(', ')
+                : '<span style="color:var(--faint)">no rooms</span>';
+            return `<div style="margin-bottom:6px"><b>${esc(f.name)}</b><br><span style="color:var(--dim);font-size:12px">Assigned: ${chips}</span></div>`;
+        }).join('');
+        const header = ids.length === 1 ? 'Delete this file?' : `Delete ${ids.length} files?`;
+        document.getElementById('files-delete-body').innerHTML = `<p style="margin-bottom:14px"><b>${header}</b> This cannot be undone. Viewers in assigned rooms will lose access immediately.</p>${lines}`;
+        document.getElementById('files-delete-modal').style.display = 'flex';
+    }
+    function closeDeleteModal() { document.getElementById('files-delete-modal').style.display = 'none'; }
+    document.getElementById('files-delete-close').addEventListener('click', closeDeleteModal);
+    document.getElementById('files-delete-cancel').addEventListener('click', closeDeleteModal);
+    document.getElementById('files-delete-confirm').addEventListener('click', async () => {
+        const ids = filesDeleteTargetIds;
+        if (ids.length === 1) {
+            await apiFetch(`/api/admin/files/${ids[0]}`, { method: 'DELETE' });
+        } else {
+            await apiFetch('/api/admin/files/bulk-delete', {
+                method: 'POST',
+                body: JSON.stringify({ fileIds: ids }),
+            });
+        }
+        closeDeleteModal();
+        filesSelected.clear();
+        toast(`${ids.length} deleted`);
+        loadFiles(); loadStorageStats();
+    });
+
+    // Replace modal
+    function openReplaceModal(id) {
+        filesReplaceId = id;
+        const f = filesList.find(x => x.id === id);
+        if (!f) return;
+        document.getElementById('files-replace-old').innerHTML = `Replacing <b>${esc(f.name)}</b> (${fmtBytes(f.size || 0)})`;
+        document.getElementById('files-replace-input').value = '';
+        document.getElementById('files-replace-new').textContent = '';
+        document.getElementById('files-replace-modal').style.display = 'flex';
+    }
+    function closeReplaceModal() { document.getElementById('files-replace-modal').style.display = 'none'; }
+    document.getElementById('files-replace-close').addEventListener('click', closeReplaceModal);
+    document.getElementById('files-replace-cancel').addEventListener('click', closeReplaceModal);
+    document.getElementById('files-replace-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        const info = document.getElementById('files-replace-new');
+        info.textContent = file ? `New: ${file.name} (${fmtBytes(file.size)})` : '';
+    });
+    document.getElementById('files-replace-confirm').addEventListener('click', async () => {
+        const input = document.getElementById('files-replace-input');
+        const file = input.files[0];
+        if (!file) { toast('Pick a file first'); return; }
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch(`/api/admin/files/${filesReplaceId}`, {
+            method: 'PUT',
+            headers: { Authorization: `Bearer ${token}` },
+            body: fd,
+        });
+        closeReplaceModal();
+        if (res && res.ok) { toast('Replaced'); loadFiles(); loadStorageStats(); }
+        else toast('Replace failed');
+    });
 
     // ---- Helpers ----
 

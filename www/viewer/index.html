@@ -800,6 +800,11 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                         <div id="files-empty">No files shared yet.</div>
                     </div>
                 </div>
+                <div id="upload-progress-row" style="display:none;align-items:center;gap:8px;padding:4px 6px;margin-bottom:4px;font-size:11px;color:var(--dim);">
+                    <div id="upload-progress-name" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+                    <div id="upload-progress-pct" style="font-variant-numeric:tabular-nums;">0%</div>
+                    <button id="upload-progress-cancel" title="Cancel upload" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:13px;line-height:1;padding:0 4px;">✕</button>
+                </div>
                 <div id="upload-progress-bar" style="display:none;height:3px;background:var(--border);margin-bottom:2px;border-radius:2px;overflow:hidden;">
                     <div id="upload-progress-fill" style="height:100%;width:0%;background:var(--accent);transition:width 0.1s linear;"></div>
                 </div>
@@ -2043,32 +2048,50 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         } catch {}
     }
 
+    let currentUploadXhr = null;
+
     function uploadFile(file) {
         const attachBtn    = document.getElementById('chat-attach');
         const progressBar  = document.getElementById('upload-progress-bar');
         const progressFill = document.getElementById('upload-progress-fill');
+        const progressRow  = document.getElementById('upload-progress-row');
+        const progressName = document.getElementById('upload-progress-name');
+        const progressPct  = document.getElementById('upload-progress-pct');
+        const cancelBtn    = document.getElementById('upload-progress-cancel');
 
         attachBtn.disabled = true;
         progressBar.style.display = '';
+        progressRow.style.display = 'flex';
         progressFill.style.width  = '0%';
+        progressName.textContent  = file.name;
+        progressName.title        = file.name;
+        progressPct.textContent   = '0%';
 
         const xhr = new XMLHttpRequest();
+        currentUploadXhr = xhr;
         xhr.open('POST',
             `/api/public/rooms/${encodeURIComponent(slug)}/files`
             + `?participantId=${encodeURIComponent(participantId)}&token=${encodeURIComponent(myToken)}`
         );
         xhr.upload.addEventListener('progress', e => {
             if (e.lengthComputable) {
-                progressFill.style.width = Math.round((e.loaded / e.total) * 100) + '%';
+                const pct = Math.round((e.loaded / e.total) * 100);
+                progressFill.style.width = pct + '%';
+                progressPct.textContent  = pct + '%';
             }
         });
         const done = () => {
+            currentUploadXhr = null;
             attachBtn.disabled = false;
             progressBar.style.display = 'none';
+            progressRow.style.display = 'none';
             progressFill.style.width  = '0%';
         };
         xhr.onload  = done;
         xhr.onerror = done;
+        xhr.onabort = done;
+
+        cancelBtn.onclick = () => { if (currentUploadXhr) currentUploadXhr.abort(); };
 
         const fd = new FormData();
         fd.append('file', file);

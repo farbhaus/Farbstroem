@@ -1,9 +1,10 @@
 use axum::{
-    extract::FromRequestParts,
+    extract::{FromRequestParts, Query},
     http::{request::Parts, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
+use std::collections::HashMap;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation, Algorithm};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -28,9 +29,22 @@ impl FromRequestParts<Arc<AppState>> for AdminAuth {
             .get("authorization")
             .and_then(|v| v.to_str().ok());
 
-        let token = match auth_header {
-            Some(h) if h.starts_with("Bearer ") => &h[7..],
-            _ => {
+        let header_token = match auth_header {
+            Some(h) if h.starts_with("Bearer ") => Some(h[7..].to_string()),
+            _ => None,
+        };
+
+        // Fall back to ?token=… query param so <img>/<video>/<iframe>/window.open
+        // can hit authenticated endpoints (admin preview/download) without a
+        // way to attach headers.
+        let query_token = Query::<HashMap<String, String>>::from_request_parts(parts, state)
+            .await
+            .ok()
+            .and_then(|Query(m)| m.get("token").cloned());
+
+        let token = match header_token.or(query_token) {
+            Some(t) => t,
+            None => {
                 return Err((
                     StatusCode::UNAUTHORIZED,
                     Json(json!({ "error": "Unauthorised" })),
@@ -42,7 +56,7 @@ impl FromRequestParts<Arc<AppState>> for AdminAuth {
         validation.set_required_spec_claims(&["exp"]);
 
         match decode::<AdminClaims>(
-            token,
+            &token,
             &DecodingKey::from_secret(state.config.jwt_secret.as_bytes()),
             &validation,
         ) {

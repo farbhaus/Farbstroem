@@ -34,7 +34,7 @@ async fn main() {
     tracing::info!("[startup] Admin password hashed");
 
     // Initialize database
-    let db = db::init_pool(&config.db_path);
+    let db = db::init_pool(&config.db_path, &config.data_path);
 
     // Create shared state
     let events = events::EventChannels::new();

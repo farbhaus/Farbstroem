@@ -157,6 +157,10 @@ pub fn spawn_room_ended_cleanup(state: Arc<AppState>) {
     });
 }
 
+/// Drops this room's `room_files` assignments and deletes `session_files` rows
+/// that originated here AND aren't still assigned to another room via
+/// `room_files` (library protection). Blobs on disk are removed only after
+/// confirming no other row shares the `stored_path` (dedup protection).
 pub async fn cleanup_room_files(
     state: &Arc<AppState>,
     slug: &str,
@@ -165,66 +169,87 @@ pub async fn cleanup_room_files(
     let slug_owned = slug.to_string();
     let data_path = state.config.data_path.clone();
 
-    let files: Vec<(String, String, String)> = tokio::task::spawn_blocking(move || {
-        let room_id: Option<String> = db
-            .query_row(
-                "SELECT id FROM rooms WHERE slug = ?1",
-                rusqlite::params![slug_owned],
-                |row| row.get(0),
-            )
-            .ok();
+    let stored_paths: Vec<String> = tokio::task::spawn_blocking(
+        move || -> Result<Vec<String>, rusqlite::Error> {
+            let room_id: Option<String> = db
+                .query_row(
+                    "SELECT id FROM rooms WHERE slug = ?1",
+                    rusqlite::params![slug_owned],
+                    |row| row.get(0),
+                )
+                .ok();
 
-        let room_id = match room_id {
-            Some(id) => id,
-            None => return Ok(Vec::new()),
-        };
+            let room_id = match room_id {
+                Some(id) => id,
+                None => return Ok(Vec::new()),
+            };
 
-        let mut stmt = db.prepare(
-            "SELECT id, stored_path, room_id FROM session_files WHERE room_id = ?1",
-        )?;
-        let rows: Vec<(String, String, String)> = stmt
-            .query_map(rusqlite::params![room_id], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })?
-            .filter_map(|r| r.ok())
-            .collect();
+            // Unassign every file this room had (drop junction rows).
+            db.execute(
+                "DELETE FROM room_files WHERE room_id = ?1",
+                rusqlite::params![room_id],
+            )?;
 
-        // Delete DB rows
-        db.execute(
-            "DELETE FROM session_files WHERE room_id = ?1",
-            rusqlite::params![room_id],
-        )?;
+            // session_files rows originating in this room AND not assigned
+            // elsewhere via room_files are safe to delete.
+            let orphans: Vec<(String, String)> = {
+                let mut stmt = db.prepare(
+                    "SELECT sf.id, sf.stored_path FROM session_files sf \
+                     WHERE sf.room_id = ?1 \
+                     AND NOT EXISTS (SELECT 1 FROM room_files rf WHERE rf.file_id = sf.id)",
+                )?;
+                let rows: Vec<(String, String)> = stmt
+                    .query_map(rusqlite::params![room_id], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })?
+                    .filter_map(|r| r.ok())
+                    .collect();
+                rows
+            };
 
-        Ok::<_, rusqlite::Error>(rows)
-    })
+            let mut safe_paths = Vec::with_capacity(orphans.len());
+            for (id, stored) in &orphans {
+                db.execute(
+                    "DELETE FROM session_files WHERE id = ?1",
+                    rusqlite::params![id],
+                )?;
+                let still_refs: i64 = db
+                    .query_row(
+                        "SELECT COUNT(*) FROM session_files WHERE stored_path = ?1",
+                        rusqlite::params![stored],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                if still_refs == 0 {
+                    safe_paths.push(stored.clone());
+                }
+            }
+            Ok(safe_paths)
+        },
+    )
     .await
     .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })??;
 
-    if files.is_empty() {
-        return Ok(());
-    }
-
-    let mut room_id_for_dir = String::new();
-    for (file_id, stored_path, room_id) in &files {
-        room_id_for_dir = room_id.clone();
-        let full_path = format!("{}/uploads/{}/{}", data_path, room_id, stored_path);
+    let mut removed = 0u64;
+    for stored in &stored_paths {
+        let full_path = format!("{}/files/{}", data_path, stored);
         match tokio::fs::remove_file(&full_path).await {
-            Ok(_) => {}
+            Ok(_) => removed += 1,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
                 tracing::debug!("[files] Failed to delete {}: {}", full_path, e);
             }
         }
-        let _ = file_id; // used in DB delete above
     }
 
-    // Try to remove the empty room upload directory
-    if !room_id_for_dir.is_empty() {
-        let dir_path = format!("{}/uploads/{}", data_path, room_id_for_dir);
-        let _ = tokio::fs::remove_dir(&dir_path).await;
+    if !stored_paths.is_empty() {
+        tracing::info!(
+            "[files] Room {} ended: removed {} blob(s), {} DB row(s)",
+            slug,
+            removed,
+            stored_paths.len()
+        );
     }
-
-    tracing::info!("[files] Cleaned up files for room (ended)");
     Ok(())
 }
 
@@ -250,62 +275,81 @@ pub fn spawn_weekly_cleanup(state: Arc<AppState>) {
     });
 }
 
+/// Library-aware weekly sweep: only deletes `session_files` rows whose
+/// originating room is ended/expired AND which aren't assigned to any other
+/// room via `room_files`. Blobs are removed only if no surviving row shares
+/// their `stored_path` (dedup protection).
 async fn cleanup_files(state: &Arc<AppState>) -> Result<(), Box<dyn std::error::Error>> {
-    let files_to_delete: Vec<(String, String, String)> = {
-        let db = state.db.get()?;
-        let mut stmt = db.prepare(
-            "SELECT sf.id, sf.stored_path, sf.room_id \
-             FROM session_files sf \
-             JOIN rooms r ON r.id = sf.room_id \
-             WHERE r.status = 'ended' \
-             OR (r.expires_at IS NOT NULL AND r.expires_at < CURRENT_TIMESTAMP)",
-        )?;
-        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
-        rows.filter_map(|r| r.ok()).collect()
-    };
+    let data_path = state.config.data_path.clone();
+    let db = state.db.get()?;
 
-    if files_to_delete.is_empty() {
+    let stored_paths: Vec<String> = tokio::task::spawn_blocking(
+        move || -> Result<Vec<String>, rusqlite::Error> {
+            let orphans: Vec<(String, String)> = {
+                let mut stmt = db.prepare(
+                    "SELECT sf.id, sf.stored_path \
+                     FROM session_files sf \
+                     JOIN rooms r ON r.id = sf.room_id \
+                     WHERE (r.status = 'ended' \
+                            OR (r.expires_at IS NOT NULL AND r.expires_at < CURRENT_TIMESTAMP)) \
+                     AND NOT EXISTS (SELECT 1 FROM room_files rf WHERE rf.file_id = sf.id)",
+                )?;
+                let rows: Vec<(String, String)> = stmt
+                    .query_map([], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })?
+                    .filter_map(|r| r.ok())
+                    .collect();
+                rows
+            };
+
+            if orphans.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            let mut safe_paths = Vec::with_capacity(orphans.len());
+            for (id, stored) in &orphans {
+                db.execute(
+                    "DELETE FROM session_files WHERE id = ?1",
+                    rusqlite::params![id],
+                )?;
+                let still_refs: i64 = db
+                    .query_row(
+                        "SELECT COUNT(*) FROM session_files WHERE stored_path = ?1",
+                        rusqlite::params![stored],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                if still_refs == 0 {
+                    safe_paths.push(stored.clone());
+                }
+            }
+            Ok(safe_paths)
+        },
+    )
+    .await
+    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })??;
+
+    if stored_paths.is_empty() {
         tracing::info!("[cleanup] No files to clean up");
         return Ok(());
     }
 
-    tracing::info!("[cleanup] Cleaning up {} files", files_to_delete.len());
-
+    tracing::info!("[cleanup] Cleaning up {} files", stored_paths.len());
     let mut deleted_count = 0u64;
-
-    for (file_id, stored_path, room_id) in &files_to_delete {
-        // Delete file from disk
-        let full_path = format!("{}/uploads/{}/{}", state.config.data_path, room_id, stored_path);
+    for stored in &stored_paths {
+        let full_path = format!("{}/files/{}", data_path, stored);
         match tokio::fs::remove_file(&full_path).await {
-            Ok(_) => {
-                deleted_count += 1;
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                // Already gone, still delete DB row
-            }
-            Err(e) => {
-                tracing::debug!("[cleanup] Failed to delete {}: {}", full_path, e);
-            }
-        }
-
-        // Delete DB row
-        let db = state.db.get()?;
-        db.execute(
-            "DELETE FROM session_files WHERE id = ?1",
-            rusqlite::params![file_id],
-        )?;
-
-        // Try to remove parent directory if empty
-        if let Some(parent) = std::path::Path::new(&full_path).parent() {
-            let _ = tokio::fs::remove_dir(parent).await; // only succeeds if empty
+            Ok(_) => deleted_count += 1,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => tracing::debug!("[cleanup] Failed to delete {}: {}", full_path, e),
         }
     }
 
     tracing::info!(
-        "[cleanup] Deleted {} files from disk, {} DB rows removed",
+        "[cleanup] Deleted {} blobs from disk, {} DB rows removed",
         deleted_count,
-        files_to_delete.len()
+        stored_paths.len()
     );
-
     Ok(())
 }
