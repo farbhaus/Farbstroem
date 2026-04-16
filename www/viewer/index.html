@@ -32,12 +32,13 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     position: fixed; inset: 0; z-index: 200;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
+    background: #000;
     gap: 16px;
 }
 .screen.hidden { display: none; }
 
 .join-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 48px; width: 380px; }
-.screen-logo { height: 48px; opacity: 0.6; margin: 0 auto 24px; display: block; }
+.screen-logo { height: 18px; opacity: 0.4; margin-bottom: 12px; }
 .join-room-name { font-size: 20px; font-weight: 600; margin-bottom: 32px; }
 .form-row { margin-bottom: 16px; }
 .form-row label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
@@ -58,6 +59,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 #landing-screen {
     position: fixed; inset: 0; z-index: 300;
     display: flex; align-items: center; justify-content: center;
+    background: #000;
 }
 #landing-screen.hidden { display: none; }
 .landing-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 48px; width: 400px; }
@@ -138,7 +140,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     display: flex; align-items: center; padding: 0 16px;
 }
 #top-left { flex: 1; display: flex; align-items: center; }
-.brand-logo { height: 25px; opacity: 0.5; transition: opacity 0.15s; margin: 20px; display: flex }
+.brand-logo { height: 20px; opacity: 0.5; transition: opacity 0.15s; }
 .brand-logo:hover { opacity: 0.8; }
 #top-center { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--dim); }
 #ws-status { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--dim); }
@@ -498,7 +500,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 /* ---- Responsive ---- */
 @media (max-width: 640px) {
     /* Top bar */
-    /* .brand-logo { display: none; } */
+    .brand-logo { display: none; }
     #top-bar { padding: 0 10px; }
     #top-center { gap: 6px; }
 
@@ -573,7 +575,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 /* Mobile landscape — maximize video area */
 @media (max-height: 440px) and (orientation: landscape) {
     #top-bar { height: 32px; }
-    /* #top-bar .brand-logo { display: none; } */
+    #top-bar .brand-logo { display: none; }
     #bottom-toolbar { flex-wrap: nowrap; padding: 2px 8px;
         padding-bottom: calc(2px + env(safe-area-inset-bottom, 0px)); }
     .tb-btn { width: 32px; height: 32px; }
@@ -799,11 +801,6 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                     <div id="files-list">
                         <div id="files-empty">No files shared yet.</div>
                     </div>
-                </div>
-                <div id="upload-progress-row" style="display:none;align-items:center;gap:8px;padding:4px 6px;margin-bottom:4px;font-size:11px;color:var(--dim);">
-                    <div id="upload-progress-name" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
-                    <div id="upload-progress-pct" style="font-variant-numeric:tabular-nums;">0%</div>
-                    <button id="upload-progress-cancel" title="Cancel upload" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:13px;line-height:1;padding:0 4px;">✕</button>
                 </div>
                 <div id="upload-progress-bar" style="display:none;height:3px;background:var(--border);margin-bottom:2px;border-radius:2px;overflow:hidden;">
                     <div id="upload-progress-fill" style="height:100%;width:0%;background:var(--accent);transition:width 0.1s linear;"></div>
@@ -1941,13 +1938,15 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 });
             }
             if (hasBg) {
-                const html = document.documentElement;
-                html.style.backgroundColor    = '#000';
-                html.style.backgroundImage    = 'url(/api/branding/bg)';
-                html.style.backgroundSize     = 'cover';
-                html.style.backgroundPosition = 'center';
-                html.style.backgroundRepeat   = 'no-repeat';
-                document.body.style.background = 'transparent';
+                const applyBg = (el) => {
+                    el.style.backgroundColor = '#000';
+                    el.style.backgroundImage = 'url(/api/branding/bg)';
+                    el.style.backgroundSize = 'cover';
+                    el.style.backgroundPosition = 'center';
+                    el.style.backgroundRepeat = 'no-repeat';
+                };
+                document.querySelectorAll('.screen').forEach(applyBg);
+                applyBg(document.getElementById('landing-screen'));
             }
         } catch {}
     })();
@@ -2048,50 +2047,32 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         } catch {}
     }
 
-    let currentUploadXhr = null;
-
     function uploadFile(file) {
         const attachBtn    = document.getElementById('chat-attach');
         const progressBar  = document.getElementById('upload-progress-bar');
         const progressFill = document.getElementById('upload-progress-fill');
-        const progressRow  = document.getElementById('upload-progress-row');
-        const progressName = document.getElementById('upload-progress-name');
-        const progressPct  = document.getElementById('upload-progress-pct');
-        const cancelBtn    = document.getElementById('upload-progress-cancel');
 
         attachBtn.disabled = true;
         progressBar.style.display = '';
-        progressRow.style.display = 'flex';
         progressFill.style.width  = '0%';
-        progressName.textContent  = file.name;
-        progressName.title        = file.name;
-        progressPct.textContent   = '0%';
 
         const xhr = new XMLHttpRequest();
-        currentUploadXhr = xhr;
         xhr.open('POST',
             `/api/public/rooms/${encodeURIComponent(slug)}/files`
             + `?participantId=${encodeURIComponent(participantId)}&token=${encodeURIComponent(myToken)}`
         );
         xhr.upload.addEventListener('progress', e => {
             if (e.lengthComputable) {
-                const pct = Math.round((e.loaded / e.total) * 100);
-                progressFill.style.width = pct + '%';
-                progressPct.textContent  = pct + '%';
+                progressFill.style.width = Math.round((e.loaded / e.total) * 100) + '%';
             }
         });
         const done = () => {
-            currentUploadXhr = null;
             attachBtn.disabled = false;
             progressBar.style.display = 'none';
-            progressRow.style.display = 'none';
             progressFill.style.width  = '0%';
         };
         xhr.onload  = done;
         xhr.onerror = done;
-        xhr.onabort = done;
-
-        cancelBtn.onclick = () => { if (currentUploadXhr) currentUploadXhr.abort(); };
 
         const fd = new FormData();
         fd.append('file', file);
