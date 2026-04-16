@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::sync::Arc;
 use axum_test::TestServer;
 
@@ -31,7 +33,7 @@ pub fn test_config() -> AppConfig {
 
 pub fn test_state() -> Arc<AppState> {
     let config = test_config();
-    let pool = db::init_pool(&config.db_path);
+    let pool = db::init_pool(&config.db_path, &config.data_path);
     let events = EventChannels::new();
     let admin_password_hash = bcrypt::hash("test-admin-password", 4).unwrap();
 
@@ -41,6 +43,7 @@ pub fn test_state() -> Arc<AppState> {
         config,
         http_client: reqwest::Client::new(),
         admin_password_hash,
+        metrics_samples: tokio::sync::Mutex::new(stream_backend::state::MetricsSamples::default()),
     })
 }
 
@@ -64,7 +67,6 @@ pub fn seed_stream_key(state: &Arc<AppState>, name: &str) -> (String, String) {
     (id, key_token)
 }
 
-#[allow(dead_code)]
 pub fn seed_room(state: &Arc<AppState>, name: &str, slug: &str) -> String {
     let conn = state.db.get().unwrap();
     let id = uuid::Uuid::new_v4().to_string();
@@ -76,7 +78,6 @@ pub fn seed_room(state: &Arc<AppState>, name: &str, slug: &str) -> String {
     id
 }
 
-#[allow(dead_code)]
 pub fn seed_room_with_password(state: &Arc<AppState>, name: &str, slug: &str, password: &str) -> String {
     let conn = state.db.get().unwrap();
     let id = uuid::Uuid::new_v4().to_string();

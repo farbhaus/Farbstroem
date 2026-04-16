@@ -44,8 +44,8 @@ fn seed_file(
     )
     .unwrap();
 
-    // Create actual file on disk
-    let dir = format!("{}/uploads/{}", data_path, room_id);
+    // Create actual file on disk (flat layout)
+    let dir = format!("{}/files", data_path);
     fs::create_dir_all(&dir).unwrap();
     let path = format!("{}/{}", dir, stored_name);
     fs::write(&path, b"test file content").unwrap();
@@ -189,9 +189,9 @@ async fn cleanup_room_files_removes_files() {
 
     let file_id = seed_file(&state, &room_id, "test.txt", &data_path);
 
-    // Verify file exists on disk
+    // Verify file exists on disk (flat layout)
     let stored_name = format!("{}.bin", file_id);
-    let file_path = format!("{}/uploads/{}/{}", data_path, room_id, stored_name);
+    let file_path = format!("{}/files/{}", data_path, stored_name);
     assert!(std::path::Path::new(&file_path).exists());
     assert_eq!(count_files(&state, &room_id), 1);
 
@@ -205,10 +205,6 @@ async fn cleanup_room_files_removes_files() {
 
     // File removed from disk
     assert!(!std::path::Path::new(&file_path).exists());
-
-    // Room upload directory removed
-    let dir_path = format!("{}/uploads/{}", data_path, room_id);
-    assert!(!std::path::Path::new(&dir_path).exists());
 }
 
 // ---------------------------------------------------------------------------
@@ -241,7 +237,7 @@ async fn full_expiry_lifecycle() {
     let file_id = seed_file(&state, &room_id, "video.mp4", &data_path);
 
     let stored_name = format!("{}.bin", file_id);
-    let file_path = format!("{}/uploads/{}/{}", data_path, room_id, stored_name);
+    let file_path = format!("{}/files/{}", data_path, stored_name);
 
     // Step 1: poll_expiry transitions room to ended
     stream_backend::tasks::poll_expiry(&state).await.unwrap();
