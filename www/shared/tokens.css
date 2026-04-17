@@ -1,0 +1,62 @@
+/* zStream design tokens — single source of truth.
+   Overridable at runtime by /api/branding via utils.js applyBranding(). */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    /* Color */
+    --bg:       #0e0e0e;
+    --surface:  #141414;
+    --surface2: #1c1c1c;
+    --border:   #2a2a2a;
+    --faint:    #444444;
+    --dim:      #777777;
+    --text:     #eeeeee;
+    --accent:   #FFAA00;
+    --danger:   #E53935;
+    --green:    #3ecf8e;
+
+    /* Typography */
+    --ff:       system-ui, sans-serif;
+    --fs-base:  14px;
+    --fs-sm:    12px;
+    --fs-xs:    11px;
+    --fs-lg:    16px;
+
+    /* Spacing (4px scale) */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 20px;
+    --sp-6: 24px;
+    --sp-7: 28px;
+    --sp-8: 32px;
+
+    /* Radii */
+    --r-sm: 4px;
+    --r-md: 6px;
+    --r-lg: 10px;
+    --r-xl: 12px;
+
+    /* Z-index */
+    --z-nav:     100;
+    --z-overlay: 150;
+    --z-screen:  200;
+    --z-modal:   300;
+    --z-toast:   999;
+
+    /* Layout */
+    --nav-h:     62px;
+    --topbar-h:  48px;
+    --toolbar-h: 56px;
+    --panel-w:   320px;
+}
+
+html, body {
+    height: 100%;
+    font-family: var(--ff);
+    font-size: var(--fs-base);
+    color: var(--text);
+    background: var(--bg);
+}

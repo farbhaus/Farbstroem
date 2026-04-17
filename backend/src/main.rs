@@ -72,6 +72,7 @@ async fn main() {
         .merge(api_router)
         .merge(ws_router.with_state(state.clone()))
         .nest_service("/admin", ServeDir::new("/www/admin").fallback(ServeFile::new("/www/admin/index.html")))
+        .nest_service("/shared", ServeDir::new("/www/shared"))
         .route_service("/", ServeFile::new("/www/landing/index.html"))
         .fallback_service(ServeDir::new("/www/viewer").fallback(ServeFile::new("/www/viewer/index.html")))
         .layer(TraceLayer::new_for_http());
