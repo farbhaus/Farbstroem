@@ -34,7 +34,7 @@ async fn main() {
     tracing::info!("[startup] Admin password hashed");
 
     // Initialize database
-    let db = db::init_pool(&config.db_path);
+    let db = db::init_pool(&config.db_path, &config.data_path);
 
     // Create shared state
     let events = events::EventChannels::new();
@@ -45,6 +45,7 @@ async fn main() {
         config,
         http_client,
         admin_password_hash,
+        metrics_samples: tokio::sync::Mutex::new(state::MetricsSamples::default()),
     });
 
     // Ensure branding directory exists
@@ -71,6 +72,7 @@ async fn main() {
         .merge(api_router)
         .merge(ws_router.with_state(state.clone()))
         .nest_service("/admin", ServeDir::new("/www/admin").fallback(ServeFile::new("/www/admin/index.html")))
+        .route_service("/", ServeFile::new("/www/landing/index.html"))
         .fallback_service(ServeDir::new("/www/viewer").fallback(ServeFile::new("/www/viewer/index.html")))
         .layer(TraceLayer::new_for_http());
 

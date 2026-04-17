@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Ze Maria Color</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg:      #0e0e0e;
+    --surface: #141414;
+    --border:  #2a2a2a;
+    --text:    #eeeeee;
+    --dim:     #777777;
+    --accent:  #FFAA00;
+    --danger:  #E53935;
+    --green:   #1A9B5A;
+}
+
+html, body {
+    height: 100%;
+    font-family: system-ui, sans-serif;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--bg);
+}
+
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.landing-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 48px;
+    width: 400px;
+    max-width: calc(100vw - 32px);
+}
+
+.screen-logo { height: 48px; opacity: 0.6; margin: 0 auto 24px; display: block; }
+.landing-title { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
+.landing-sub { font-size: 13px; color: var(--dim); margin-bottom: 32px; line-height: 1.5; }
+.landing-input {
+    width: 100%; padding: 10px 12px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font: inherit; font-size: 13px; outline: none; margin-bottom: 12px;
+}
+.landing-input:focus { border-color: #555; }
+.landing-btn {
+    width: 100%; padding: 11px;
+    background: var(--text); color: var(--bg);
+    border: none; border-radius: 6px;
+    font: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer;
+}
+.landing-btn:hover { background: #ccc; }
+.landing-error { color: var(--danger); font-size: 12px; margin-top: 10px; min-height: 16px; }
+</style>
+</head>
+<body>
+
+<div class="landing-box">
+    <img src="" alt="" class="screen-logo" id="brand-logo" style="display:none">
+    <div class="landing-title">Welcome</div>
+    <div class="landing-sub">It appears you forgot the room link for your project. Please enter your room link below or ask your host for the correct URL.</div>
+    <input type="text" class="landing-input" id="landing-input" placeholder="/room-name-123abc" autocomplete="off" spellcheck="false">
+    <button class="landing-btn" id="landing-btn">Go to Room</button>
+    <p class="landing-error" id="landing-error"></p>
+</div>
+
+<script>
+(function () {
+    function goToRoom() {
+        const raw = document.getElementById('landing-input').value.trim();
+        const errEl = document.getElementById('landing-error');
+        errEl.textContent = '';
+        if (!raw) { errEl.textContent = 'Please enter a room URL.'; return; }
+        let dest;
+        try {
+            const url = raw.startsWith('http') ? new URL(raw) : new URL('https://x/' + raw.replace(/^\/+/, ''));
+            const parts = url.pathname.replace(/^\//, '').split('/').filter(Boolean);
+            dest = parts[parts.length - 1];
+        } catch (e) {
+            dest = raw.replace(/^\/+|\/+$/g, '').split('/').pop();
+        }
+        if (!dest) { errEl.textContent = 'Could not parse a room from that URL.'; return; }
+        location.href = '/watch/' + dest + location.search;
+    }
+
+    document.getElementById('landing-btn').addEventListener('click', goToRoom);
+    document.getElementById('landing-input').addEventListener('keydown', e => { if (e.key === 'Enter') goToRoom(); });
+
+    (async function loadBranding() {
+        try {
+            const res = await fetch('/api/branding');
+            if (!res.ok) return;
+            const { hasLogo, hasBg, colors } = await res.json();
+            if (colors) {
+                const map = { color_accent: '--accent', color_bg: '--bg', color_surface: '--surface', color_text: '--text', color_danger: '--danger', color_green: '--green' };
+                for (const [key, cssVar] of Object.entries(map)) {
+                    if (colors[key]) document.documentElement.style.setProperty(cssVar, colors[key]);
+                }
+            }
+            if (hasLogo) {
+                const img = document.getElementById('brand-logo');
+                img.src = '/api/branding/logo';
+                img.style.display = '';
+            }
+            if (hasBg) {
+                document.body.style.backgroundImage = 'url(/api/branding/bg)';
+            }
+        } catch {}
+    })();
+})();
+</script>
+</body>
+</html>

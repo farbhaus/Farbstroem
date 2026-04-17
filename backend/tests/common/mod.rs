@@ -43,6 +43,7 @@ pub fn test_state() -> Arc<AppState> {
         config,
         http_client: reqwest::Client::new(),
         admin_password_hash,
+        metrics_samples: tokio::sync::Mutex::new(stream_backend::state::MetricsSamples::default()),
     })
 }
 
