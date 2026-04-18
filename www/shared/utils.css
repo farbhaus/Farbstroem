@@ -1,7 +1,8 @@
 /* Utilities for replacing inline-style hotspots.
    Kept deliberately minimal — do not expand into a full utility framework. */
 
-.u-hidden { display: none !important; }
+/* Default-hidden state. No !important so inline style.display toggles from JS still work. */
+.u-hidden { display: none; }
 
 .u-w-full { width: 100%; }
 
