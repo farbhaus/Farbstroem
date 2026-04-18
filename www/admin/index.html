@@ -55,7 +55,6 @@ main { margin-top: var(--nav-h); padding: 32px; }
                 transform var(--dur-fast) var(--ease-out),
                 box-shadow var(--dur-fast) var(--ease-out);
 }
-.stat-card:hover { border-color: var(--dim); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
 .stat-label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); margin-bottom: 12px; }
 .stat-value { font-size: 28px; font-weight: 600; }
 .stat-value-sm { font-size: 18px; margin-bottom: 4px; }
@@ -71,7 +70,6 @@ main { margin-top: var(--nav-h); padding: 32px; }
     transition: border-color var(--dur-fast) var(--ease-out),
                 box-shadow var(--dur-fast) var(--ease-out);
 }
-.room-card:hover { border-color: var(--dim); box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
 .room-card-header {
     display: flex; align-items: flex-start; gap: 16px;
     padding: 20px 24px; border-bottom: 1px solid var(--border);
@@ -99,7 +97,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
 .url-input {
     flex: 1; min-width: 0; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border);
     font-family: monospace; font-size: 12px; color: var(--text); outline: none; border-radius: var(--r-btn);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
     transition: border-color var(--dur-fast) var(--ease-out),
                 box-shadow var(--dur-fast) var(--ease-out);
 }
@@ -114,7 +112,6 @@ main { margin-top: var(--nav-h); padding: 32px; }
     transition: border-color var(--dur-fast) var(--ease-out),
                 box-shadow var(--dur-fast) var(--ease-out);
 }
-.key-card:hover { border-color: var(--dim); box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
 .key-card-header {
     display: flex; align-items: center; gap: 16px;
     padding: 16px 24px; border-bottom: 1px solid var(--border);
@@ -130,7 +127,6 @@ main { margin-top: var(--nav-h); padding: 32px; }
     transition: border-color var(--dur-fast) var(--ease-out),
                 box-shadow var(--dur-fast) var(--ease-out);
 }
-.stream-card:hover { border-color: var(--dim); box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
 .stream-card-header {
     display: flex; align-items: center; gap: 12px;
     padding: 16px 24px; border-bottom: 1px solid var(--border);
@@ -509,43 +505,43 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
                     <div class="form-row" style="margin:0">
                         <label>Accent</label>
                         <div style="display:flex;gap:6px;align-items:center">
-                            <input type="color" id="color-accent" value="#FFAA00" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
-                            <input type="text" id="color-accent-hex" placeholder="#FFAA00" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                            <input type="color" id="color-accent" value="#ffbd2e" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-accent-hex" placeholder="#ffbd2e" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
                         </div>
                     </div>
                     <div class="form-row" style="margin:0">
                         <label>Background</label>
                         <div style="display:flex;gap:6px;align-items:center">
-                            <input type="color" id="color-bg" value="#0e0e0e" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
-                            <input type="text" id="color-bg-hex" placeholder="#0e0e0e" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                            <input type="color" id="color-bg" value="#171717" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-bg-hex" placeholder="#171717" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
                         </div>
                     </div>
                     <div class="form-row" style="margin:0">
                         <label>Surface</label>
                         <div style="display:flex;gap:6px;align-items:center">
-                            <input type="color" id="color-surface" value="#141414" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
-                            <input type="text" id="color-surface-hex" placeholder="#141414" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                            <input type="color" id="color-surface" value="#1d1d1d" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-surface-hex" placeholder="#1d1d1d" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
                         </div>
                     </div>
                     <div class="form-row" style="margin:0">
                         <label>Text</label>
                         <div style="display:flex;gap:6px;align-items:center">
-                            <input type="color" id="color-text" value="#eeeeee" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
-                            <input type="text" id="color-text-hex" placeholder="#eeeeee" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                            <input type="color" id="color-text" value="#dfdfdf" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-text-hex" placeholder="#dfdfdf" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
                         </div>
                     </div>
                     <div class="form-row" style="margin:0">
                         <label>Danger</label>
                         <div style="display:flex;gap:6px;align-items:center">
-                            <input type="color" id="color-danger" value="#E53935" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
-                            <input type="text" id="color-danger-hex" placeholder="#E53935" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                            <input type="color" id="color-danger" value="#ff6159" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-danger-hex" placeholder="#ff6159" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
                         </div>
                     </div>
                     <div class="form-row" style="margin:0">
                         <label>Success</label>
                         <div style="display:flex;gap:6px;align-items:center">
-                            <input type="color" id="color-green" value="#1A9B5A" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
-                            <input type="text" id="color-green-hex" placeholder="#1A9B5A" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                            <input type="color" id="color-green" value="#28c941" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-green-hex" placeholder="#28c941" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
                         </div>
                     </div>
                 </div>
@@ -813,6 +809,13 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
     function copy(text) {
         navigator.clipboard.writeText(text).then(() => toast('Copied'));
     }
+
+    // Click-to-copy for every readonly URL field — matches the visible Copy button.
+    document.addEventListener('click', (e) => {
+        const el = e.target.closest('input.url-input');
+        if (!el || !el.readOnly) return;
+        copy(el.value);
+    });
 
     function esc(str) {
         return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

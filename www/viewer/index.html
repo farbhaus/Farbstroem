@@ -44,7 +44,7 @@ html, body { overflow: hidden; }
     transition: background var(--dur-fast) var(--ease-out),
                 transform var(--dur-fast) var(--ease-out);
 }
-.join-btn:hover  { background: #ccc; }
+.join-btn:hover  { background: color-mix(in srgb, var(--text) 80%, var(--bg)); }
 .join-btn:active { transform: translateY(1px); }
 .join-btn:focus-visible { outline: none; box-shadow: var(--ring-accent); }
 .join-error { color: var(--danger); font-size: 12px; margin-top: 10px; min-height: 16px; }
@@ -420,7 +420,7 @@ body.mode-call #stream-assigned-banner.visible { display: flex; }
     border-radius: var(--r-btn); font: inherit; font-weight: 600; cursor: pointer;
     transition: background var(--dur-fast) var(--ease-out);
 }
-#stream-assigned-banner button:hover { background: #ccc; }
+#stream-assigned-banner button:hover { background: color-mix(in srgb, var(--text) 80%, var(--bg)); }
 
 /* Matches #offline-screen styling — same background / dot / label layout
    so the "stream ended" state looks like the familiar "waiting for source"
@@ -559,7 +559,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     transition: border-color 0.15s, color 0.15s, background 0.15s;
     position: relative;
 }
-.tb-btn:hover { border-color: #555; color: var(--text); }
+.tb-btn:hover { border-color: var(--dim); color: var(--text); }
 .tb-btn.active { border-color: var(--green); color: var(--green); }
 .tb-btn.muted { border-color: var(--danger); color: var(--danger); background: rgba(224,80,80,0.08); }
 .tb-btn.panel-open { border-color: var(--accent); color: var(--accent); }
