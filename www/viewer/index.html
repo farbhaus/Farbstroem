@@ -551,6 +551,15 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 .tb-btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
 .tb-btn.has-notification::after { content: ''; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: notif-pulse 1.5s ease-in-out infinite; }
 @keyframes notif-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+/* Force-mute alert: pulses the participant's mic button when a host mutes them. */
+@keyframes mic-force-mute-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 60%, transparent); }
+    50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--danger) 0%, transparent); }
+}
+.tb-btn.force-muted { animation: mic-force-mute-pulse 0.7s var(--ease-out) 4; }
+@media (prefers-reduced-motion: reduce) {
+    .tb-btn.force-muted { animation: none; }
+}
 .tb-btn svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Player controls group */
@@ -661,28 +670,18 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     .tb-btn { width: 32px; height: 32px; }
     .tb-btn svg { width: 15px; height: 15px; }
 
-    /* Panels as flex children — video shrinks to make room */
+    /* Panels overlay the video (same as desktop) */
     #main-row { flex-direction: row; }
     #center-area { flex: 1; min-width: 0; min-height: 0; }
 
-    #left-panel {
-        position: static !important; width: 0 !important;
-        height: auto !important; overflow: hidden !important;
-        border-right: none !important; transition: width 0.2s ease !important;
-        flex-shrink: 0;
-    }
-    #left-panel.open { width: 220px !important; border-right-width: 1px !important; }
+    /* Smaller panel widths for landscape; positioning/overlay behaviour inherited from desktop rules */
+    #left-panel.open { width: 220px; }
     #left-panel .panel-header { display: flex !important; }
     #conf-tiles {
         flex-direction: column; height: auto; overflow-y: auto; overflow-x: hidden;
     }
 
-    #right-panel {
-        position: static !important; width: 0 !important;
-        overflow: hidden !important; transition: width 0.2s ease !important;
-        flex-shrink: 0;
-    }
-    #right-panel.open { width: 260px !important; border-left-width: 1px !important; }
+    #right-panel.open { width: 260px; }
 }
 </style>
 </head>
@@ -1159,9 +1158,27 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         updateSelfTile();
     }
 
+    let selfMuteInFlight = false;
+    function pulseMicAlert() {
+        const btn = document.getElementById('mic-btn');
+        if (!btn) return;
+        btn.classList.remove('force-muted');
+        void btn.offsetWidth; // reflow so the animation restarts cleanly
+        btn.classList.add('force-muted');
+    }
+    (function wireMicPulseCleanup() {
+        const btn = document.getElementById('mic-btn');
+        if (btn) btn.addEventListener('animationend', e => {
+            if (e.animationName === 'mic-force-mute-pulse') btn.classList.remove('force-muted');
+        });
+    })();
+
     function syncLocalMuteState(pub, participant) {
         if (!livekitRoom || participant !== livekitRoom.localParticipant) return;
         if (pub.source === LivekitClient.Track.Source.Microphone) {
+            // Forced mute detection: muted event arrived while we still thought mic was on
+            // and no local toggle is in flight → host/presenter muted us.
+            if (pub.isMuted && micOn && !selfMuteInFlight) pulseMicAlert();
             micOn = !pub.isMuted;
             refreshConfButtons();
             updateSelfTile();
@@ -2338,6 +2355,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         localStorage.setItem(PREF_KEY, cameraOn ? (!micOn ? 'both' : 'cam') : (!micOn ? 'mic' : 'none'));
         const prev = micOn;
         micOn = !micOn;
+        selfMuteInFlight = true;
         setConfBtns({ active: cameraOn, disabled: true }, { disabled: true });
         try {
             if (livekitRoom) {
@@ -2349,6 +2367,8 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         } catch (err) {
             console.error('[conf mic]', err);
             micOn = prev;
+        } finally {
+            selfMuteInFlight = false;
         }
         refreshConfButtons();
     }
