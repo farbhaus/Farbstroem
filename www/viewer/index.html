@@ -551,13 +551,13 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 .tb-btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
 .tb-btn.has-notification::after { content: ''; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: notif-pulse 1.5s ease-in-out infinite; }
 @keyframes notif-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-/* Force-mute alert: slow "breathing" glow on the mic button after a host mutes the participant.
+/* Force-mute alert: smooth glow that fades in and out on the mic button.
    Runs until the participant unmutes themselves (or the mic becomes unmuted by any means). */
-@keyframes mic-force-mute-breathe {
-    0%, 100% { box-shadow: 0 0 0 0   color-mix(in srgb, var(--danger) 55%, transparent); }
-    50%      { box-shadow: 0 0 0 10px color-mix(in srgb, var(--danger) 0%, transparent); }
+@keyframes mic-force-mute-glow {
+    0%, 100% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 0%,  transparent); }
+    50%      { box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 60%, transparent); }
 }
-.tb-btn.force-muted { animation: mic-force-mute-breathe 2.4s ease-in-out infinite; }
+.tb-btn.force-muted { animation: mic-force-mute-glow 2.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
     .tb-btn.force-muted { animation: none; }
 }
@@ -2221,8 +2221,8 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 
     function refreshConfButtons() {
         setConfBtns(
-            { active: cameraOn },
-            { active: micOn }
+            { active: cameraOn, muted: !cameraOn },
+            { active: micOn,    muted: !micOn }
         );
     }
 
