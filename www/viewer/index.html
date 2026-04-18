@@ -162,25 +162,30 @@ html, body { overflow: hidden; }
 #main-row {
     flex: 1; min-height: 0;
     display: flex; flex-direction: row;
+    position: relative;
 }
 
 /* ---- Side panels ---- */
 .side-panel {
+    position: absolute; top: 0; bottom: 0;
     width: 0; overflow: hidden;
     background: var(--surface);
     display: flex; flex-direction: column;
-    flex-shrink: 0;
-    transition: width 0.25s ease;
+    transition: width 0.25s ease, top 0.25s ease, bottom 0.25s ease, left 0.25s ease, right 0.25s ease;
+    border: 1px solid transparent;
+    border-radius: var(--r-lg);
+    z-index: 5;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
 }
-.side-panel.open { width: var(--panel-w); }
+.side-panel.open { width: var(--panel-w); border-color: var(--border); }
 
 /* Left panel — Conference */
-#left-panel { border-right: 1px solid var(--border); border-right-width: 0; }
-#left-panel.open { border-right-width: 1px; }
+#left-panel { left: 0; }
+#left-panel.open { top: 8px; bottom: 8px; left: 8px; }
 
 /* Right panel — Chat */
-#right-panel { border-left: 1px solid var(--border); border-left-width: 0; }
-#right-panel.open { border-left-width: 1px; }
+#right-panel { right: 0; }
+#right-panel.open { top: 8px; bottom: 8px; right: 8px; }
 
 /* ---- Center — Video area ---- */
 #center-area {
@@ -360,8 +365,18 @@ body.mode-call #call-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     grid-auto-rows: 1fr;
+    justify-content: center;
 }
-body.mode-call #call-grid .conf-tile { width: 100%; height: auto; aspect-ratio: 16/9; }
+body.mode-call #call-grid .conf-tile {
+    width: 100%; height: auto; aspect-ratio: 16/9;
+    max-height: 100%;
+    max-width: calc((100% - 16px) * 1);
+    justify-self: center; align-self: center;
+}
+/* Single participant: cap width so 16:9 tile never exceeds viewport height. */
+body.mode-call #call-grid .conf-tile:only-child {
+    max-width: min(100%, calc((100vh - var(--toolbar-h) - var(--topbar-h) - 32px) * 16 / 9));
+}
 body.mode-call #call-grid .conf-empty { grid-column: 1 / -1; }
 
 /* Presenter sub-layout: screen share owns the stage; tiles drop to a
@@ -577,6 +592,8 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     .tb-btn { width: 36px; height: 36px; }
     .tb-btn svg { width: 17px; height: 17px; }
     .tb-sep { height: 24px; margin: 0 6px; }
+    /* Conference strip is inline above the video in portrait — toggle is a no-op. */
+    #conf-toggle, .tb-sep:has(+ #conf-toggle) { display: none; }
     .toolbar-group { display: flex; gap: 2px; }
     /* Force row break before player controls */
     #tb-break { display: block; order: 9; flex-basis: 100%; height: 2px; }
