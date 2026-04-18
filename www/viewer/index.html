@@ -942,8 +942,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 <svg viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6" stroke-linecap="round"/></svg>
             </button>
             <button class="tb-btn" id="layout-btn" title="Switch layout">
-                <svg viewBox="0 0 24 24" id="layout-btn-icon-grid"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                <svg viewBox="0 0 24 24" id="layout-btn-icon-presenter" style="display:none"><rect x="3" y="3" width="18" height="13"/><rect x="3" y="18" width="5" height="3"/><rect x="10" y="18" width="5" height="3"/><rect x="17" y="18" width="4" height="3"/></svg>
+                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </button>
             <button class="tb-btn" id="conf-toggle" title="Participants">
                 <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -1104,13 +1103,6 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         callLayout = layout;
         document.body.classList.toggle('call-layout-grid', layout === 'grid');
         document.body.classList.toggle('call-layout-presenter', layout === 'presenter');
-        const gridIcon = document.getElementById('layout-btn-icon-grid');
-        const presIcon = document.getElementById('layout-btn-icon-presenter');
-        // Show the icon of the layout you'd switch *to* on click.
-        if (gridIcon && presIcon) {
-            gridIcon.style.display = layout === 'presenter' ? '' : 'none';
-            presIcon.style.display = layout === 'presenter' ? 'none' : '';
-        }
     }
 
     document.getElementById('layout-btn').addEventListener('click', () => {
