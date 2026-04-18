@@ -353,6 +353,8 @@ body.mode-broadcast #call-grid,
 body.mode-broadcast #layout-btn,
 body.mode-broadcast #stream-assigned-banner,
 body.mode-call #stream-removed-overlay { display: none !important; }
+/* Layout toggle is only meaningful while someone is screen-sharing in call mode. */
+body.mode-call:not(.sharing-screen) #layout-btn { display: none !important; }
 
 #call-grid {
     position: absolute; inset: 0;
@@ -1079,6 +1081,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         track.attach(document.getElementById('screenshare-video'));
         document.getElementById('screenshare-label').textContent = label;
         document.getElementById('screenshare-wrap').classList.add('active');
+        document.body.classList.add('sharing-screen');
         // Auto-switch call-mode to Presenter unless the user has manually
         // picked a layout for this share session.
         if (roomMode === 'call' && !layoutOverride) setCallLayout('presenter');
@@ -1090,6 +1093,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             activeScreenShareTrack = null;
         }
         document.getElementById('screenshare-wrap').classList.remove('active');
+        document.body.classList.remove('sharing-screen');
         activeScreenShareId = null;
         // Share ended → return to Grid and drop the manual-override flag so
         // the next share can auto-switch again.
@@ -1103,6 +1107,8 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         callLayout = layout;
         document.body.classList.toggle('call-layout-grid', layout === 'grid');
         document.body.classList.toggle('call-layout-presenter', layout === 'presenter');
+        const btn = document.getElementById('layout-btn');
+        if (btn) btn.classList.toggle('panel-open', layout === 'presenter');
     }
 
     document.getElementById('layout-btn').addEventListener('click', () => {
