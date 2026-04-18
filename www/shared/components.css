@@ -4,7 +4,7 @@
 /* ---- Buttons ---- */
 .btn {
     padding: 8px 16px;
-    border: 1px solid var(--border);
+    border: 1.5px solid var(--border);
     background: var(--surface);
     font: inherit;
     font-size: 13px;
@@ -13,31 +13,64 @@
     color: var(--text);
     cursor: pointer;
     white-space: nowrap;
-    border-radius: var(--r-md);
-    transition: background 0.15s;
+    border-radius: var(--r-btn);
+    transition: background var(--dur-fast) var(--ease-out),
+                border-color var(--dur-fast) var(--ease-out),
+                color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out),
+                transform var(--dur-fast) var(--ease-out);
 }
-.btn:hover { background: var(--surface2); }
-.btn:disabled { opacity: 0.4; cursor: default; }
+.btn:hover { background: var(--surface2); border-color: var(--dim); }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible { outline: none; box-shadow: var(--ring-accent); border-color: var(--accent); }
+.btn:disabled { opacity: 0.4; cursor: default; transform: none; }
 
 .btn-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
-.btn-primary:hover { background: #ccc; }
+.btn-primary:hover { background: #ccc; border-color: #ccc; }
 
 .btn-danger { color: var(--danger); border-color: var(--danger); }
-.btn-danger:hover { background: #2a1515; }
+.btn-danger:hover { background: color-mix(in srgb, var(--danger) 15%, var(--surface)); border-color: var(--danger); }
 
 .btn-ghost { background: none; border-color: transparent; }
-.btn-ghost:hover { background: var(--surface2); }
+.btn-ghost:hover { background: var(--surface2); border-color: transparent; }
 
 .btn-sm { padding: 5px 12px; font-size: 12px; }
 .btn-lg { padding: 11px 20px; font-size: 13px; }
 .btn-block { width: 100%; }
 
+/* Square icon button — matches the viewer toolbar .tb-btn aesthetic.
+   Use for chat send/attach, panel close, tile actions, etc. */
+.btn-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; padding: 0;
+    border: 1.5px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    border-radius: var(--r-btn);
+    transition: background var(--dur-fast) var(--ease-out),
+                border-color var(--dur-fast) var(--ease-out),
+                color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
+}
+.btn-icon:hover { border-color: var(--dim); color: var(--text); }
+.btn-icon:active { transform: translateY(1px); }
+.btn-icon:focus-visible { outline: none; box-shadow: var(--ring-accent); border-color: var(--accent); }
+.btn-icon:disabled { opacity: 0.4; cursor: default; transform: none; }
+.btn-icon svg { width: 18px; height: 18px; }
+.btn-icon.btn-icon-sm { width: 28px; height: 28px; border-radius: var(--r-md); }
+.btn-icon.btn-icon-sm svg { width: 14px; height: 14px; }
+
 .btn-tab {
     border: none; background: none; color: var(--dim);
     border-bottom: 2px solid transparent;
     padding: 6px 14px; font-size: 13px; border-radius: 0;
+    transition: color var(--dur-fast) var(--ease-out),
+                border-color var(--dur-fast) var(--ease-out);
 }
+.btn-tab:hover { color: var(--text); }
 .btn-tab.active { color: var(--text); border-bottom-color: var(--text); }
+.btn-tab:focus-visible { outline: none; box-shadow: var(--ring-accent); }
 
 /* ---- Forms ---- */
 .form-row { margin-bottom: 18px; }
@@ -53,12 +86,29 @@
     width: 100%; padding: 9px 12px;
     border: 1px solid var(--border); background: var(--surface2);
     font: inherit; font-size: 13px; color: var(--text);
-    outline: none; border-radius: var(--r-md);
+    outline: none; border-radius: var(--r-btn);
+    transition: border-color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
 }
+.form-row input:hover,
+.form-row select:hover,
+.form-row textarea:hover { border-color: var(--dim); }
 .form-row input:focus,
 .form-row select:focus,
-.form-row textarea:focus { border-color: var(--dim); }
+.form-row textarea:focus { border-color: var(--accent); box-shadow: var(--ring-accent); }
 .form-row input::placeholder { color: var(--faint); }
+
+/* Generic inputs outside .form-row — for places that use raw <input>, <select>, <textarea>. */
+.input, .select, .textarea {
+    padding: 9px 12px;
+    border: 1px solid var(--border); background: var(--surface2);
+    font: inherit; font-size: 13px; color: var(--text);
+    outline: none; border-radius: var(--r-btn);
+    transition: border-color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
+}
+.input:hover, .select:hover, .textarea:hover { border-color: var(--dim); }
+.input:focus, .select:focus, .textarea:focus { border-color: var(--accent); box-shadow: var(--ring-accent); }
 
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
 
@@ -107,6 +157,18 @@
     display: flex; justify-content: flex-end; gap: 8px;
     margin-top: 24px;
 }
+
+/* ---- Panel card (rounded inset card inside a side panel or tab content) ---- */
+.panel-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-3) var(--sp-4);
+    transition: border-color var(--dur-fast) var(--ease-out),
+                background var(--dur-fast) var(--ease-out);
+}
+.panel-card.interactive { cursor: pointer; }
+.panel-card.interactive:hover { border-color: var(--dim); }
 
 /* ---- Badges ---- */
 .badge {

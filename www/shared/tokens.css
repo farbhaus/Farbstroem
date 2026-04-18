@@ -34,10 +34,18 @@
     --sp-8: 32px;
 
     /* Radii */
-    --r-sm: 4px;
-    --r-md: 6px;
-    --r-lg: 10px;
-    --r-xl: 12px;
+    --r-sm:  4px;
+    --r-md:  6px;
+    --r-btn: 8px;   /* buttons, inputs — matches viewer toolbar aesthetic */
+    --r-lg:  10px;  /* cards, panels, tiles */
+    --r-xl:  12px;
+
+    /* Motion */
+    --dur-fast: 150ms;
+    --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+    /* Focus ring — tracks --accent at 30% alpha via color-mix. */
+    --ring-accent: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
 
     /* Z-index */
     --z-nav:     100;
