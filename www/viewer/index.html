@@ -551,12 +551,13 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 .tb-btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
 .tb-btn.has-notification::after { content: ''; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: notif-pulse 1.5s ease-in-out infinite; }
 @keyframes notif-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-/* Force-mute alert: pulses the participant's mic button when a host mutes them. */
-@keyframes mic-force-mute-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 60%, transparent); }
-    50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--danger) 0%, transparent); }
+/* Force-mute alert: slow "breathing" glow on the mic button after a host mutes the participant.
+   Runs until the participant unmutes themselves (or the mic becomes unmuted by any means). */
+@keyframes mic-force-mute-breathe {
+    0%, 100% { box-shadow: 0 0 0 0   color-mix(in srgb, var(--danger) 55%, transparent); }
+    50%      { box-shadow: 0 0 0 10px color-mix(in srgb, var(--danger) 0%, transparent); }
 }
-.tb-btn.force-muted { animation: mic-force-mute-pulse 0.7s var(--ease-out) 4; }
+.tb-btn.force-muted { animation: mic-force-mute-breathe 2.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
     .tb-btn.force-muted { animation: none; }
 }
@@ -1159,26 +1160,23 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     }
 
     let selfMuteInFlight = false;
-    function pulseMicAlert() {
+    function startMicBreathe() {
         const btn = document.getElementById('mic-btn');
-        if (!btn) return;
-        btn.classList.remove('force-muted');
-        void btn.offsetWidth; // reflow so the animation restarts cleanly
-        btn.classList.add('force-muted');
+        if (btn) btn.classList.add('force-muted');
     }
-    (function wireMicPulseCleanup() {
+    function stopMicBreathe() {
         const btn = document.getElementById('mic-btn');
-        if (btn) btn.addEventListener('animationend', e => {
-            if (e.animationName === 'mic-force-mute-pulse') btn.classList.remove('force-muted');
-        });
-    })();
+        if (btn) btn.classList.remove('force-muted');
+    }
 
     function syncLocalMuteState(pub, participant) {
         if (!livekitRoom || participant !== livekitRoom.localParticipant) return;
         if (pub.source === LivekitClient.Track.Source.Microphone) {
             // Forced mute detection: muted event arrived while we still thought mic was on
             // and no local toggle is in flight → host/presenter muted us.
-            if (pub.isMuted && micOn && !selfMuteInFlight) pulseMicAlert();
+            if (pub.isMuted && micOn && !selfMuteInFlight) startMicBreathe();
+            // Any unmute (self or otherwise) clears the breathe alert.
+            if (!pub.isMuted) stopMicBreathe();
             micOn = !pub.isMuted;
             refreshConfButtons();
             updateSelfTile();
@@ -2352,6 +2350,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     document.getElementById('mic-btn').addEventListener('click', toggleMic);
 
     async function toggleMic() {
+        stopMicBreathe(); // user acknowledged — clear any force-mute alert immediately
         localStorage.setItem(PREF_KEY, cameraOn ? (!micOn ? 'both' : 'cam') : (!micOn ? 'mic' : 'none'));
         const prev = micOn;
         micOn = !micOn;
