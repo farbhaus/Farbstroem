@@ -7,25 +7,12 @@
 <script src="https://cdn.jsdelivr.net/npm/ovenplayer/dist/ovenplayer.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5/dist/hls.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<link rel="stylesheet" href="/shared/tokens.css">
+<link rel="stylesheet" href="/shared/components.css">
+<link rel="stylesheet" href="/shared/utils.css">
+<script src="/shared/utils.js"></script>
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-:root {
-    --bg:       #0e0e0e;
-    --surface:  #141414;
-    --surface2: #1c1c1c;
-    --border:   #2a2a2a;
-    --text:     #eeeeee;
-    --dim:      #666666;
-    --accent:   #FFAA00;
-    --danger:   #e05050;
-    --green:    #3ecf8e;
-    --topbar-h: 48px;
-    --toolbar-h: 56px;
-    --panel-w:  320px;
-}
-
-html, body { height: 100%; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; overflow: hidden; }
+html, body { overflow: hidden; }
 
 /* ---- Fullscreen overlays (join, waiting) ---- */
 .screen {
@@ -56,17 +43,12 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
 /* ---- Landing screen ---- */
 #landing-screen {
-    position: fixed; inset: 0; z-index: 300;
+    position: fixed; inset: 0; z-index: var(--z-modal);
     display: flex; align-items: center; justify-content: center;
 }
 #landing-screen.hidden { display: none; }
-.landing-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 48px; width: 400px; }
 .landing-title { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
 .landing-sub { font-size: 13px; color: var(--dim); margin-bottom: 32px; line-height: 1.5; }
-.landing-input { width: 100%; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; font-size: 13px; outline: none; margin-bottom: 12px; }
-.landing-input:focus { border-color: #555; }
-.landing-btn { width: 100%; padding: 11px; background: var(--text); color: var(--bg); border: none; border-radius: 6px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
-.landing-btn:hover { background: #ccc; }
 .landing-error { color: var(--danger); font-size: 12px; margin-top: 10px; min-height: 16px; }
 
 /* ---- Conference permission prompt ---- */
@@ -567,7 +549,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     #right-panel.open { width: 100%; }
 
     /* Join / waiting boxes fit small screens */
-    .join-box, .waiting-box, .landing-box { width: calc(100vw - 32px); padding: 32px 24px; }
+    .join-box, .waiting-box, #landing-screen .panel-box { width: calc(100vw - 32px); padding: 32px 24px; }
 }
 
 /* Mobile landscape — maximize video area */
@@ -608,12 +590,14 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 
 <!-- Landing screen -->
 <div id="landing-screen" class="hidden">
-    <div class="landing-box">
+    <div class="panel-box">
         <img src="" alt="Ze Maria Color" class="screen-logo">
         <div class="landing-title">Welcome</div>
         <div class="landing-sub">It appears you forgot the room link for your project. Please enter your room link below or ask your host for the correct URL.</div>
-        <input type="text" class="landing-input" id="landing-input" placeholder="/room-name-123abc" autocomplete="off" spellcheck="false">
-        <button class="landing-btn" id="landing-btn">Go to Room</button>
+        <div class="form-row">
+            <input type="text" id="landing-input" placeholder="/room-name-123abc" autocomplete="off" spellcheck="false">
+        </div>
+        <button class="btn btn-primary btn-lg btn-block" id="landing-btn">Go to Room</button>
         <p class="landing-error" id="landing-error"></p>
     </div>
 </div>
@@ -662,7 +646,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         <img src="" alt="Logo" class="screen-logo brand-logo">
         <div class="waiting-name" id="left-room-name"></div>
         <div class="waiting-msg">You left the session.</div>
-        <button class="join-btn" id="left-rejoin-btn" style="margin-top:16px">Rejoin</button>
+        <button class="join-btn u-mt-4" id="left-rejoin-btn">Rejoin</button>
     </div>
 </div>
 
