@@ -835,12 +835,13 @@ main { margin-top: var(--nav-h); padding: 32px; }
             document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             activeTab = btn.dataset.tab;
-            document.getElementById('tab-rooms').style.display     = activeTab === 'rooms'     ? '' : 'none';
-            document.getElementById('tab-keys').style.display      = activeTab === 'keys'      ? '' : 'none';
-            document.getElementById('tab-ome').style.display       = activeTab === 'ome'       ? '' : 'none';
-            document.getElementById('tab-dashboard').style.display = activeTab === 'dashboard' ? '' : 'none';
-            document.getElementById('tab-branding').style.display  = activeTab === 'branding'  ? '' : 'none';
-            document.getElementById('tab-files').style.display     = activeTab === 'files'     ? '' : 'none';
+            // Use 'block' (not '') so inline style wins over the .u-hidden class applied in markup.
+            document.getElementById('tab-rooms').style.display     = activeTab === 'rooms'     ? 'block' : 'none';
+            document.getElementById('tab-keys').style.display      = activeTab === 'keys'      ? 'block' : 'none';
+            document.getElementById('tab-ome').style.display       = activeTab === 'ome'       ? 'block' : 'none';
+            document.getElementById('tab-dashboard').style.display = activeTab === 'dashboard' ? 'block' : 'none';
+            document.getElementById('tab-branding').style.display  = activeTab === 'branding'  ? 'block' : 'none';
+            document.getElementById('tab-files').style.display     = activeTab === 'files'     ? 'block' : 'none';
             if (activeTab === 'ome') renderOme();
             if (activeTab === 'dashboard') loadDashboard();
             if (activeTab === 'branding') loadBranding();
