@@ -115,7 +115,7 @@
     letter-spacing: 0.08em; text-transform: uppercase;
     border-radius: var(--r-sm);
 }
-.badge-live    { background: #0d2211; color: var(--green); }
+.badge-live    { background: #29d248; color: var(--green); }
 .badge-pending { background: #1a1a1a; color: var(--dim); }
 .badge-ended   { background: #2a1515; color: var(--danger); }
 .badge-webrtc  { background: #111828; color: #6688ee; }

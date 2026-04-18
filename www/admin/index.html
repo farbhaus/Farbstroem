@@ -1347,7 +1347,13 @@ main { margin-top: var(--nav-h); padding: 32px; }
     // ---- Branding ----
 
     const COLOR_FIELDS = ['accent', 'bg', 'surface', 'text', 'danger', 'green'];
-    const COLOR_DEFAULTS = { accent: '#FFAA00', bg: '#0e0e0e', surface: '#141414', text: '#eeeeee', danger: '#E53935', green: '#1A9B5A' };
+    // Defaults are sourced live from /shared/tokens.css (:root custom properties).
+    // Read once at load, BEFORE any /api/branding overrides are applied via setProperty,
+    // so getComputedStyle returns the stylesheet defaults rather than the user's saved overrides.
+    const COLOR_DEFAULTS = (() => {
+        const cs = getComputedStyle(document.documentElement);
+        return Object.fromEntries(COLOR_FIELDS.map(f => [f, cs.getPropertyValue(`--${f}`).trim()]));
+    })();
 
     async function loadBranding() {
         const res = await fetch('/api/branding');
@@ -1385,14 +1391,19 @@ main { margin-top: var(--nav-h); padding: 32px; }
         }
     }
 
-    // Sync color picker ↔ hex input
+    // Sync color picker ↔ hex input, and preview live on the admin UI.
+    // Preview is in-memory only — nothing is persisted until Save is clicked.
+    const CSS_MAP = { accent: '--accent', bg: '--bg', surface: '--surface', text: '--text', danger: '--danger', green: '--green' };
+    const previewColor = (f, val) => document.documentElement.style.setProperty(CSS_MAP[f], val);
     for (const f of COLOR_FIELDS) {
         document.getElementById(`color-${f}`).addEventListener('input', e => {
             document.getElementById(`color-${f}-hex`).value = e.target.value;
+            previewColor(f, e.target.value);
         });
         document.getElementById(`color-${f}-hex`).addEventListener('input', e => {
             if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) {
                 document.getElementById(`color-${f}`).value = e.target.value;
+                previewColor(f, e.target.value);
             }
         });
     }
@@ -1406,8 +1417,18 @@ main { margin-top: var(--nav-h); padding: 32px; }
             method: 'POST',
             body: JSON.stringify(body),
         });
-        if (res && res.ok) toast('Colors saved');
-        else toast('Save failed');
+        if (res && res.ok) {
+            // Apply immediately so the admin UI reflects the change without a reload.
+            const cssMap = { accent: '--accent', bg: '--bg', surface: '--surface', text: '--text', danger: '--danger', green: '--green' };
+            for (const f of COLOR_FIELDS) {
+                const val = body[`color_${f}`];
+                if (val) document.documentElement.style.setProperty(cssMap[f], val);
+                else document.documentElement.style.removeProperty(cssMap[f]);
+            }
+            toast('Colors saved');
+        } else {
+            toast('Save failed');
+        }
     });
 
     document.getElementById('colors-reset-btn').addEventListener('click', async () => {
@@ -1421,8 +1442,14 @@ main { margin-top: var(--nav-h); padding: 32px; }
             method: 'POST',
             body: JSON.stringify(body),
         });
-        if (res && res.ok) toast('Colors reset to defaults');
-        else toast('Reset failed');
+        if (res && res.ok) {
+            // Remove inline custom-property overrides so tokens.css defaults take over.
+            const cssMap = { accent: '--accent', bg: '--bg', surface: '--surface', text: '--text', danger: '--danger', green: '--green' };
+            for (const f of COLOR_FIELDS) document.documentElement.style.removeProperty(cssMap[f]);
+            toast('Colors reset to defaults');
+        } else {
+            toast('Reset failed');
+        }
     });
 
     async function uploadBrandingAsset(asset) {

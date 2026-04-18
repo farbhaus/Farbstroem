@@ -5,16 +5,16 @@
 
 :root {
     /* Color */
-    --bg:       #0e0e0e;
-    --surface:  #141414;
+    --bg:       #171717;
+    --surface:  #1d1d1d;
     --surface2: #1c1c1c;
     --border:   #2a2a2a;
     --faint:    #444444;
     --dim:      #777777;
-    --text:     #eeeeee;
-    --accent:   #FFAA00;
-    --danger:   #E53935;
-    --green:    #3ecf8e;
+    --text:     #dfdfdf;
+    --accent:   #ffbd2e;
+    --danger:   #ff6159;
+    --green:    #28c941;
 
     /* Typography */
     --ff:       system-ui, sans-serif;
