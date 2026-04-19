@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use crate::auth::create_admin_token;
 use crate::error::AppError;
+use crate::routes::rate_limit;
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -43,7 +44,12 @@ async fn logout() -> Json<Value> {
 }
 
 pub fn router() -> Router<Arc<AppState>> {
+    let login_handler = if rate_limit::enabled() {
+        post(login).layer(rate_limit::login_layer())
+    } else {
+        post(login)
+    };
     Router::new()
-        .route("/login", post(login))
+        .route("/login", login_handler)
         .route("/logout", post(logout))
 }

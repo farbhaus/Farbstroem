@@ -4,9 +4,9 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use base64::Engine;
 use rand::RngExt;
 use serde::Deserialize;
-use base64::Engine;
 use serde_json::{json, Value};
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -15,14 +15,15 @@ use tokio_stream::StreamExt;
 use crate::error::AppError;
 use crate::events::KickedEvent;
 use crate::livekit::LiveKitClient;
+use crate::routes::rate_limit;
 use crate::state::AppState;
 
 use tracing::info;
 
-fn row_to_json(row: &rusqlite::Row, columns: &[&str]) -> serde_json::Value {
+fn row_to_json(row: &rusqlite::Row, columns: &[&str]) -> rusqlite::Result<serde_json::Value> {
     let mut map = serde_json::Map::new();
     for (i, col) in columns.iter().enumerate() {
-        let val: rusqlite::types::Value = row.get_unwrap(i);
+        let val: rusqlite::types::Value = row.get(i)?;
         map.insert(
             col.to_string(),
             match val {
@@ -36,7 +37,7 @@ fn row_to_json(row: &rusqlite::Row, columns: &[&str]) -> serde_json::Value {
             },
         );
     }
-    Value::Object(map)
+    Ok(Value::Object(map))
 }
 
 // GET /:slug/info - safe room info (no auth)
@@ -64,7 +65,7 @@ async fn room_info(
             "status",
         ];
         let row = stmt
-            .query_row(rusqlite::params![slug], |row| Ok(row_to_json(row, cols)))
+            .query_row(rusqlite::params![slug], |row| row_to_json(row, cols))
             .map_err(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => {
                     AppError::NotFound("Room not found".into())
@@ -111,7 +112,7 @@ async fn join_room(
         let result = stmt
             .query_row(rusqlite::params![slug_clone], |row| {
                 Ok((
-                    row.get::<_, String>(0)?,        // id
+                    row.get::<_, String>(0)?,         // id
                     row.get::<_, String>(1)?,         // name
                     row.get::<_, String>(2)?,         // slug
                     row.get::<_, Option<String>>(3)?, // password_hash
@@ -124,9 +125,7 @@ async fn join_room(
                 ))
             })
             .map_err(|e| match e {
-                rusqlite::Error::QueryReturnedNoRows => {
-                    AppError::NotFound("Room not found".into())
-                }
+                rusqlite::Error::QueryReturnedNoRows => AppError::NotFound("Room not found".into()),
                 _ => AppError::Internal(e.to_string()),
             })?;
         Ok::<_, AppError>(result)
@@ -282,16 +281,13 @@ async fn participant_status(
              WHERE p.id = ?1 AND p.token = ?2 AND r.slug = ?3",
         )?;
         let result = stmt
-            .query_row(
-                rusqlite::params![participant_id, token, slug],
-                |row| {
-                    Ok((
-                        row.get::<_, i32>(0)?,
-                        row.get::<_, i32>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
-                },
-            )
+            .query_row(rusqlite::params![participant_id, token, slug], |row| {
+                Ok((
+                    row.get::<_, i32>(0)?,
+                    row.get::<_, i32>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
             .map_err(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => {
                     AppError::NotFound("Participant not found".into())
@@ -303,10 +299,12 @@ async fn participant_status(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
-    let (is_admitted, _is_kicked, _room_status) = result;
+    let (is_admitted, is_kicked, room_status) = result;
 
     Ok(Json(json!({
         "admitted": is_admitted == 1,
+        "kicked": is_kicked == 1,
+        "room_status": room_status,
     })))
 }
 
@@ -369,36 +367,35 @@ async fn waiting_events(
                  JOIN rooms r ON r.id = p.room_id \
                  WHERE p.id = ?1 AND r.slug = ?2",
             )?;
-            let result = stmt.query_row(
-                rusqlite::params![participant_id, slug],
-                |row| {
-                    Ok((
-                        row.get::<_, i32>(0)?,
-                        row.get::<_, i32>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
-                },
-            )?;
+            let result = stmt.query_row(rusqlite::params![participant_id, slug], |row| {
+                Ok((
+                    row.get::<_, i32>(0)?,
+                    row.get::<_, i32>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?;
             Ok::<_, rusqlite::Error>(result)
         })
         .await;
 
         match result {
-            Ok(Ok((is_admitted, _is_kicked, _room_status))) => {
-                if is_admitted == 1 {
+            Ok(Ok((is_admitted, is_kicked, room_status))) => {
+                if is_kicked == 1 {
+                    Ok(Event::default().event("kicked").data(json!({}).to_string()))
+                } else if room_status == "ended" {
+                    Ok(Event::default()
+                        .event("room_ended")
+                        .data(json!({}).to_string()))
+                } else if is_admitted == 1 {
                     Ok(Event::default()
                         .event("admitted")
                         .data(json!({}).to_string()))
                 } else {
-                    Ok(Event::default()
-                        .event("ping")
-                        .data(json!({}).to_string()))
+                    Ok(Event::default().event("ping").data(json!({}).to_string()))
                 }
             }
-            // Participant not found (kicked/deleted) - send ping; client will handle
-            _ => Ok(Event::default()
-                .event("ping")
-                .data(json!({}).to_string())),
+            // Participant not found (deleted) - send ping; client will handle
+            _ => Ok(Event::default().event("ping").data(json!({}).to_string())),
         }
     });
 
@@ -468,9 +465,11 @@ async fn livekit_token(
     let livekit = LiveKitClient::new(&state.config, state.http_client.clone());
     let lk_token = livekit
         .create_access_token(&participant_id, &name, &room_slug, &role)
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
 
-    Ok(Json(json!({ "token": lk_token, "url": state.config.livekit_url })))
+    Ok(Json(
+        json!({ "token": lk_token, "url": state.config.livekit_url }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -557,9 +556,22 @@ async fn kick_participant(
         participant_id: target_id.clone(),
     });
 
-    // Try to remove from LiveKit
+    // Remove from LiveKit so the victim's A/V actually stops. DB flag + WS
+    // force-close already happened; this is the call that matters for the
+    // audio/video channel. Retry once on transient failure, then log loudly.
     let livekit = LiveKitClient::new(&state.config, state.http_client.clone());
-    let _ = livekit.remove_participant(&slug, &target_id).await;
+    if let Err(first) = livekit.remove_participant(&slug, &target_id).await {
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        if let Err(second) = livekit.remove_participant(&slug, &target_id).await {
+            tracing::error!(
+                room_slug = %slug,
+                target_id = %target_id,
+                first_error = %first,
+                error = %second,
+                "LiveKit remove_participant failed after retry; victim may still be publishing A/V",
+            );
+        }
+    }
 
     Ok(Json(json!({ "ok": true })))
 }
@@ -628,7 +640,7 @@ async fn mute_participant(
     livekit
         .mute_published_track(&slug, &target_id, &track_sid, muted)
         .await
-        .map_err(|e| AppError::Internal(e))?;
+        .map_err(AppError::Internal)?;
 
     info!(
         room_slug = %slug,
@@ -701,13 +713,15 @@ fn is_leap(y: i64) -> bool {
 }
 
 pub fn router() -> Router<Arc<AppState>> {
+    let join_handler = if rate_limit::enabled() {
+        post(join_room).layer(rate_limit::join_layer())
+    } else {
+        post(join_room)
+    };
     Router::new()
         .route("/{slug}/info", get(room_info))
-        .route("/{slug}/join", post(join_room))
-        .route(
-            "/{slug}/status/{participantId}",
-            get(participant_status),
-        )
+        .route("/{slug}/join", join_handler)
+        .route("/{slug}/status/{participantId}", get(participant_status))
         .route(
             "/{slug}/waiting/events/{participantId}",
             get(waiting_events),

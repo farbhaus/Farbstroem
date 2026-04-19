@@ -43,7 +43,7 @@ fn parse_mem(meminfo: &str) -> Option<(u64, u64)> {
     let mut avail_kb = None;
     for line in meminfo.lines() {
         let (k, v) = line.split_once(':')?;
-        let val = v.trim().split_whitespace().next()?.parse::<u64>().ok()?;
+        let val = v.split_whitespace().next()?.parse::<u64>().ok()?;
         match k {
             "MemTotal" => total_kb = Some(val),
             "MemAvailable" => avail_kb = Some(val),
@@ -63,7 +63,9 @@ fn parse_net(net_dev: &str) -> (u64, u64) {
     let mut rx = 0u64;
     let mut tx = 0u64;
     for line in net_dev.lines().skip(2) {
-        let Some((iface, rest)) = line.split_once(':') else { continue };
+        let Some((iface, rest)) = line.split_once(':') else {
+            continue;
+        };
         let iface = iface.trim();
         if iface == "lo" {
             continue;
@@ -89,10 +91,10 @@ async fn get_metrics(
     let meminfo = read_proc("meminfo").await?;
     let net_dev = read_proc("net/dev").await?;
 
-    let (idle_now, total_now) = parse_cpu(&stat)
-        .ok_or_else(|| AppError::Internal("parse /proc/stat".into()))?;
-    let (avail, total_mem) = parse_mem(&meminfo)
-        .ok_or_else(|| AppError::Internal("parse /proc/meminfo".into()))?;
+    let (idle_now, total_now) =
+        parse_cpu(&stat).ok_or_else(|| AppError::Internal("parse /proc/stat".into()))?;
+    let (avail, total_mem) =
+        parse_mem(&meminfo).ok_or_else(|| AppError::Internal("parse /proc/meminfo".into()))?;
     let (rx_now, tx_now) = parse_net(&net_dev);
     let now = Instant::now();
 

@@ -669,9 +669,9 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     /* Video area fills remaining space */
     #center-area { flex: 1; min-height: 0; }
 
-    /* Chat panel — full-screen overlay */
-    #right-panel { position: absolute; top: 0; bottom: 0; right: 0; width: 0; z-index: 10; }
-    #right-panel.open { width: 100%; }
+
+    /* Files section — cap to ~2 rows so messages get most of the panel */
+    #files-section { max-height: 96px; }
 
     /* Join / waiting boxes fit small screens */
     .join-box, .waiting-box, #landing-screen .panel-box { width: calc(100vw - 32px); padding: 32px 24px; }
@@ -679,10 +679,16 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 
 /* Mobile landscape — maximize video area */
 @media (max-height: 440px) and (orientation: landscape) {
-    #top-bar { height: 32px; }
-    /* #top-bar .brand-logo { display: none; } */
-    #bottom-toolbar { flex-wrap: nowrap; padding: 2px 8px;
-        padding-bottom: calc(2px + env(safe-area-inset-bottom, 0px)); }
+    #top-bar { height: 36px; }
+    /* Explicit height — the base rule sets 56px + safe-area which dominates
+       the player's vertical budget on short screens. 32px button + 2px of
+       padding each side = 36px is enough. */
+    #bottom-toolbar {
+        height: calc(25px + env(safe-area-inset-bottom, 0px));
+        flex-wrap: nowrap;
+        padding: 2px 8px;
+        /* padding-bottom: calc(2px + env(safe-area-inset-bottom, 0px)); */
+    }
     .tb-btn { width: 32px; height: 32px; }
     .tb-btn svg { width: 15px; height: 15px; }
 
@@ -697,7 +703,10 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         flex-direction: column; height: auto; overflow-y: auto; overflow-x: hidden;
     }
 
-    #right-panel.open { width: 260px; }
+    #right-panel.open { width: 680px; }
+
+    /* Files section — tighter cap in landscape since total height is ~440px */
+    #files-section { max-height: 72px; }
 }
 </style>
 </head>
@@ -1064,7 +1073,12 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     }
 
     function esc(s) {
-        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        return String(s)
+            .replace(/&/g,'&amp;')
+            .replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;')
+            .replace(/'/g,'&#39;');
     }
 
     // SVG icon markup (reusable)
@@ -1453,7 +1467,40 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 myRole        = isPresenter ? 'presenter' : (savedSession.role || 'viewer');
                 deliveryMode  = roomInfo.delivery_mode || savedSession.deliveryMode || 'webrtc';
                 streamKey     = savedSession.streamKey;
-                showApp(roomInfo.status);
+                // Re-check admission on resume. A participant who refreshed
+                // while in the waiting room must land back on waiting-screen,
+                // not sneak into the app shell (which would then fail to
+                // connect WS / LiveKit since the backend still sees
+                // is_admitted=0). Presenters skip the check — the role
+                // guarantees admission server-side.
+                if (myRole === 'presenter') {
+                    showApp(roomInfo.status);
+                } else {
+                    try {
+                        const sres = await fetch(`${API}/${slug}/status/${participantId}?token=${encodeURIComponent(myToken)}`);
+                        if (sres.status === 404 || sres.status === 401) {
+                            sessionStorage.removeItem(`viewer_session_${slug}`);
+                            document.getElementById('join-screen').classList.remove('hidden');
+                            return;
+                        }
+                        const sdata = await sres.json();
+                        if (sdata.kicked) {
+                            sessionStorage.removeItem(`viewer_session_${slug}`);
+                            sessionStorage.setItem(`viewer_kicked_${slug}`, '1');
+                            document.getElementById('kicked-screen').classList.remove('hidden');
+                            return;
+                        }
+                        if (sdata.admitted) {
+                            showApp(roomInfo.status);
+                        } else {
+                            document.getElementById('waiting-screen').classList.remove('hidden');
+                            document.getElementById('waiting-name').textContent = savedName || '';
+                            pollAdmission();
+                        }
+                    } catch {
+                        document.getElementById('join-screen').classList.remove('hidden');
+                    }
+                }
             } else if (savedSession && !modeFlipped && roomInfo.status === 'ended') {
                 sessionStorage.removeItem(`viewer_session_${slug}`);
                 document.getElementById('join-screen').classList.remove('hidden');
