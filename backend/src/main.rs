@@ -1,16 +1,36 @@
 use stream_backend::config;
 use stream_backend::db;
 use stream_backend::events;
-use stream_backend::state;
 use stream_backend::routes;
-use stream_backend::ws;
+use stream_backend::state;
 use stream_backend::tasks;
+use stream_backend::ws;
 
-use std::sync::Arc;
+use axum::body::Body;
+use axum::http::Request;
+use axum::routing::get;
 use std::net::SocketAddr;
-use tower_http::trace::TraceLayer;
+use std::sync::Arc;
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
+
+/// Redact sensitive query-string values before they land in tracing spans.
+/// The admin `?token=…` fallback exists so `<img>` / `window.open` can reach
+/// authenticated endpoints, but we do not want JWTs in request logs.
+fn redact_query(q: &str) -> String {
+    q.split('&')
+        .map(|kv| {
+            let mut it = kv.splitn(2, '=');
+            let k = it.next().unwrap_or("");
+            match k {
+                "token" | "presenter_key" | "password" => format!("{k}=<redacted>"),
+                _ => kv.to_string(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("&")
+}
 
 #[tokio::main]
 async fn main() {
@@ -30,7 +50,9 @@ async fn main() {
     let admin_password = std::env::var("ADMIN_PASSWORD").expect("ADMIN_PASSWORD must be set");
     let admin_password_hash = tokio::task::spawn_blocking(move || {
         bcrypt::hash(admin_password, 12).expect("Failed to hash admin password")
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
     tracing::info!("[startup] Admin password hashed");
 
     // Initialize database
@@ -69,16 +91,43 @@ async fn main() {
 
     // Build final app with static file serving
     let app = axum::Router::new()
+        .route("/healthz", get(|| async { "ok" }))
         .merge(api_router)
         .merge(ws_router.with_state(state.clone()))
-        .nest_service("/admin", ServeDir::new("/www/admin").fallback(ServeFile::new("/www/admin/index.html")))
+        .nest_service(
+            "/admin",
+            ServeDir::new("/www/admin").fallback(ServeFile::new("/www/admin/index.html")),
+        )
+        .nest_service("/shared", ServeDir::new("/www/shared"))
         .route_service("/", ServeFile::new("/www/landing/index.html"))
-        .fallback_service(ServeDir::new("/www/viewer").fallback(ServeFile::new("/www/viewer/index.html")))
-        .layer(TraceLayer::new_for_http());
+        .fallback_service(
+            ServeDir::new("/www/viewer").fallback(ServeFile::new("/www/viewer/index.html")),
+        )
+        .layer(
+            TraceLayer::new_for_http().make_span_with(|req: &Request<Body>| {
+                let uri_display = match req.uri().query() {
+                    Some(q) => format!("{}?{}", req.uri().path(), redact_query(q)),
+                    None => req.uri().path().to_string(),
+                };
+                tracing::info_span!(
+                    "http_request",
+                    method = %req.method(),
+                    uri = %uri_display,
+                )
+            }),
+        );
 
     // Start server
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("stream-backend running on port {}", port);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    // `into_make_service_with_connect_info` surfaces the peer SocketAddr so
+    // tower_governor's SmartIpKeyExtractor has a fallback when X-Forwarded-For
+    // is absent (e.g., direct container-to-container traffic).
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }

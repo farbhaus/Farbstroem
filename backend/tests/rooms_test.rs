@@ -321,8 +321,8 @@ async fn kicked_list_and_unkick() {
         &room_id,
         "Kicked User",
         "viewer",
-        true,  // admitted
-        true,  // kicked
+        true, // admitted
+        true, // kicked
     );
 
     // GET kicked list

@@ -32,10 +32,7 @@ async fn webhook_returns_401_without_signature() {
 
     let res = server
         .post("/api/webhook/admission")
-        .add_header(
-            header::CONTENT_TYPE,
-            "application/json",
-        )
+        .add_header(header::CONTENT_TYPE, "application/json")
         .bytes(body_bytes.into())
         .await;
     assert_eq!(res.status_code(), 401);
@@ -51,14 +48,8 @@ async fn webhook_returns_401_wrong_signature() {
 
     let res = server
         .post("/api/webhook/admission")
-        .add_header(
-            "x-ome-signature",
-            "bad-signature",
-        )
-        .add_header(
-            header::CONTENT_TYPE,
-            "application/json",
-        )
+        .add_header("x-ome-signature", "bad-signature")
+        .add_header(header::CONTENT_TYPE, "application/json")
         .bytes(body_bytes.into())
         .await;
     assert_eq!(res.status_code(), 401);
@@ -86,14 +77,8 @@ async fn webhook_returns_allowed_for_unknown_stream_key() {
 
     let res = server
         .post("/api/webhook/admission")
-        .add_header(
-            "x-ome-signature",
-            sig.as_str(),
-        )
-        .add_header(
-            header::CONTENT_TYPE,
-            "application/json",
-        )
+        .add_header("x-ome-signature", sig.as_str())
+        .add_header(header::CONTENT_TYPE, "application/json")
         .bytes(body_bytes.into())
         .await;
     assert_eq!(res.status_code(), 200);
@@ -134,14 +119,8 @@ async fn webhook_accepts_valid_stream_key_and_sets_room_live() {
 
     let res = server
         .post("/api/webhook/admission")
-        .add_header(
-            "x-ome-signature",
-            sig.as_str(),
-        )
-        .add_header(
-            header::CONTENT_TYPE,
-            "application/json",
-        )
+        .add_header("x-ome-signature", sig.as_str())
+        .add_header(header::CONTENT_TYPE, "application/json")
         .bytes(body_bytes.into())
         .await;
     assert_eq!(res.status_code(), 200);
@@ -152,7 +131,9 @@ async fn webhook_accepts_valid_stream_key_and_sets_room_live() {
     // Verify the room status was set to "live"
     let (hname, hval) = (
         header::AUTHORIZATION,
-        format!("Bearer {}", admin_tok).parse::<axum::http::HeaderValue>().unwrap(),
+        format!("Bearer {}", admin_tok)
+            .parse::<axum::http::HeaderValue>()
+            .unwrap(),
     );
     let room_res = server
         .get(&format!("/api/rooms/{}", room_id))
@@ -182,14 +163,8 @@ async fn webhook_allows_outgoing() {
 
     let res = server
         .post("/api/webhook/admission")
-        .add_header(
-            "x-ome-signature",
-            sig.as_str(),
-        )
-        .add_header(
-            header::CONTENT_TYPE,
-            "application/json",
-        )
+        .add_header("x-ome-signature", sig.as_str())
+        .add_header(header::CONTENT_TYPE, "application/json")
         .bytes(body_bytes.into())
         .await;
     assert_eq!(res.status_code(), 200);
@@ -213,14 +188,8 @@ async fn webhook_returns_400_missing_request_object() {
 
     let res = server
         .post("/api/webhook/admission")
-        .add_header(
-            "x-ome-signature",
-            sig.as_str(),
-        )
-        .add_header(
-            header::CONTENT_TYPE,
-            "application/json",
-        )
+        .add_header("x-ome-signature", sig.as_str())
+        .add_header(header::CONTENT_TYPE, "application/json")
         .bytes(body_bytes.into())
         .await;
     assert_eq!(res.status_code(), 400);
@@ -240,14 +209,8 @@ async fn webhook_returns_400_invalid_json() {
 
     let res = server
         .post("/api/webhook/admission")
-        .add_header(
-            "x-ome-signature",
-            sig.as_str(),
-        )
-        .add_header(
-            header::CONTENT_TYPE,
-            "application/json",
-        )
+        .add_header("x-ome-signature", sig.as_str())
+        .add_header(header::CONTENT_TYPE, "application/json")
         .bytes(body_bytes.to_vec().into())
         .await;
     assert_eq!(res.status_code(), 400);

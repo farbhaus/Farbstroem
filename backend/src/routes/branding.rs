@@ -13,18 +13,14 @@ use crate::auth::AdminAuth;
 use crate::error::AppError;
 use crate::state::AppState;
 
-async fn get_branding_status(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Value>, AppError> {
+async fn get_branding_status(State(state): State<Arc<AppState>>) -> Result<Json<Value>, AppError> {
     let data_path = state.config.data_path.clone();
-    let has_logo =
-        tokio::fs::metadata(format!("{}/branding/logo", data_path))
-            .await
-            .is_ok();
-    let has_bg =
-        tokio::fs::metadata(format!("{}/branding/bg", data_path))
-            .await
-            .is_ok();
+    let has_logo = tokio::fs::metadata(format!("{}/branding/logo", data_path))
+        .await
+        .is_ok();
+    let has_bg = tokio::fs::metadata(format!("{}/branding/bg", data_path))
+        .await
+        .is_ok();
 
     // Include color palette in branding status for one-call loading
     let conn = state.db.get()?;
@@ -82,10 +78,7 @@ async fn get_asset(
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, mime),
-            (
-                header::CACHE_CONTROL,
-                "public, max-age=3600".into(),
-            ),
+            (header::CACHE_CONTROL, "public, max-age=3600".into()),
         ],
         data,
     ))
@@ -176,9 +169,7 @@ const COLOR_KEYS: &[&str] = &[
     "color_green",
 ];
 
-async fn get_colors(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Value>, AppError> {
+async fn get_colors(State(state): State<Arc<AppState>>) -> Result<Json<Value>, AppError> {
     let conn = state.db.get()?;
     let colors = tokio::task::spawn_blocking(move || {
         let mut result = serde_json::Map::new();

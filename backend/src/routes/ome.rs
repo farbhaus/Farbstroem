@@ -70,7 +70,11 @@ async fn get_status(
         .unwrap_or_default();
 
     let conf_names: Vec<&String> = names.iter().filter(|n| n.starts_with("conf-")).collect();
-    let main_names: Vec<String> = names.iter().filter(|n| !n.starts_with("conf-")).cloned().collect();
+    let main_names: Vec<String> = names
+        .iter()
+        .filter(|n| !n.starts_with("conf-"))
+        .cloned()
+        .collect();
     let conf_count = conf_names.len();
 
     // Fetch per-stream detail from OME for each main stream
@@ -80,7 +84,15 @@ async fn get_status(
     let mut stream_details: Vec<(String, Option<Value>)> = Vec::new();
     for name in &main_names {
         let detail_path = format!("/vhosts/default/apps/live/streams/{}", name);
-        let detail = match ome_request(client, ome_url, ome_token, reqwest::Method::GET, &detail_path).await {
+        let detail = match ome_request(
+            client,
+            ome_url,
+            ome_token,
+            reqwest::Method::GET,
+            &detail_path,
+        )
+        .await
+        {
             Ok(d) => d.get("response").cloned(),
             Err(_) => None,
         };
@@ -126,7 +138,9 @@ async fn get_status(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
-    Ok(Json(serde_json::json!({ "streams": enriched, "conf_count": conf_count })))
+    Ok(Json(
+        serde_json::json!({ "streams": enriched, "conf_count": conf_count }),
+    ))
 }
 
 async fn list_streams(
@@ -185,5 +199,8 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/status", get(get_status))
         .route("/streams", get(list_streams))
-        .route("/streams/{streamKey}", get(get_stream).delete(delete_stream))
+        .route(
+            "/streams/{streamKey}",
+            get(get_stream).delete(delete_stream),
+        )
 }

@@ -1,0 +1,218 @@
+/* zStream shared components — lifted from admin's best-evolved versions.
+   Page-specific layout stays in each page's local <style>. */
+
+/* ---- Buttons ---- */
+.btn {
+    padding: 8px 16px;
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: var(--text);
+    cursor: pointer;
+    white-space: nowrap;
+    border-radius: var(--r-btn);
+    transition: background var(--dur-fast) var(--ease-out),
+                border-color var(--dur-fast) var(--ease-out),
+                color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out),
+                transform var(--dur-fast) var(--ease-out);
+}
+.btn:hover { background: var(--surface2); border-color: var(--dim); }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible { outline: none; box-shadow: var(--ring-accent); border-color: var(--accent); }
+.btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+
+.btn-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+.btn-primary:hover { background: #ccc; border-color: #ccc; }
+
+.btn-danger { color: var(--danger); border-color: var(--danger); }
+.btn-danger:hover { background: color-mix(in srgb, var(--danger) 15%, var(--surface)); border-color: var(--danger); }
+
+.btn-ghost { background: none; border-color: transparent; }
+.btn-ghost:hover { background: var(--surface2); border-color: transparent; }
+
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+.btn-lg { padding: 11px 20px; font-size: 13px; }
+.btn-block { width: 100%; }
+
+/* Square icon button — matches the viewer toolbar .tb-btn aesthetic.
+   Use for chat send/attach, panel close, tile actions, etc. */
+.btn-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; padding: 0;
+    border: 1.5px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    border-radius: var(--r-btn);
+    transition: background var(--dur-fast) var(--ease-out),
+                border-color var(--dur-fast) var(--ease-out),
+                color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
+}
+.btn-icon:hover { border-color: var(--dim); color: var(--text); }
+.btn-icon:active { transform: translateY(1px); }
+.btn-icon:focus-visible { outline: none; box-shadow: var(--ring-accent); border-color: var(--accent); }
+.btn-icon:disabled { opacity: 0.4; cursor: default; transform: none; }
+.btn-icon svg { width: 18px; height: 18px; }
+.btn-icon.btn-icon-sm { width: 28px; height: 28px; border-radius: var(--r-md); }
+.btn-icon.btn-icon-sm svg { width: 14px; height: 14px; }
+
+.btn-tab {
+    border: none; background: none; color: var(--dim);
+    border-bottom: 2px solid transparent;
+    padding: 6px 14px; font-size: 13px; border-radius: 0;
+    transition: color var(--dur-fast) var(--ease-out),
+                border-color var(--dur-fast) var(--ease-out);
+}
+.btn-tab:hover { color: var(--text); }
+.btn-tab.active { color: var(--text); border-bottom-color: var(--text); }
+.btn-tab:focus-visible { outline: none; box-shadow: var(--ring-accent); }
+
+/* ---- Forms ---- */
+.form-row { margin-bottom: 18px; }
+.form-row label {
+    display: block;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--dim);
+    margin-bottom: 6px;
+}
+.form-row input,
+.form-row select,
+.form-row textarea {
+    width: 100%; padding: 9px 12px;
+    border: 1px solid var(--border); background: var(--surface2);
+    font: inherit; font-size: 13px; color: var(--text);
+    outline: none; border-radius: var(--r-btn);
+    transition: border-color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
+}
+.form-row input:hover,
+.form-row select:hover,
+.form-row textarea:hover { border-color: var(--dim); }
+.form-row input:focus,
+.form-row select:focus,
+.form-row textarea:focus { border-color: var(--accent); box-shadow: var(--ring-accent); }
+.form-row input::placeholder { color: var(--faint); }
+
+/* Generic inputs outside .form-row — for places that use raw <input>, <select>, <textarea>. */
+.input, .select, .textarea {
+    padding: 9px 12px;
+    border: 1px solid var(--border); background: var(--surface2);
+    font: inherit; font-size: 13px; color: var(--text);
+    outline: none; border-radius: var(--r-btn);
+    transition: border-color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
+}
+.input:hover, .select:hover, .textarea:hover { border-color: var(--dim); }
+.input:focus, .select:focus, .textarea:focus { border-color: var(--accent); box-shadow: var(--ring-accent); }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+
+.form-row.checkbox { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.form-row.checkbox label {
+    margin: 0; text-transform: none; letter-spacing: 0;
+    font-size: 13px; font-weight: 400; color: var(--text);
+}
+.form-row.checkbox input { width: auto; }
+
+/* ---- Centered card (landing / login / join / waiting) ---- */
+.panel-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-xl);
+    padding: 48px;
+    width: 400px;
+    max-width: calc(100vw - 32px);
+}
+
+/* ---- Modal ---- */
+.modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: var(--z-modal);
+}
+.modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-xl);
+    width: 600px; max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 64px);
+    overflow-y: auto; padding: 36px;
+}
+.modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 28px;
+}
+.modal-title {
+    font-size: 13px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+}
+.modal-footer {
+    display: flex; justify-content: flex-end; gap: 8px;
+    margin-top: 24px;
+}
+
+/* ---- Panel card (rounded inset card inside a side panel or tab content) ---- */
+.panel-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: var(--sp-3) var(--sp-4);
+    transition: border-color var(--dur-fast) var(--ease-out),
+                background var(--dur-fast) var(--ease-out);
+}
+.panel-card.interactive { cursor: pointer; }
+.panel-card.interactive:hover { border-color: var(--dim); }
+
+/* ---- Badges ---- */
+.badge {
+    display: inline-block; padding: 3px 9px;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    border-radius: var(--r-sm);
+}
+.badge-live    { background: #0d2211; color: var(--green); }
+.badge-pending { background: #1a1a1a; color: var(--dim); }
+.badge-ended   { background: #2a1515; color: var(--danger); }
+.badge-webrtc  { background: #111828; color: #6688ee; }
+.badge-llhls   { background: #1f1a0a; color: #ccaa33; }
+.badge-source  { background: #0d2211; color: var(--green); }
+
+/* ---- Toast ---- */
+#toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--text); color: var(--bg);
+    padding: 10px 20px; border-radius: var(--r-lg);
+    font-size: 13px; z-index: var(--z-toast);
+    opacity: 0; transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+}
+#toast.show {
+    opacity: 1; transform: translateX(-50%) translateY(0);
+}
+
+/* ---- Section header ---- */
+.section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+}
+.section-title {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--dim);
+}
+
+/* ---- Empty state ---- */
+.empty {
+    padding: 48px; text-align: center;
+    color: var(--dim); font-size: 13px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+}

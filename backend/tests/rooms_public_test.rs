@@ -20,7 +20,8 @@ async fn room_info_returns_safe_fields() {
     let state = common::test_state();
     let server = common::test_app(state.clone());
 
-    let _room_id = common::seed_room_with_password(&state, "Info Room", "info-room-abc123", "secret");
+    let _room_id =
+        common::seed_room_with_password(&state, "Info Room", "info-room-abc123", "secret");
 
     let res = server.get("/api/public/rooms/info-room-abc123/info").await;
     assert_eq!(res.status_code(), 200);
@@ -128,12 +129,8 @@ async fn join_returns_403_kicked() {
     let room_id = common::seed_room(&state, "Kick Check", "kick-check-abc123");
     // Seed a kicked participant named "TestUser"
     let (_pid, _tok) = common::seed_participant(
-        &state,
-        &room_id,
-        "TestUser",
-        "viewer",
-        true,  // admitted
-        true,  // kicked
+        &state, &room_id, "TestUser", "viewer", true, // admitted
+        true, // kicked
     );
 
     // Try joining as "testuser" (case insensitive match)
@@ -242,7 +239,11 @@ async fn livekit_token_returns_401_without_params() {
         .await;
     // Should return 400 for missing participantId
     let status = res.status_code().as_u16();
-    assert!(status == 400 || status == 401, "Expected 400 or 401, got {}", status);
+    assert!(
+        status == 400 || status == 401,
+        "Expected 400 or 401, got {}",
+        status
+    );
 }
 
 #[tokio::test]
@@ -252,11 +253,7 @@ async fn livekit_token_succeeds() {
 
     let room_id = common::seed_room(&state, "LK Token Room", "lk-token-abc123");
     let (pid, ptok) = common::seed_participant(
-        &state,
-        &room_id,
-        "LKUser",
-        "viewer",
-        true,  // admitted
+        &state, &room_id, "LKUser", "viewer", true,  // admitted
         false, // not kicked
     );
 
@@ -299,22 +296,10 @@ async fn kick_returns_403_non_presenter() {
     let server = common::test_app(state.clone());
 
     let room_id = common::seed_room(&state, "Kick Deny", "kick-deny-abc123");
-    let (viewer_pid, viewer_tok) = common::seed_participant(
-        &state,
-        &room_id,
-        "ViewerKicker",
-        "viewer",
-        true,
-        false,
-    );
-    let (target_pid, _) = common::seed_participant(
-        &state,
-        &room_id,
-        "Target",
-        "viewer",
-        true,
-        false,
-    );
+    let (viewer_pid, viewer_tok) =
+        common::seed_participant(&state, &room_id, "ViewerKicker", "viewer", true, false);
+    let (target_pid, _) =
+        common::seed_participant(&state, &room_id, "Target", "viewer", true, false);
 
     let res = server
         .post("/api/public/rooms/kick-deny-abc123/conference/kick")

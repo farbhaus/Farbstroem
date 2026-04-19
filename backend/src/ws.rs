@@ -127,11 +127,11 @@ async fn handle_socket(socket: WebSocket, slug: String, state: Arc<AppState>) {
             rusqlite::params![participant_id, token, slug],
             |row| {
                 Ok((
-                    row.get::<_, String>(0)?,  // id
-                    row.get::<_, String>(1)?,  // name
-                    row.get::<_, String>(2)?,  // role
-                    row.get::<_, bool>(3)?,    // is_admitted
-                    row.get::<_, bool>(4)?,    // is_kicked
+                    row.get::<_, String>(0)?, // id
+                    row.get::<_, String>(1)?, // name
+                    row.get::<_, String>(2)?, // role
+                    row.get::<_, bool>(3)?,   // is_admitted
+                    row.get::<_, bool>(4)?,   // is_kicked
                 ))
             },
         )
@@ -141,7 +141,9 @@ async fn handle_socket(socket: WebSocket, slug: String, state: Arc<AppState>) {
         Ok(row) => row,
         Err(_) => {
             let _ = tx.send(Message::Text(
-                json!({"type": "error", "message": "Invalid credentials"}).to_string().into(),
+                json!({"type": "error", "message": "Invalid credentials"})
+                    .to_string()
+                    .into(),
             ));
             let _ = tx.send(Message::Close(Some(CloseFrame {
                 code: 1008,
@@ -164,7 +166,9 @@ async fn handle_socket(socket: WebSocket, slug: String, state: Arc<AppState>) {
 
     if !is_admitted {
         let _ = tx.send(Message::Text(
-            json!({"type": "error", "message": "Not admitted"}).to_string().into(),
+            json!({"type": "error", "message": "Not admitted"})
+                .to_string()
+                .into(),
         ));
         let _ = tx.send(Message::Close(Some(CloseFrame {
             code: 1008,
@@ -245,9 +249,7 @@ async fn handle_socket(socket: WebSocket, slug: String, state: Arc<AppState>) {
 // Auth waiting
 // ---------------------------------------------------------------------------
 
-async fn wait_for_auth(
-    stream: &mut futures::stream::SplitStream<WebSocket>,
-) -> Option<AuthMsg> {
+async fn wait_for_auth(stream: &mut futures::stream::SplitStream<WebSocket>) -> Option<AuthMsg> {
     // Wait up to 10 seconds for auth message
     let timeout = tokio::time::timeout(std::time::Duration::from_secs(10), async {
         while let Some(Ok(msg)) = stream.next().await {
@@ -258,10 +260,7 @@ async fn wait_for_auth(
         None
     });
 
-    match timeout.await {
-        Ok(result) => result,
-        Err(_) => None,
-    }
+    timeout.await.unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------
@@ -358,11 +357,7 @@ async fn handle_text_message(
 // Chat history
 // ---------------------------------------------------------------------------
 
-fn send_chat_history(
-    state: &Arc<AppState>,
-    slug: &str,
-    tx: &mpsc::UnboundedSender<Message>,
-) {
+fn send_chat_history(state: &Arc<AppState>, slug: &str, tx: &mpsc::UnboundedSender<Message>) {
     let conn = match state.db.get() {
         Ok(c) => c,
         Err(_) => return,
@@ -515,7 +510,12 @@ async fn broadcast_participants(rooms: &WsRooms, slug: &str) {
 }
 
 /// Send a message to a specific participant and close their connection.
-async fn send_to_participant_and_close(rooms: &WsRooms, slug: &str, participant_id: &str, msg: &str) {
+async fn send_to_participant_and_close(
+    rooms: &WsRooms,
+    slug: &str,
+    participant_id: &str,
+    msg: &str,
+) {
     let mut rooms_guard = rooms.write().await;
     if let Some(room) = rooms_guard.get_mut(slug) {
         if let Some(participant) = room.remove(participant_id) {
@@ -589,7 +589,8 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
                 }
 
                 // Delete LiveKit room (best-effort, may already be done by caller)
-                let livekit = crate::livekit::LiveKitClient::new(&state.config, state.http_client.clone());
+                let livekit =
+                    crate::livekit::LiveKitClient::new(&state.config, state.http_client.clone());
                 let _ = livekit.delete_room(&slug).await;
 
                 // Delete chat messages for this room
@@ -672,13 +673,8 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
         tokio::spawn(async move {
             while let Ok(event) = rx.recv().await {
                 let msg = json!({"type": "kicked"}).to_string();
-                send_to_participant_and_close(
-                    &WS_ROOMS,
-                    &event.slug,
-                    &event.participant_id,
-                    &msg,
-                )
-                .await;
+                send_to_participant_and_close(&WS_ROOMS, &event.slug, &event.participant_id, &msg)
+                    .await;
 
                 // Broadcast updated participants after removal
                 broadcast_participants(&WS_ROOMS, &event.slug).await;

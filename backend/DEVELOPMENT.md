@@ -139,3 +139,15 @@ The resulting image is ~15 MB total.
 | [`schema.sql`](schema.sql) | Source of truth for the SQLite schema |
 
 For architectural context, security notes, and the list of project-specific pitfalls, see [../Streaming.md](../Streaming.md).
+
+## Recommended tests to add
+
+The integration suite already covers the happy paths for rooms, chat, files, and OME webhooks. The areas below are thin and should get regression coverage in a follow-up pass. Each item maps to an existing behaviour, not a new feature.
+
+1. **Authorization boundary (viewer → presenter endpoints).** A viewer JWT hitting `POST /{slug}/conference/kick` or `/conference/mute` must return 403. Use the existing `seed_participant` helper with `role='viewer'` and assert the response code.
+2. **Presenter entry flow.** `POST /api/rooms/:id/enter` with an admin JWT should produce a participant row with `role='presenter' AND is_admitted=1`. Add a negative test verifying no public endpoint can reach the same state.
+3. **Kick blocks re-join by name.** After setting `is_kicked=1` for a participant, `POST /api/public/rooms/:slug/join` with the same name (case-insensitive) must return 403. Covers the check at [src/routes/rooms_public.rs](src/routes/rooms_public.rs).
+4. **WS hub rejects kicked participants.** Opening `/ws/room/:slug` with a token belonging to an `is_kicked=1` participant must emit a `kicked` frame and close 1008.
+5. **Webhook HMAC rejection.** `POST /api/webhook/admission` with a wrong signature → 401. Same-signature but tampered body → 401.
+6. **Rate limiter.** With `STREAM_DISABLE_RATE_LIMIT` unset, fire six `POST /api/auth/login` attempts; the 6th must return 429. Requires running against the real HTTP server (not `TestServer`) so `ConnectInfo` is populated.
+7. **Status endpoint shape.** `GET /api/public/rooms/:slug/status/:pid?token=…` must return `{"admitted": bool, "kicked": bool, "room_status": "…"}` for each of the three states (waiting, admitted, kicked, room-ended).

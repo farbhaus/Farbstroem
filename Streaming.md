@@ -31,6 +31,10 @@ The production server runs a host-level Caddy (systemd) in front of the containe
 
 This is the "behind external reverse proxy" path documented in the README. Stock standalone deployments would use `SITE_ADDRESS=stream.yourdomain.com` and let container Caddy handle TLS.
 
+### `stream-ome` depends on `stream-backend`
+
+Looks wrong at first glance (ingest shouldn't need the web app) but is intentional: OME's `AdmissionWebhooks.ControlServerUrl` in [ome/origin_conf/Server.xml](ome/origin_conf/Server.xml) points at `http://stream-backend:4001/api/webhook/admission`, and every incoming RTMP/SRT ingest is HMAC-verified against `OME_WEBHOOK_SECRET` by [backend/src/routes/webhook.rs](backend/src/routes/webhook.rs). If the backend is down, ingests fail closed — no unauthorised streaming. The compose `depends_on` with `condition: service_healthy` is load-bearing; keep it.
+
 ---
 
 ## Conference implementation (LiveKit)
@@ -59,8 +63,8 @@ There is no public URL that grants presenter role. The join endpoint ignores `ro
 ### Presenter moderation
 - **Kick** — `POST /conference/kick` sets `is_kicked=1` in the DB, emits a `kicked` event (hub force-closes WS + sends `{type:'kicked'}`), and calls `LiveKitClient::remove_participant`. Rejoin blocked by name match against the same slug. Admin can unblock via `POST /api/rooms/:id/unkick/:participantId`.
 - **Mute** — `POST /conference/mute` calls `LiveKitClient::mute_published_track`, a server-side forced mute of a specific track. The victim's mic UI auto-updates via the `TrackMuted` event.
-- Only `role === 'presenter'` can use these endpoints. Presenters cannot target other presenters.
-- Kick and mute are logged via `tracing::info!` with `room_slug`, `actor_id`, `target_id` for audit purposes.
+- Only `role === 'presenter'` can use these endpoints. The presenter→presenter case is left to social convention; the only way to obtain presenter role is via the admin "Enter Room" flow, so the blast radius is bounded.
+- Kick and mute are logged via `tracing::info!` with `room_slug`, `actor_id`, `target_id` for audit purposes. If the LiveKit `remove_participant` call fails, the backend retries once after 250ms and logs `error!` on a second failure — the DB `is_kicked=1` flag and WS force-close still happen first, so the UI state is correct even when LiveKit is momentarily unreachable.
 
 ### Presence architecture
 | Data source | Used for |
@@ -107,6 +111,9 @@ Shown after join: Camera+Mic / Mic Only / Watch Only. Choice saved to `localStor
 - **SQL injection** — all DB queries use `rusqlite` prepared statements with `?N` placeholders via `params![]`. No string interpolation.
 - **Admin auth** — bcrypt → JWT (HS256, 7d expiry) via `jsonwebtoken`. Password hashed in a `spawn_blocking` task at startup; plaintext is dropped immediately. No server-side session store.
 - **Secret validation at startup** (`backend/src/config.rs`): `JWT_SECRET`, `OME_WEBHOOK_SECRET`, `LIVEKIT_API_SECRET` all require ≥ 32 chars; `ADMIN_PASSWORD` ≥ 12; `LIVEKIT_API_KEY` required (no length check — it's an identifier, becomes the `iss` claim). Missing or short secrets panic at boot with a clear `FATAL:` message.
+- **Rate limiting** — `POST /api/auth/login` is limited to 5 requests/minute/IP (burst 2) and `POST /api/public/rooms/:slug/join` to 30 requests/minute/IP (burst 10) via `tower_governor` with `SmartIpKeyExtractor` (honours `X-Forwarded-For` / `Forwarded` from the fronting Caddy). Over-limit requests return 429 with `retry-after`. Set `STREAM_DISABLE_RATE_LIMIT=1` to disable — integration tests do this because `axum-test::TestServer` does not populate `ConnectInfo`.
+- **Error body redaction** — `AppError::Internal` and `AppError::BadGateway` log the raw `rusqlite` / `reqwest` / JWT error via `tracing::error!` but return a generic `{"error":"Internal server error"}` / `{"error":"Upstream service unavailable"}` to the client. 4xx errors keep their author-written messages (they are safe).
+- **Token redaction in logs** — the request-tracing span's `uri` field redacts `token`, `presenter_key`, and `password` query params before they reach `tracing-subscriber`. Path and other query keys remain intact so logs stay useful.
 
 ---
 
@@ -150,8 +157,29 @@ Shown after join: Camera+Mic / Mic Only / Watch Only. Choice saved to `localStor
 - **`expires_at` is stored as UTC ISO string.** The admin `datetime-local` input (local time) is converted via `new Date(value).toISOString()` before sending to the backend. On load it's converted back with `new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,16)`. SQLite's `datetime('now')` returns UTC, so the comparison is correct.
 - **Rooms created before this fix** may have `expires_at` stored in local time (off by UTC offset). Re-save them in the admin to correct.
 
+### Public participant status endpoint
+
+`GET /api/public/rooms/:slug/status/:participantId?token=…` returns:
+
+```json
+{ "admitted": bool, "kicked": bool, "room_status": "scheduled|live|ended" }
+```
+
+The matching SSE stream at `/api/public/rooms/:slug/waiting/events/:participantId` emits four event types: `admitted`, `kicked`, `room_ended`, and `ping`. Waiting-room clients can drive the full state machine from SSE alone without keeping a WS open.
+
+### Frontend modularization (future direction)
+
+If and when [www/viewer/index.html](www/viewer/index.html) and [www/admin/index.html](www/admin/index.html) grow past what's comfortable in a single inline `<script>`, the recommended split is **native ES modules, no bundler** — matching the project's "zero-dependency, no build step" ethos documented at the top of [www/shared/utils.js](www/shared/utils.js).
+
+- Viewer: `app.js` (bootstrap) + `conference.js` (LiveKit tiles) + `chat.js` (chat + files) + `pointer.js` (overlays) + `toolbar.js` (button state), loaded via `<script type="module" src="./app.js"></script>`, symbols surfaced with named `export`s.
+- Admin: `app.js` + `rooms.js` + `files.js` + `streamKeys.js` on the same pattern.
+- Alternatives considered — Vite (introduces a build step, contradicts the ethos); Web Components (larger refactor, not justified for this audience); single mega-module (loses the benefit).
+
+No ticket for this yet; capture if/when the inline scripts become painful to navigate.
+
 ### Docker
 - **Backend is a compiled Rust binary baked into the image** (multi-stage: `rust:1-alpine` builder → `alpine:3.20` runtime, statically linked against musl). `docker restart` does NOT pick up code changes — must `docker compose up -d --build stream-backend`.
+- **Healthchecks.** All five services have `healthcheck:` blocks in [docker-compose.yml](docker-compose.yml). Dependents use long-form `depends_on: { <svc>: { condition: service_healthy } }` so the stack waits for readiness, not just container start. `stream-ome` waits for `stream-backend` (see above); `stream-caddy` waits for both `stream-backend` and `stream-ome`; `stream-livekit` waits for `stream-redis`. `stream-backend` has a `/healthz` endpoint that deliberately does not touch the DB pool — a stuck pool should leave the service *up* so it can recover, not loop-restart.
 - **First build is slow** — the Dockerfile pre-fetches and compiles dependencies against a stub `main.rs` so subsequent builds only recompile the application crate.
 - **`$` in `.env`** — Docker Compose processes `$` in env_file values. Use `$$` to escape.
 - **Startup race fix** — `axum::serve` is awaited only after the `bcrypt::hash` task (run in `tokio::task::spawn_blocking`) returns, so the listener never accepts before the admin password hash is ready.

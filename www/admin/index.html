@@ -4,33 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Stream — Admin</title>
+<link rel="stylesheet" href="/shared/tokens.css">
+<link rel="stylesheet" href="/shared/components.css">
+<link rel="stylesheet" href="/shared/utils.css">
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-:root {
-    --bg:      #0e0e0e;
-    --surface: #141414;
-    --surface2:#1c1c1c;
-    --border:  #2a2a2a;
-    --text:    #eeeeee;
-    --dim:     #777777;
-    --faint:   #444444;
-    --accent:  #FFAA00;
-    --green:   #1A9B5A;
-    --danger:  #E53935;
-    --nav-h:   62px;
-}
-
-html, body { height: 100%; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 15.4px; }
-
 /* ---- Login ---- */
 #login-screen {
     position: fixed; inset: 0; background: var(--bg);
-    display: flex; align-items: center; justify-content: center; z-index: 200;
+    display: flex; align-items: center; justify-content: center; z-index: var(--z-screen);
 }
-.login-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 52px; width: 400px; }
+.login-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-xl); padding: 52px; width: 400px; }
 .login-box h1 { font-size: 15px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 32px; color: var(--text); }
-.login-box input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 10px 14px; font: inherit; font-size: 14px; width: 100%; outline: none; }
+.login-box input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: var(--r-md); padding: 10px 14px; font: inherit; font-size: 14px; width: 100%; outline: none; }
 .login-box input:focus { border-color: var(--dim); }
 .login-box input::placeholder { color: var(--faint); }
 .login-error { color: var(--danger); font-size: 12px; margin-top: 12px; min-height: 16px; }
@@ -39,7 +24,7 @@ html, body { height: 100%; font-family: system-ui, sans-serif; background: var(-
 nav {
     height: var(--nav-h); background: var(--surface); border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0 32px; position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    padding: 0 32px; position: fixed; top: 0; left: 0; right: 0; z-index: var(--z-nav);
 }
 .brand { font-weight: 700; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; display: inline-flex; align-items: center; }
 .brand img { height: 20px; display: block; }
@@ -50,65 +35,8 @@ nav {
 main { margin-top: var(--nav-h); padding: 32px; }
 .content-wrap { max-width: 70%; margin: 0 auto; }
 
-/* ---- Buttons ---- */
-.btn {
-    padding: 8px 16px; border: 1px solid var(--border); background: var(--surface);
-    font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
-    letter-spacing: 0.03em; color: var(--text); transition: background 0.15s; white-space: nowrap;
-    border-radius: 6px;
-}
-.btn:hover { background: var(--surface2); }
-.btn-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
-.btn-primary:hover { background: #ccc; }
-.btn-danger { color: var(--danger); border-color: var(--danger); }
-.btn-danger:hover { background: #2a1515; }
-.btn-sm { padding: 5px 12px; font-size: 12px; }
-.btn-tab { border: none; background: none; color: var(--dim); border-bottom: 2px solid transparent; padding: 6px 14px; font-size: 13px; border-radius: 0; }
-.btn-tab.active { color: var(--text); border-bottom-color: var(--text); }
+/* ---- Admin-specific button variants ---- */
 .btn-copy { padding: 7px 18px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; }
-
-/* ---- Forms (modal) ---- */
-.form-row { margin-bottom: 18px; }
-.form-row label { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
-.form-row input, .form-row select {
-    width: 100%; padding: 9px 12px; border: 1px solid var(--border); background: var(--surface2);
-    font: inherit; font-size: 13px; color: var(--text); outline: none; border-radius: 6px;
-}
-.form-row select { background: var(--surface2); }
-.form-row input:focus, .form-row select:focus { border-color: var(--dim); }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
-.form-row.checkbox { display: flex; align-items: center; gap: 10px; }
-.form-row.checkbox label { margin: 0; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 400; color: var(--text); }
-.form-row.checkbox input { width: auto; }
-
-/* ---- Section header ---- */
-.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-.section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
-
-/* ---- Badges ---- */
-.badge {
-    display: inline-block; padding: 3px 9px; font-size: 10px; font-weight: 700;
-    letter-spacing: 0.08em; text-transform: uppercase; border-radius: 4px;
-}
-.badge-live    { background: #0d2211; color: var(--green); }
-.badge-pending { background: #1a1a1a; color: var(--dim); }
-.badge-ended   { background: #2a1515; color: var(--danger); }
-.badge-webrtc  { background: #111828; color: #6688ee; }
-.badge-llhls   { background: #1f1a0a; color: #ccaa33; }
-
-/* ---- Modal ---- */
-.modal-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
-    display: flex; align-items: center; justify-content: center; z-index: 300;
-}
-.modal {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-    width: 600px; max-width: calc(100vw - 32px); max-height: calc(100vh - 64px);
-    overflow-y: auto; padding: 36px;
-}
-.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
-.modal-title { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-.modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
 
 /* ---- Waiting inline ---- */
 .waiting-section { border-top: 1px solid var(--border); padding: 16px 24px; background: var(--surface2); }
@@ -118,19 +46,14 @@ main { margin-top: var(--nav-h); padding: 32px; }
 .participant-row:last-child { border-bottom: none; }
 .waiting-empty { font-size: 12px; color: var(--faint); }
 
-/* ---- Toast ---- */
-#toast {
-    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
-    background: var(--text); color: var(--bg); padding: 10px 20px; border-radius: 8px;
-    font-size: 13px; opacity: 0; transition: opacity 0.2s, transform 0.2s; z-index: 999; pointer-events: none;
-}
-#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
 /* ---- Dashboard stat cards ---- */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
 .stat-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
     padding: 24px;
+    transition: border-color var(--dur-fast) var(--ease-out),
+                transform var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
 }
 .stat-label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); margin-bottom: 12px; }
 .stat-value { font-size: 28px; font-weight: 600; }
@@ -142,8 +65,10 @@ main { margin-top: var(--nav-h); padding: 32px; }
 
 /* ---- Room cards ---- */
 .room-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
     margin-bottom: 16px; overflow: hidden;
+    transition: border-color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
 }
 .room-card-header {
     display: flex; align-items: flex-start; gap: 16px;
@@ -171,16 +96,21 @@ main { margin-top: var(--nav-h); padding: 32px; }
 }
 .url-input {
     flex: 1; min-width: 0; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border);
-    font-family: monospace; font-size: 12px; color: var(--text); outline: none; border-radius: 6px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text;
+    font-family: monospace; font-size: 12px; color: var(--text); outline: none; border-radius: var(--r-btn);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+    transition: border-color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
 }
-.url-input:focus { border-color: var(--dim); }
+.url-input:hover { border-color: var(--dim); }
+.url-input:focus { border-color: var(--accent); box-shadow: var(--ring-accent); }
 .url-divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
 /* ---- Stream key cards ---- */
 .key-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
     margin-bottom: 16px; overflow: hidden;
+    transition: border-color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
 }
 .key-card-header {
     display: flex; align-items: center; gap: 16px;
@@ -190,10 +120,13 @@ main { margin-top: var(--nav-h); padding: 32px; }
 .key-card-rooms { font-size: 12px; color: var(--dim); }
 .key-card-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 10px; }
 
-.empty { padding: 48px; text-align: center; color: var(--dim); font-size: 13px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
-
 /* ---- OME stream cards ---- */
-.stream-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+.stream-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+    margin-bottom: 16px; overflow: hidden;
+    transition: border-color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
+}
 .stream-card-header {
     display: flex; align-items: center; gap: 12px;
     padding: 16px 24px; border-bottom: 1px solid var(--border);
@@ -208,9 +141,8 @@ main { margin-top: var(--nav-h); padding: 32px; }
 .stream-card-room { font-size: 12px; color: var(--dim); margin-top: 2px; }
 .stream-card-body { padding: 14px 24px; display: flex; flex-direction: column; gap: 6px; }
 .stream-stat { display: flex; align-items: baseline; gap: 10px; font-size: 13px; }
-.stat-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); width: 52px; flex-shrink: 0; }
+.stream-stat .stat-label { width: 52px; flex-shrink: 0; }
 .stream-meta { font-size: 12px; color: var(--dim); padding: 8px 24px 14px; }
-.badge-source { background: #0d2211; color: var(--green); }
 .ome-subheader { font-size: 12px; color: var(--dim); margin-bottom: 20px; min-height: 18px; }
 
 /* ---- Files tab ---- */
@@ -230,9 +162,12 @@ main { margin-top: var(--nav-h); padding: 32px; }
 .files-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
 .files-toolbar input[type=text], .files-toolbar select {
     padding: 8px 12px; border: 1px solid var(--border); background: var(--surface2);
-    color: var(--text); font: inherit; font-size: 13px; border-radius: 6px; outline: none;
+    color: var(--text); font: inherit; font-size: 13px; border-radius: var(--r-btn); outline: none;
+    transition: border-color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
 }
-.files-toolbar input[type=text]:focus, .files-toolbar select:focus { border-color: var(--dim); }
+.files-toolbar input[type=text]:hover, .files-toolbar select:hover { border-color: var(--dim); }
+.files-toolbar input[type=text]:focus, .files-toolbar select:focus { border-color: var(--accent); box-shadow: var(--ring-accent); }
 .files-toolbar .search-input { min-width: 220px; flex: 1; }
 .files-toolbar .spacer { flex: 1; }
 .files-toolbar label.inline { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); cursor: pointer; }
@@ -292,7 +227,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
 .file-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
 .file-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
 .file-name.editing { cursor: text; }
-.file-name-input { width: 100%; padding: 4px 6px; background: var(--surface); border: 1px solid var(--accent); color: var(--text); font: inherit; font-size: 13px; border-radius: 4px; outline: none; }
+.file-name-input { width: 100%; padding: 4px 6px; background: var(--surface); border: 1px solid var(--accent); color: var(--text); font: inherit; font-size: 13px; border-radius: var(--r-md); outline: none; box-shadow: var(--ring-accent); }
 .file-meta { font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-chips { display: flex; flex-wrap: wrap; gap: 4px; overflow: hidden; }
 .file-chip {
@@ -403,9 +338,22 @@ main { margin-top: var(--nav-h); padding: 32px; }
     .stream-card-body { padding: 12px 16px; }
     .stream-meta { padding: 6px 16px 12px; }
 }
+
+/* Branding color-palette hex inputs — inline styles skip the shared focus ring,
+   so reinstate it here via an attribute selector. */
+input[id^="color-"][id$="-hex"] {
+    border: 1px solid var(--border); color: var(--text); background: var(--surface2);
+    border-radius: var(--r-md); outline: none;
+    transition: border-color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
+}
+input[id^="color-"][id$="-hex"]:hover { border-color: var(--dim); }
+input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow: var(--ring-accent); }
 </style>
 </head>
 <body>
+
+<script src="/shared/utils.js"></script>
 
 <div id="login-screen">
     <div class="login-box">
@@ -414,15 +362,15 @@ main { margin-top: var(--nav-h); padding: 32px; }
             <div class="form-row">
                 <input type="password" id="password-input" placeholder="Password" autocomplete="current-password">
             </div>
-            <button type="submit" class="btn btn-primary" style="width:100%">Sign in</button>
+            <button type="submit" class="btn btn-primary btn-block">Sign in</button>
         </form>
         <p class="login-error" id="login-error"></p>
     </div>
 </div>
 
-<nav id="main-nav" style="display:none">
+<nav id="main-nav" class="u-hidden">
     <div class="brand">
-        <img id="brand-logo" alt="" style="display:none">
+        <img id="brand-logo" alt="" class="u-hidden">
         <!-- <span id="brand-text">Admin</span> -->
     </div>
     <div class="nav-tabs">
@@ -438,7 +386,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
     </div>
 </nav>
 
-<main id="main-content" style="display:none">
+<main id="main-content" class="u-hidden">
 <div class="content-wrap">
 
     <!-- Rooms tab -->
@@ -454,7 +402,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
     </div>
 
     <!-- Stats tab -->
-    <div id="tab-ome" style="display:none">
+    <div id="tab-ome" class="u-hidden">
         <div class="section-header">
             <span class="section-title">Live Streams</span>
             <button class="btn btn-sm" id="ome-refresh-btn">Refresh</button>
@@ -464,7 +412,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
     </div>
 
     <!-- Stream Keys tab -->
-    <div id="tab-keys" style="display:none">
+    <div id="tab-keys" class="u-hidden">
         <div class="section-header">
             <span class="section-title">Stream Keys</span>
             <button class="btn btn-primary btn-sm" id="new-key-btn">+ New Key</button>
@@ -475,7 +423,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
     </div>
 
     <!-- Dashboard tab -->
-    <div id="tab-dashboard" style="display:none">
+    <div id="tab-dashboard" class="u-hidden">
         <div class="section-header">
             <span class="section-title">Dashboard</span>
         </div>
@@ -500,7 +448,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
     </div>
 
     <!-- Branding tab -->
-    <div id="tab-branding" style="display:none">
+    <div id="tab-branding" class="u-hidden">
         <div class="section-header">
             <span class="section-title">Branding</span>
         </div>
@@ -516,14 +464,14 @@ main { margin-top: var(--nav-h); padding: 32px; }
                     <button class="btn btn-sm btn-danger" id="logo-remove-btn">Remove</button>
                 </div>
             </div>
-            <div class="room-card-body" style="padding:16px 20px 20px">
+            <div class="room-card-body u-p-card-tight">
                 <img id="logo-preview" src="" alt="Logo preview" style="max-height:48px;display:none;opacity:0.8;margin-bottom:4px;">
                 <span id="logo-empty" style="font-size:13px;color:var(--dim)">No custom logo — using default.</span>
-                <input type="file" id="logo-file-input" accept="image/*" style="display:none">
+                <input type="file" id="logo-file-input" accept="image/*" class="u-hidden">
             </div>
         </div>
 
-        <div class="room-card" style="margin-top:12px">
+        <div class="room-card u-mt-3">
             <div class="room-card-header">
                 <div class="room-card-info">
                     <div class="room-card-name">Background Image</div>
@@ -534,14 +482,14 @@ main { margin-top: var(--nav-h); padding: 32px; }
                     <button class="btn btn-sm btn-danger" id="bg-remove-btn">Remove</button>
                 </div>
             </div>
-            <div class="room-card-body" style="padding:16px 20px 20px">
+            <div class="room-card-body u-p-card-tight">
                 <img id="bg-preview" src="" alt="Background preview" style="max-height:100px;max-width:100%;object-fit:cover;border-radius:6px;display:none;margin-bottom:4px;">
                 <span id="bg-empty" style="font-size:13px;color:var(--dim)">No custom background — using default.</span>
-                <input type="file" id="bg-file-input" accept="image/*" style="display:none">
+                <input type="file" id="bg-file-input" accept="image/*" class="u-hidden">
             </div>
         </div>
 
-        <div class="room-card" style="margin-top:12px">
+        <div class="room-card u-mt-3">
             <div class="room-card-header">
                 <div class="room-card-info">
                     <div class="room-card-name">Color Palette</div>
@@ -552,48 +500,48 @@ main { margin-top: var(--nav-h); padding: 32px; }
                     <button class="btn btn-sm btn-danger" id="colors-reset-btn">Reset</button>
                 </div>
             </div>
-            <div class="room-card-body" style="padding:16px 20px 20px">
+            <div class="room-card-body u-p-card-tight">
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
                     <div class="form-row" style="margin:0">
                         <label>Accent</label>
                         <div style="display:flex;gap:6px;align-items:center">
-                            <input type="color" id="color-accent" value="#FFAA00" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
-                            <input type="text" id="color-accent-hex" placeholder="#FFAA00" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                            <input type="color" id="color-accent" value="#ffbd2e" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-accent-hex" placeholder="#ffbd2e" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
                         </div>
                     </div>
                     <div class="form-row" style="margin:0">
                         <label>Background</label>
                         <div style="display:flex;gap:6px;align-items:center">
-                            <input type="color" id="color-bg" value="#0e0e0e" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
-                            <input type="text" id="color-bg-hex" placeholder="#0e0e0e" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                            <input type="color" id="color-bg" value="#171717" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-bg-hex" placeholder="#171717" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
                         </div>
                     </div>
                     <div class="form-row" style="margin:0">
                         <label>Surface</label>
                         <div style="display:flex;gap:6px;align-items:center">
-                            <input type="color" id="color-surface" value="#141414" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
-                            <input type="text" id="color-surface-hex" placeholder="#141414" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                            <input type="color" id="color-surface" value="#1d1d1d" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-surface-hex" placeholder="#1d1d1d" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
                         </div>
                     </div>
                     <div class="form-row" style="margin:0">
                         <label>Text</label>
                         <div style="display:flex;gap:6px;align-items:center">
-                            <input type="color" id="color-text" value="#eeeeee" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
-                            <input type="text" id="color-text-hex" placeholder="#eeeeee" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                            <input type="color" id="color-text" value="#dfdfdf" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-text-hex" placeholder="#dfdfdf" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
                         </div>
                     </div>
                     <div class="form-row" style="margin:0">
                         <label>Danger</label>
                         <div style="display:flex;gap:6px;align-items:center">
-                            <input type="color" id="color-danger" value="#E53935" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
-                            <input type="text" id="color-danger-hex" placeholder="#E53935" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                            <input type="color" id="color-danger" value="#ff6159" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-danger-hex" placeholder="#ff6159" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
                         </div>
                     </div>
                     <div class="form-row" style="margin:0">
                         <label>Success</label>
                         <div style="display:flex;gap:6px;align-items:center">
-                            <input type="color" id="color-green" value="#1A9B5A" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
-                            <input type="text" id="color-green-hex" placeholder="#1A9B5A" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
+                            <input type="color" id="color-green" value="#28c941" style="width:36px;height:30px;padding:0;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">
+                            <input type="text" id="color-green-hex" placeholder="#28c941" style="flex:1;padding:6px 8px;font-size:12px;font-family:monospace">
                         </div>
                     </div>
                 </div>
@@ -602,7 +550,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
     </div>
 
     <!-- Files tab -->
-    <div id="tab-files" style="display:none">
+    <div id="tab-files" class="u-hidden">
         <div class="section-header">
             <span class="section-title">Files</span>
             <button class="btn btn-primary btn-sm" id="files-upload-btn">+ Upload</button>
@@ -637,7 +585,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
                 <option value="size_bytes|asc">Smallest first</option>
             </select>
             <label class="inline"><input type="checkbox" id="files-unassigned-only"> Unassigned only</label>
-            <input type="file" id="files-file-input" multiple style="display:none">
+            <input type="file" id="files-file-input" multiple class="u-hidden">
         </div>
 
         <div class="files-bulk-bar" id="files-bulk-bar">
@@ -862,6 +810,13 @@ main { margin-top: var(--nav-h); padding: 32px; }
         navigator.clipboard.writeText(text).then(() => toast('Copied'));
     }
 
+    // Click-to-copy for every readonly URL field — matches the visible Copy button.
+    document.addEventListener('click', (e) => {
+        const el = e.target.closest('input.url-input');
+        if (!el || !el.readOnly) return;
+        copy(el.value);
+    });
+
     function esc(str) {
         return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
@@ -916,12 +871,13 @@ main { margin-top: var(--nav-h); padding: 32px; }
             document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             activeTab = btn.dataset.tab;
-            document.getElementById('tab-rooms').style.display     = activeTab === 'rooms'     ? '' : 'none';
-            document.getElementById('tab-keys').style.display      = activeTab === 'keys'      ? '' : 'none';
-            document.getElementById('tab-ome').style.display       = activeTab === 'ome'       ? '' : 'none';
-            document.getElementById('tab-dashboard').style.display = activeTab === 'dashboard' ? '' : 'none';
-            document.getElementById('tab-branding').style.display  = activeTab === 'branding'  ? '' : 'none';
-            document.getElementById('tab-files').style.display     = activeTab === 'files'     ? '' : 'none';
+            // Use 'block' (not '') so inline style wins over the .u-hidden class applied in markup.
+            document.getElementById('tab-rooms').style.display     = activeTab === 'rooms'     ? 'block' : 'none';
+            document.getElementById('tab-keys').style.display      = activeTab === 'keys'      ? 'block' : 'none';
+            document.getElementById('tab-ome').style.display       = activeTab === 'ome'       ? 'block' : 'none';
+            document.getElementById('tab-dashboard').style.display = activeTab === 'dashboard' ? 'block' : 'none';
+            document.getElementById('tab-branding').style.display  = activeTab === 'branding'  ? 'block' : 'none';
+            document.getElementById('tab-files').style.display     = activeTab === 'files'     ? 'block' : 'none';
             if (activeTab === 'ome') renderOme();
             if (activeTab === 'dashboard') loadDashboard();
             if (activeTab === 'branding') loadBranding();
@@ -1427,7 +1383,13 @@ main { margin-top: var(--nav-h); padding: 32px; }
     // ---- Branding ----
 
     const COLOR_FIELDS = ['accent', 'bg', 'surface', 'text', 'danger', 'green'];
-    const COLOR_DEFAULTS = { accent: '#FFAA00', bg: '#0e0e0e', surface: '#141414', text: '#eeeeee', danger: '#E53935', green: '#1A9B5A' };
+    // Defaults are sourced live from /shared/tokens.css (:root custom properties).
+    // Read once at load, BEFORE any /api/branding overrides are applied via setProperty,
+    // so getComputedStyle returns the stylesheet defaults rather than the user's saved overrides.
+    const COLOR_DEFAULTS = (() => {
+        const cs = getComputedStyle(document.documentElement);
+        return Object.fromEntries(COLOR_FIELDS.map(f => [f, cs.getPropertyValue(`--${f}`).trim()]));
+    })();
 
     async function loadBranding() {
         const res = await fetch('/api/branding');
@@ -1465,14 +1427,19 @@ main { margin-top: var(--nav-h); padding: 32px; }
         }
     }
 
-    // Sync color picker ↔ hex input
+    // Sync color picker ↔ hex input, and preview live on the admin UI.
+    // Preview is in-memory only — nothing is persisted until Save is clicked.
+    const CSS_MAP = { accent: '--accent', bg: '--bg', surface: '--surface', text: '--text', danger: '--danger', green: '--green' };
+    const previewColor = (f, val) => document.documentElement.style.setProperty(CSS_MAP[f], val);
     for (const f of COLOR_FIELDS) {
         document.getElementById(`color-${f}`).addEventListener('input', e => {
             document.getElementById(`color-${f}-hex`).value = e.target.value;
+            previewColor(f, e.target.value);
         });
         document.getElementById(`color-${f}-hex`).addEventListener('input', e => {
             if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) {
                 document.getElementById(`color-${f}`).value = e.target.value;
+                previewColor(f, e.target.value);
             }
         });
     }
@@ -1486,8 +1453,18 @@ main { margin-top: var(--nav-h); padding: 32px; }
             method: 'POST',
             body: JSON.stringify(body),
         });
-        if (res && res.ok) toast('Colors saved');
-        else toast('Save failed');
+        if (res && res.ok) {
+            // Apply immediately so the admin UI reflects the change without a reload.
+            const cssMap = { accent: '--accent', bg: '--bg', surface: '--surface', text: '--text', danger: '--danger', green: '--green' };
+            for (const f of COLOR_FIELDS) {
+                const val = body[`color_${f}`];
+                if (val) document.documentElement.style.setProperty(cssMap[f], val);
+                else document.documentElement.style.removeProperty(cssMap[f]);
+            }
+            toast('Colors saved');
+        } else {
+            toast('Save failed');
+        }
     });
 
     document.getElementById('colors-reset-btn').addEventListener('click', async () => {
@@ -1501,8 +1478,14 @@ main { margin-top: var(--nav-h); padding: 32px; }
             method: 'POST',
             body: JSON.stringify(body),
         });
-        if (res && res.ok) toast('Colors reset to defaults');
-        else toast('Reset failed');
+        if (res && res.ok) {
+            // Remove inline custom-property overrides so tokens.css defaults take over.
+            const cssMap = { accent: '--accent', bg: '--bg', surface: '--surface', text: '--text', danger: '--danger', green: '--green' };
+            for (const f of COLOR_FIELDS) document.documentElement.style.removeProperty(cssMap[f]);
+            toast('Colors reset to defaults');
+        } else {
+            toast('Reset failed');
+        }
     });
 
     async function uploadBrandingAsset(asset) {

@@ -1,10 +1,4 @@
-use axum::{
-    body::Bytes,
-    extract::State,
-    http::HeaderMap,
-    routing::post,
-    Json, Router,
-};
+use axum::{body::Bytes, extract::State, http::HeaderMap, routing::post, Json, Router};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use hmac::{Hmac, Mac};
@@ -34,7 +28,9 @@ fn extract_stream_key(url: &str) -> Option<String> {
         &url_str
     };
     let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-    parts.last().map(|s| s.split('?').next().unwrap_or(s).to_string())
+    parts
+        .last()
+        .map(|s| s.split('?').next().unwrap_or(s).to_string())
 }
 
 async fn webhook_handler(
@@ -77,10 +73,7 @@ async fn webhook_handler(
     }
 
     // Extract stream key from URL
-    let url = request
-        .get("url")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let url = request.get("url").and_then(|v| v.as_str()).unwrap_or("");
 
     let stream_key = extract_stream_key(url)
         .ok_or_else(|| AppError::BadRequest("Cannot extract stream key".into()))?;

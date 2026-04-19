@@ -1,0 +1,8 @@
+[advisories]
+ignore = [
+    # RUSTSEC-2023-0071: Marvin Attack timing sidechannel in `rsa`.
+    # No fixed upgrade is available. Pulled in transitively via
+    # jsonwebtoken 10's `rust_crypto` feature. Revisit when `rsa`
+    # ships a fix or when we switch jsonwebtoken to `aws_lc_rs`.
+    "RUSTSEC-2023-0071",
+]

@@ -1,0 +1,30 @@
+/* Utilities for replacing inline-style hotspots.
+   Kept deliberately minimal — do not expand into a full utility framework. */
+
+/* Default-hidden state. No !important so inline style.display toggles from JS still work. */
+.u-hidden { display: none; }
+
+.u-w-full { width: 100%; }
+
+.u-mt-1 { margin-top: var(--sp-1); }
+.u-mt-2 { margin-top: var(--sp-2); }
+.u-mt-3 { margin-top: var(--sp-3); }
+.u-mt-4 { margin-top: var(--sp-4); }
+
+.u-mb-1 { margin-bottom: var(--sp-1); }
+
+.u-gap-2 { gap: var(--sp-2); }
+
+.u-flex       { display: flex; }
+.u-flex-center { display: flex; align-items: center; justify-content: center; }
+.u-flex-items-center { display: flex; align-items: center; gap: var(--sp-2); }
+
+.u-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--sp-3); }
+
+.u-p-card-tight { padding: 16px 20px 20px; }
+
+/* Form-row override when used inside a custom grid without its own margin */
+.u-form-row-inline { margin: 0; }
+
+/* Monospace text input (used for URL inputs etc.) */
+.u-mono { font-family: monospace; font-size: 12px; }

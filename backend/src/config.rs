@@ -46,13 +46,18 @@ impl AppConfig {
         Self {
             jwt_secret,
             ome_webhook_secret,
-            ome_api_url: env::var("OME_API_URL").unwrap_or_else(|_| "http://stream-ome:8081/v1".into()),
+            ome_api_url: env::var("OME_API_URL")
+                .unwrap_or_else(|_| "http://stream-ome:8081/v1".into()),
             ome_api_token: env::var("OME_API_TOKEN").unwrap_or_default(),
             livekit_api_key,
             livekit_api_secret,
-            livekit_internal_url: env::var("LIVEKIT_INTERNAL_URL").unwrap_or_else(|_| "http://stream-livekit:7880".into()),
+            livekit_internal_url: env::var("LIVEKIT_INTERNAL_URL")
+                .unwrap_or_else(|_| "http://stream-livekit:7880".into()),
             livekit_url: env::var("LIVEKIT_URL").unwrap_or_else(|_| "ws://localhost:7880".into()),
-            port: env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(4001),
+            port: env::var("PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(4001),
             db_path: env::var("DB_PATH").unwrap_or_else(|_| "/data/stream.db".into()),
             data_path: env::var("DATA_PATH").unwrap_or_else(|_| "/data".into()),
         }

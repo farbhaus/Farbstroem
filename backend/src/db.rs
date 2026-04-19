@@ -12,9 +12,9 @@ pub type DbPool = Pool<SqliteConnectionManager>;
 fn migrate_session_files_library(conn: &rusqlite::Connection) {
     let has_content_hash: bool = conn
         .prepare("PRAGMA table_info(session_files)")
-        .unwrap()
+        .expect("PRAGMA table_info(session_files) failed")
         .query_map([], |row| row.get::<_, String>(1))
-        .unwrap()
+        .expect("PRAGMA table_info(session_files) query_map failed")
         .any(|name| name.as_deref() == Ok("content_hash"));
 
     if has_content_hash {
@@ -26,7 +26,8 @@ fn migrate_session_files_library(conn: &rusqlite::Connection) {
     // RENAME ⇒ CREATE ⇒ COPY ⇒ DROP dance can interact badly with any table
     // that already has a FK into session_files (e.g. room_files created by
     // schema.sql immediately before this runs).
-    conn.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")
+        .expect("Failed to disable foreign_keys for session_files migration");
     let result = conn.execute_batch(
         "BEGIN;
 
@@ -64,10 +65,13 @@ fn migrate_session_files_library(conn: &rusqlite::Connection) {
 
          COMMIT;",
     );
-    conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+    conn.execute_batch("PRAGMA foreign_keys = ON;")
+        .expect("Failed to re-enable foreign_keys after session_files migration");
     result.expect("Failed to migrate session_files for library support");
 
-    tracing::info!("[migration] session_files: room_id nullable + content_hash + legacy room_files mirror");
+    tracing::info!(
+        "[migration] session_files: room_id nullable + content_hash + legacy room_files mirror"
+    );
 }
 
 /// Self-heal room_files if its foreign key still points at the transient
@@ -83,12 +87,13 @@ fn repair_room_files_fk(conn: &rusqlite::Connection) {
             |row| row.get::<_, i64>(0),
         )
         .unwrap_or(0)
-            > 0;
+        > 0;
     if !broken {
         return;
     }
 
-    conn.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")
+        .expect("Failed to disable foreign_keys for room_files FK repair");
     let result = conn.execute_batch(
         "BEGIN;
          ALTER TABLE room_files RENAME TO room_files_bad;
@@ -105,7 +110,8 @@ fn repair_room_files_fk(conn: &rusqlite::Connection) {
          CREATE INDEX IF NOT EXISTS idx_room_files_file ON room_files(file_id);
          COMMIT;",
     );
-    conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+    conn.execute_batch("PRAGMA foreign_keys = ON;")
+        .expect("Failed to re-enable foreign_keys after room_files FK repair");
     result.expect("Failed to repair room_files foreign key");
     tracing::info!("[migration] room_files FK repaired (was pointing at session_files_old)");
 }
@@ -135,9 +141,7 @@ fn migrate_blobs_to_flat_layout(conn: &rusqlite::Connection, data_path: &str) {
         return;
     }
 
-    let mut stmt = match conn
-        .prepare("SELECT id, room_id, stored_path FROM session_files")
-    {
+    let mut stmt = match conn.prepare("SELECT id, room_id, stored_path FROM session_files") {
         Ok(s) => s,
         Err(e) => {
             tracing::warn!("[migration] prepare failed: {}", e);
@@ -159,7 +163,8 @@ fn migrate_blobs_to_flat_layout(conn: &rusqlite::Connection, data_path: &str) {
     for (id, room_id, stored) in rows {
         // Determine old path: if stored already looks flat (no slash) AND the
         // file already lives in the new /files dir, skip the move step.
-        let already_flat = !stored.contains('/') && Path::new(&format!("{}/{}", target_dir, stored)).exists();
+        let already_flat =
+            !stored.contains('/') && Path::new(&format!("{}/{}", target_dir, stored)).exists();
         let old_path = if already_flat {
             format!("{}/{}", target_dir, stored)
         } else if let Some(rid) = room_id.as_deref() {
@@ -239,22 +244,26 @@ pub fn init_pool(db_path: &str, data_path: &str) -> DbPool {
         .expect("Failed to create database pool");
 
     let conn = pool.get().expect("Failed to get connection");
-    conn.execute_batch("PRAGMA journal_mode = WAL;").unwrap();
-    conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
-    conn.execute_batch("PRAGMA synchronous = NORMAL;").unwrap();
+    conn.execute_batch("PRAGMA journal_mode = WAL;")
+        .expect("Failed to set PRAGMA journal_mode = WAL");
+    conn.execute_batch("PRAGMA foreign_keys = ON;")
+        .expect("Failed to set PRAGMA foreign_keys = ON");
+    conn.execute_batch("PRAGMA synchronous = NORMAL;")
+        .expect("Failed to set PRAGMA synchronous = NORMAL");
 
     // Apply schema
     let schema = fs::read_to_string("schema.sql")
         .or_else(|_| fs::read_to_string("/app/schema.sql"))
         .expect("Failed to read schema.sql");
-    conn.execute_batch(&schema).unwrap();
+    conn.execute_batch(&schema)
+        .expect("Failed to apply schema.sql");
 
     // Migrations for existing databases
     let has_stream_key_id: bool = conn
         .prepare("PRAGMA table_info(rooms)")
-        .unwrap()
+        .expect("PRAGMA table_info(rooms) failed")
         .query_map([], |row| row.get::<_, String>(1))
-        .unwrap()
+        .expect("PRAGMA table_info(rooms) query_map failed")
         .any(|name| name.as_deref() == Ok("stream_key_id"));
 
     if !has_stream_key_id {
@@ -262,32 +271,35 @@ pub fn init_pool(db_path: &str, data_path: &str) -> DbPool {
             "ALTER TABLE rooms ADD COLUMN stream_key_id TEXT REFERENCES stream_keys(id) ON DELETE SET NULL;
              UPDATE rooms SET stream_key_id = (SELECT id FROM stream_keys WHERE stream_keys.room_id = rooms.id LIMIT 1);
              CREATE INDEX IF NOT EXISTS idx_rooms_stream_key ON rooms(stream_key_id);"
-        ).unwrap();
+        ).expect("Failed migration: add rooms.stream_key_id");
     }
 
     let has_is_kicked: bool = conn
         .prepare("PRAGMA table_info(participants)")
-        .unwrap()
+        .expect("PRAGMA table_info(participants) failed")
         .query_map([], |row| row.get::<_, String>(1))
-        .unwrap()
+        .expect("PRAGMA table_info(participants) query_map failed")
         .any(|name| name.as_deref() == Ok("is_kicked"));
 
     if !has_is_kicked {
-        conn.execute_batch("ALTER TABLE participants ADD COLUMN is_kicked INTEGER NOT NULL DEFAULT 0").unwrap();
+        conn.execute_batch(
+            "ALTER TABLE participants ADD COLUMN is_kicked INTEGER NOT NULL DEFAULT 0",
+        )
+        .expect("Failed migration: add participants.is_kicked");
     }
 
     let has_presenter_key: bool = conn
         .prepare("PRAGMA table_info(rooms)")
-        .unwrap()
+        .expect("PRAGMA table_info(rooms) failed (presenter_key check)")
         .query_map([], |row| row.get::<_, String>(1))
-        .unwrap()
+        .expect("PRAGMA table_info(rooms) query_map failed (presenter_key check)")
         .any(|name| name.as_deref() == Ok("presenter_key"));
 
     if !has_presenter_key {
         conn.execute_batch(
             "ALTER TABLE rooms ADD COLUMN presenter_key TEXT;
              UPDATE rooms SET presenter_key = lower(hex(randomblob(16))) WHERE presenter_key IS NULL;"
-        ).unwrap();
+        ).expect("Failed migration: add rooms.presenter_key");
     }
 
     migrate_session_files_library(&conn);
@@ -300,7 +312,7 @@ pub fn init_pool(db_path: &str, data_path: &str) -> DbPool {
          CREATE INDEX        IF NOT EXISTS idx_session_files_created ON session_files(created_at);
          CREATE INDEX        IF NOT EXISTS idx_room_files_file       ON room_files(file_id);",
     )
-    .unwrap();
+    .expect("Failed to create session_files/room_files indexes");
 
     migrate_blobs_to_flat_layout(&conn, data_path);
 

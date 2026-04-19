@@ -6,7 +6,10 @@ use serde_json::Value;
 async fn login_returns_400_without_password() {
     let state = common::test_state();
     let server = common::test_app(state);
-    let res = server.post("/api/auth/login").json(&serde_json::json!({})).await;
+    let res = server
+        .post("/api/auth/login")
+        .json(&serde_json::json!({}))
+        .await;
     assert_eq!(res.status_code(), 400);
 }
 
@@ -14,7 +17,10 @@ async fn login_returns_400_without_password() {
 async fn login_returns_401_wrong_password() {
     let state = common::test_state();
     let server = common::test_app(state);
-    let res = server.post("/api/auth/login").json(&serde_json::json!({"password": "wrong"})).await;
+    let res = server
+        .post("/api/auth/login")
+        .json(&serde_json::json!({"password": "wrong"}))
+        .await;
     assert_eq!(res.status_code(), 401);
 }
 
@@ -22,7 +28,10 @@ async fn login_returns_401_wrong_password() {
 async fn login_returns_token_on_correct_password() {
     let state = common::test_state();
     let server = common::test_app(state);
-    let res = server.post("/api/auth/login").json(&serde_json::json!({"password": "test-admin-password"})).await;
+    let res = server
+        .post("/api/auth/login")
+        .json(&serde_json::json!({"password": "test-admin-password"}))
+        .await;
     assert_eq!(res.status_code(), 200);
     let body: Value = res.json();
     assert!(body.get("token").is_some());

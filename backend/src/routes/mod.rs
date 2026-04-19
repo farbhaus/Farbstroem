@@ -4,6 +4,7 @@ pub mod branding;
 pub mod files;
 pub mod metrics;
 pub mod ome;
+pub mod rate_limit;
 pub mod rooms;
 pub mod rooms_public;
 pub mod stream_keys;

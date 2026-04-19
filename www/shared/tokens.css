@@ -1,0 +1,70 @@
+/* zStream design tokens — single source of truth.
+   Overridable at runtime by /api/branding via utils.js applyBranding(). */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    /* Color */
+    --bg:       #171717;
+    --surface:  #1d1d1d;
+    --surface2: #1c1c1c;
+    --border:   #2a2a2a;
+    --faint:    #444444;
+    --dim:      #777777;
+    --text:     #dfdfdf;
+    --accent:   #ffbd2e;
+    --danger:   #ff6159;
+    --green:    #28c941;
+
+    /* Typography */
+    --ff:       system-ui, sans-serif;
+    --fs-base:  14px;
+    --fs-sm:    12px;
+    --fs-xs:    11px;
+    --fs-lg:    16px;
+
+    /* Spacing (4px scale) */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 20px;
+    --sp-6: 24px;
+    --sp-7: 28px;
+    --sp-8: 32px;
+
+    /* Radii */
+    --r-sm:  4px;
+    --r-md:  6px;
+    --r-btn: 8px;   /* buttons, inputs — matches viewer toolbar aesthetic */
+    --r-lg:  10px;  /* cards, panels, tiles */
+    --r-xl:  12px;
+
+    /* Motion */
+    --dur-fast: 150ms;
+    --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+    /* Focus ring — tracks --accent at 30% alpha via color-mix. */
+    --ring-accent: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+
+    /* Z-index */
+    --z-nav:     100;
+    --z-overlay: 150;
+    --z-screen:  200;
+    --z-modal:   300;
+    --z-toast:   999;
+
+    /* Layout */
+    --nav-h:     62px;
+    --topbar-h:  48px;
+    --toolbar-h: 56px;
+    --panel-w:   320px;
+}
+
+html, body {
+    height: 100%;
+    font-family: var(--ff);
+    font-size: var(--fs-base);
+    color: var(--text);
+    background: var(--bg);
+}
