@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install mold and clang
         # Required by backend/.cargo/config.toml, which uses mold as the
         # linker for x86_64-unknown-linux-gnu builds.
@@ -35,12 +35,8 @@ jobs:
 
   audit:
     runs-on: ubuntu-latest
-    # Non-blocking for now: the advisory DB evolves independently of this repo,
-    # so a transitive RUSTSEC finding should not gate merges. Flip to hard fail
-    # once the baseline is clean.
-    continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
