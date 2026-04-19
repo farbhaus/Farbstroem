@@ -670,6 +670,9 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     #center-area { flex: 1; min-height: 0; }
 
 
+    /* Files section — cap to ~2 rows so messages get most of the panel */
+    #files-section { max-height: 96px; }
+
     /* Join / waiting boxes fit small screens */
     .join-box, .waiting-box, #landing-screen .panel-box { width: calc(100vw - 32px); padding: 32px 24px; }
 }
@@ -701,6 +704,9 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     }
 
     #right-panel.open { width: 680px; }
+
+    /* Files section — tighter cap in landscape since total height is ~440px */
+    #files-section { max-height: 72px; }
 }
 </style>
 </head>
