@@ -140,10 +140,7 @@ async fn upload_file(
         .map_err(|e| AppError::BadRequest(e.to_string()))?
     {
         if field.name() == Some("file") {
-            let original_name = field
-                .file_name()
-                .unwrap_or("upload")
-                .to_string();
+            let original_name = field.file_name().unwrap_or("upload").to_string();
             let mime_raw = field
                 .content_type()
                 .unwrap_or("application/octet-stream")

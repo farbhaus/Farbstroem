@@ -1,6 +1,6 @@
-use jsonwebtoken::{encode, EncodingKey, Header, Algorithm};
-use serde::{Deserialize, Serialize};
 use crate::config::AppConfig;
+use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct LiveKitClaims {
@@ -75,7 +75,10 @@ impl LiveKitClient {
         let token = self.service_token(room_name);
         let res = self
             .http
-            .post(format!("{}/twirp/livekit.RoomService/DeleteRoom", self.api_url))
+            .post(format!(
+                "{}/twirp/livekit.RoomService/DeleteRoom",
+                self.api_url
+            ))
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
             .json(&serde_json::json!({ "room": room_name }))
@@ -94,7 +97,10 @@ impl LiveKitClient {
         let token = self.service_token(room);
         let res = self
             .http
-            .post(format!("{}/twirp/livekit.RoomService/RemoveParticipant", self.api_url))
+            .post(format!(
+                "{}/twirp/livekit.RoomService/RemoveParticipant",
+                self.api_url
+            ))
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
             .json(&serde_json::json!({ "room": room, "identity": identity }))
@@ -119,7 +125,10 @@ impl LiveKitClient {
         let token = self.service_token(room);
         let res = self
             .http
-            .post(format!("{}/twirp/livekit.RoomService/MutePublishedTrack", self.api_url))
+            .post(format!(
+                "{}/twirp/livekit.RoomService/MutePublishedTrack",
+                self.api_url
+            ))
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "application/json")
             .json(&serde_json::json!({

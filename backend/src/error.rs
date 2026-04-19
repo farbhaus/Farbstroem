@@ -18,16 +18,38 @@ pub enum AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let (status, message) = match self {
-            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
-            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg),
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            AppError::Gone(msg) => (StatusCode::GONE, msg),
-            AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-            AppError::BadGateway(msg) => (StatusCode::BAD_GATEWAY, msg),
+        // Author-written messages are safe to return. Internal/BadGateway
+        // carry raw dependency error strings (DB, HTTP, JWT) — log those and
+        // return a generic body so we don't leak implementation details to
+        // whoever is poking the API.
+        let (status, code, public_message) = match self {
+            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, "BAD_REQUEST", msg),
+            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", msg),
+            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, "FORBIDDEN", msg),
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, "NOT_FOUND", msg),
+            AppError::Gone(msg) => (StatusCode::GONE, "GONE", msg),
+            AppError::Internal(msg) => {
+                tracing::error!(error = %msg, "internal error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "INTERNAL",
+                    "Internal server error".to_string(),
+                )
+            }
+            AppError::BadGateway(msg) => {
+                tracing::error!(error = %msg, "upstream service error");
+                (
+                    StatusCode::BAD_GATEWAY,
+                    "BAD_GATEWAY",
+                    "Upstream service unavailable".to_string(),
+                )
+            }
         };
-        (status, Json(json!({ "error": message }))).into_response()
+        (
+            status,
+            Json(json!({ "error": public_message, "code": code })),
+        )
+            .into_response()
     }
 }
 

@@ -1,0 +1,41 @@
+use std::sync::{Arc, OnceLock};
+
+use tower_governor::{
+    governor::{GovernorConfig, GovernorConfigBuilder},
+    key_extractor::SmartIpKeyExtractor,
+    GovernorLayer,
+};
+
+/// Rate limiting can be disabled by setting `STREAM_DISABLE_RATE_LIMIT=1`.
+/// Integration tests set this so the limiter does not reject `TestServer`
+/// requests that lack a `ConnectInfo` extension.
+pub fn enabled() -> bool {
+    std::env::var("STREAM_DISABLE_RATE_LIMIT").is_err()
+}
+
+type SmartConfig = GovernorConfig<SmartIpKeyExtractor, ::governor::middleware::NoOpMiddleware>;
+
+fn build_config(per_second: u64, burst: u32) -> Arc<SmartConfig> {
+    Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(per_second)
+            .burst_size(burst)
+            .key_extractor(SmartIpKeyExtractor)
+            .finish()
+            .expect("governor config must be valid"),
+    )
+}
+
+/// 5 requests/minute per IP, burst 2. For `POST /api/auth/login`.
+pub fn login_layer() -> GovernorLayer<SmartIpKeyExtractor, ::governor::middleware::NoOpMiddleware> {
+    static CFG: OnceLock<Arc<SmartConfig>> = OnceLock::new();
+    let config = CFG.get_or_init(|| build_config(12, 2)).clone();
+    GovernorLayer { config }
+}
+
+/// 30 requests/minute per IP, burst 10. For `POST /api/public/rooms/:slug/join`.
+pub fn join_layer() -> GovernorLayer<SmartIpKeyExtractor, ::governor::middleware::NoOpMiddleware> {
+    static CFG: OnceLock<Arc<SmartConfig>> = OnceLock::new();
+    let config = CFG.get_or_init(|| build_config(2, 10)).clone();
+    GovernorLayer { config }
+}

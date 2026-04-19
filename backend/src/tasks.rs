@@ -1,9 +1,9 @@
+use crate::livekit::LiveKitClient;
+use crate::state::AppState;
 use base64::Engine;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time;
-use crate::state::AppState;
-use crate::livekit::LiveKitClient;
 
 // ---------------------------------------------------------------------------
 // OME Poller -- every 30s
@@ -24,8 +24,7 @@ pub fn spawn_ome_poller(state: Arc<AppState>) {
 }
 
 async fn poll_ome(state: &Arc<AppState>) -> Result<(), Box<dyn std::error::Error>> {
-    let token = base64::engine::general_purpose::STANDARD
-        .encode(&state.config.ome_api_token);
+    let token = base64::engine::general_purpose::STANDARD.encode(&state.config.ome_api_token);
     let url = format!(
         "{}/vhosts/default/apps/live/streams",
         state.config.ome_api_url
@@ -169,8 +168,8 @@ pub async fn cleanup_room_files(
     let slug_owned = slug.to_string();
     let data_path = state.config.data_path.clone();
 
-    let stored_paths: Vec<String> = tokio::task::spawn_blocking(
-        move || -> Result<Vec<String>, rusqlite::Error> {
+    let stored_paths: Vec<String> =
+        tokio::task::spawn_blocking(move || -> Result<Vec<String>, rusqlite::Error> {
             let room_id: Option<String> = db
                 .query_row(
                     "SELECT id FROM rooms WHERE slug = ?1",
@@ -225,10 +224,9 @@ pub async fn cleanup_room_files(
                 }
             }
             Ok(safe_paths)
-        },
-    )
-    .await
-    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })??;
+        })
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })??;
 
     let mut removed = 0u64;
     for stored in &stored_paths {
@@ -283,8 +281,8 @@ async fn cleanup_files(state: &Arc<AppState>) -> Result<(), Box<dyn std::error::
     let data_path = state.config.data_path.clone();
     let db = state.db.get()?;
 
-    let stored_paths: Vec<String> = tokio::task::spawn_blocking(
-        move || -> Result<Vec<String>, rusqlite::Error> {
+    let stored_paths: Vec<String> =
+        tokio::task::spawn_blocking(move || -> Result<Vec<String>, rusqlite::Error> {
             let orphans: Vec<(String, String)> = {
                 let mut stmt = db.prepare(
                     "SELECT sf.id, sf.stored_path \
@@ -325,10 +323,9 @@ async fn cleanup_files(state: &Arc<AppState>) -> Result<(), Box<dyn std::error::
                 }
             }
             Ok(safe_paths)
-        },
-    )
-    .await
-    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })??;
+        })
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })??;
 
     if stored_paths.is_empty() {
         tracing::info!("[cleanup] No files to clean up");

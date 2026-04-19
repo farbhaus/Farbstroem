@@ -3,9 +3,9 @@ use axum::{
     routing::{get, put},
     Json, Router,
 };
+use base64::Engine;
 use rand::RngExt;
 use serde::Deserialize;
-use base64::Engine;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -13,10 +13,10 @@ use crate::auth::AdminAuth;
 use crate::error::AppError;
 use crate::state::AppState;
 
-fn row_to_json(row: &rusqlite::Row, columns: &[&str]) -> serde_json::Value {
+fn row_to_json(row: &rusqlite::Row, columns: &[&str]) -> rusqlite::Result<serde_json::Value> {
     let mut map = serde_json::Map::new();
     for (i, col) in columns.iter().enumerate() {
-        let val: rusqlite::types::Value = row.get_unwrap(i);
+        let val: rusqlite::types::Value = row.get(i)?;
         map.insert(
             col.to_string(),
             match val {
@@ -30,7 +30,7 @@ fn row_to_json(row: &rusqlite::Row, columns: &[&str]) -> serde_json::Value {
             },
         );
     }
-    Value::Object(map)
+    Ok(Value::Object(map))
 }
 
 async fn list_keys(
@@ -49,7 +49,7 @@ async fn list_keys(
         )?;
         let cols = &["id", "name", "key_token", "created_at", "room_names"];
         let rows = stmt
-            .query_map([], |row| Ok(row_to_json(row, cols)))?
+            .query_map([], |row| row_to_json(row, cols))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok::<_, rusqlite::Error>(rows)
     })
@@ -87,10 +87,10 @@ async fn create_key(
                 "INSERT INTO stream_keys (id, name, key_token) VALUES (?1, ?2, ?3)",
                 rusqlite::params![id, name, key_token],
             )?;
-            let mut stmt =
-                conn.prepare("SELECT id, name, key_token, created_at FROM stream_keys WHERE id = ?1")?;
+            let mut stmt = conn
+                .prepare("SELECT id, name, key_token, created_at FROM stream_keys WHERE id = ?1")?;
             let cols = &["id", "name", "key_token", "created_at"];
-            let row = stmt.query_row(rusqlite::params![id], |row| Ok(row_to_json(row, cols)))?;
+            let row = stmt.query_row(rusqlite::params![id], |row| row_to_json(row, cols))?;
             Ok::<_, rusqlite::Error>(row)
         })
         .await
@@ -127,7 +127,7 @@ async fn update_key(
         let mut stmt =
             conn.prepare("SELECT id, name, key_token, created_at FROM stream_keys WHERE id = ?1")?;
         let cols = &["id", "name", "key_token", "created_at"];
-        let row = stmt.query_row(rusqlite::params![id], |row| Ok(row_to_json(row, cols)))?;
+        let row = stmt.query_row(rusqlite::params![id], |row| row_to_json(row, cols))?;
         Ok(row)
     })
     .await

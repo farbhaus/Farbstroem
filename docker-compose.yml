@@ -21,7 +21,17 @@ services:
       - caddy_config:/config
     environment:
       - SITE_ADDRESS=${SITE_ADDRESS:-localhost}
-    depends_on: [stream-backend, stream-ome]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      stream-backend:
+        condition: service_healthy
+      stream-ome:
+        condition: service_healthy
 
   stream-redis:
     image: redis:7-alpine
@@ -29,6 +39,12 @@ services:
     restart: unless-stopped
     networks: [stream-net]
     command: redis-server --save "" --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
   stream-livekit:
     image: livekit/livekit-server:latest
@@ -44,7 +60,16 @@ services:
       - "7880:7880"                    # signaling (local dev direct access)
       - "7881:7881"                    # TCP media fallback
       - "50000-50100:50000-50100/udp"  # WebRTC media
-    depends_on: [stream-redis]
+    healthcheck:
+      # LiveKit alpine image ships BusyBox which includes nc.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 7880 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      stream-redis:
+        condition: service_healthy
 
   stream-ome:
     image: airensoft/ovenmediaengine:latest
@@ -61,7 +86,18 @@ services:
       - "9999:9999/udp"               # SRT ingest
       - "3478:3478"                    # TURN
       - "10000-10009:10000-10009/udp"  # ICE candidates
-    depends_on: [stream-backend]
+    healthcheck:
+      # OME's Ubuntu base has bash, so /dev/tcp probe works; the API port 8081
+      # is used by stream-backend for OME status polling, so this mirrors
+      # production reachability.
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8081' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      stream-backend:
+        condition: service_healthy
 
   stream-backend:
     build: ./backend
@@ -80,4 +116,15 @@ services:
       - ./data:/data
       - ./www:/www
       - /proc:/host/proc:ro
-    depends_on: [stream-redis]
+    healthcheck:
+      # /healthz is a static "ok" that does not touch the DB pool, so a stuck
+      # pool still leaves the container marked unhealthy via the 4001 listener
+      # failing rather than timing out on SQLite.
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:4001/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      stream-redis:
+        condition: service_healthy

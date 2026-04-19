@@ -15,10 +15,38 @@ jobs:
         # linker for x86_64-unknown-linux-gnu builds.
         run: sudo apt-get update && sudo apt-get install -y mold clang
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: backend
-      - run: cargo build --release
+      - name: cargo fmt
+        run: cargo fmt -- --check
         working-directory: backend
-      - run: cargo test
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+        working-directory: backend
+      - name: cargo build
+        run: cargo build --release
+        working-directory: backend
+      - name: cargo test
+        run: cargo test
+        working-directory: backend
+
+  audit:
+    runs-on: ubuntu-latest
+    # Non-blocking for now: the advisory DB evolves independently of this repo,
+    # so a transitive RUSTSEC finding should not gate merges. Flip to hard fail
+    # once the baseline is clean.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+      - name: cargo audit
+        run: cargo audit
         working-directory: backend

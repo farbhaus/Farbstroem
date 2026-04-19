@@ -106,10 +106,7 @@ async fn list_files(
             args.push(format!("%{}%", search));
         }
         if !mime_prefix.is_empty() {
-            sql.push_str(&format!(
-                "AND sf.mime_type LIKE ?{} ",
-                args.len() + 1
-            ));
+            sql.push_str(&format!("AND sf.mime_type LIKE ?{} ", args.len() + 1));
             args.push(format!("{}%", mime_prefix));
         }
         if unassigned {
@@ -126,7 +123,7 @@ async fn list_files(
         let params_dyn: Vec<&dyn rusqlite::ToSql> =
             args.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
         let out = stmt
-            .query_map(params_dyn.as_slice(), |row| row_to_file(row))?
+            .query_map(params_dyn.as_slice(), row_to_file)?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(out)
     })
@@ -154,7 +151,8 @@ async fn files_stats(
             "SELECT mime_type, COUNT(*), COALESCE(SUM(size_bytes), 0) \
              FROM session_files GROUP BY mime_type",
         )?;
-        let mut buckets: std::collections::HashMap<&str, (i64, i64)> = std::collections::HashMap::new();
+        let mut buckets: std::collections::HashMap<&str, (i64, i64)> =
+            std::collections::HashMap::new();
         let rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -198,9 +196,7 @@ fn mime_bucket(mime: &str) -> &'static str {
         "audio"
     } else if mime == "application/pdf" {
         "pdf"
-    } else if mime.starts_with("application/")
-        || mime.starts_with("text/")
-    {
+    } else if mime.starts_with("application/") || mime.starts_with("text/") {
         "doc"
     } else {
         "other"
@@ -367,7 +363,8 @@ async fn replace_file(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
-    let (old_stored, _old_hash) = existing.ok_or_else(|| AppError::NotFound("File not found".into()))?;
+    let (old_stored, _old_hash) =
+        existing.ok_or_else(|| AppError::NotFound("File not found".into()))?;
 
     while let Some(field) = multipart
         .next_field()
@@ -435,18 +432,19 @@ async fn replace_file(
         let old_path = format!("{}/{}", files_dir, old_stored);
         let conn = state.db.get()?;
         let old_stored_clone = old_stored.clone();
-        let still_referenced: i64 = tokio::task::spawn_blocking(move || -> Result<i64, AppError> {
-            let n: i64 = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM session_files WHERE stored_path = ?1",
-                    params![old_stored_clone],
-                    |row| row.get(0),
-                )
-                .unwrap_or(0);
-            Ok(n)
-        })
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))??;
+        let still_referenced: i64 =
+            tokio::task::spawn_blocking(move || -> Result<i64, AppError> {
+                let n: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM session_files WHERE stored_path = ?1",
+                        params![old_stored_clone],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                Ok(n)
+            })
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))??;
 
         if still_referenced == 0 {
             let _ = tokio::fs::remove_file(&old_path).await;
@@ -498,8 +496,9 @@ async fn delete_files_inner(state: &Arc<AppState>, ids: &[String]) -> Result<usi
     // remaining row references the same stored_path, remove the blob.
     let conn = state.db.get()?;
     let ids_owned: Vec<String> = ids.to_vec();
+    type UnshareResult = Result<(Vec<(String, String)>, Vec<String>), AppError>;
     let (to_notify, stored_paths) = tokio::task::spawn_blocking(
-        move || -> Result<(Vec<(String, String)>, Vec<String>), AppError> {
+        move || -> UnshareResult {
             let mut notify: Vec<(String, String)> = Vec::new();
             let mut paths: Vec<String> = Vec::new();
             for id in &ids_owned {
@@ -592,20 +591,18 @@ async fn serve_file(
 ) -> Result<impl IntoResponse, AppError> {
     let conn = state.db.get()?;
     let file_id_owned = file_id.to_string();
-    let row = tokio::task::spawn_blocking(
-        move || -> Result<(String, String, String), AppError> {
-            let (stored, name, mime): (String, String, String) = conn
-                .query_row(
-                    "SELECT stored_path, original_name, mime_type FROM session_files WHERE id = ?1",
-                    params![file_id_owned],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-                )
-                .optional()
-                .map_err(|e| AppError::Internal(e.to_string()))?
-                .ok_or_else(|| AppError::NotFound("File not found".into()))?;
-            Ok((stored, name, mime))
-        },
-    )
+    let row = tokio::task::spawn_blocking(move || -> Result<(String, String, String), AppError> {
+        let (stored, name, mime): (String, String, String) = conn
+            .query_row(
+                "SELECT stored_path, original_name, mime_type FROM session_files WHERE id = ?1",
+                params![file_id_owned],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()
+            .map_err(|e| AppError::Internal(e.to_string()))?
+            .ok_or_else(|| AppError::NotFound("File not found".into()))?;
+        Ok((stored, name, mime))
+    })
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
@@ -650,8 +647,8 @@ async fn assign_files_to_room(
     let conn = state.db.get()?;
     let room_id_clone = room_id.clone();
     let ids_clone = body.file_ids.clone();
-    let (slug, newly_assigned): (String, Vec<String>) = tokio::task::spawn_blocking(
-        move || -> Result<(String, Vec<String>), AppError> {
+    let (slug, newly_assigned): (String, Vec<String>) =
+        tokio::task::spawn_blocking(move || -> Result<(String, Vec<String>), AppError> {
             let slug: String = conn
                 .query_row(
                     "SELECT slug FROM rooms WHERE id = ?1",
@@ -673,10 +670,9 @@ async fn assign_files_to_room(
                 }
             }
             Ok((slug, newly))
-        },
-    )
-    .await
-    .map_err(|e| AppError::Internal(e.to_string()))??;
+        })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))??;
 
     // Emit file:shared for each newly assigned file so viewers' right-panel
     // Files section updates live.
@@ -692,7 +688,13 @@ async fn assign_files_to_room(
             conn.query_row(
                 "SELECT original_name, mime_type, size_bytes FROM session_files WHERE id = ?1",
                 params![fid_clone],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?)),
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
             )
             .optional()
             .ok()
@@ -730,8 +732,8 @@ async fn unassign_file_from_room(
     let conn = state.db.get()?;
     let room_id_clone = room_id.clone();
     let file_id_clone = file_id.clone();
-    let slug: Option<String> = tokio::task::spawn_blocking(
-        move || -> Result<Option<String>, AppError> {
+    let slug: Option<String> =
+        tokio::task::spawn_blocking(move || -> Result<Option<String>, AppError> {
             let slug: Option<String> = conn
                 .query_row(
                     "SELECT slug FROM rooms WHERE id = ?1",
@@ -751,16 +753,15 @@ async fn unassign_file_from_room(
                 params![file_id_clone, room_id_clone],
             )?;
             Ok(slug)
-        },
-    )
-    .await
-    .map_err(|e| AppError::Internal(e.to_string()))??;
+        })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))??;
 
     if let Some(slug) = slug {
-        let _ = state.events.file_unshared.send(FileUnsharedEvent {
-            slug,
-            id: file_id,
-        });
+        let _ = state
+            .events
+            .file_unshared
+            .send(FileUnsharedEvent { slug, id: file_id });
     }
 
     Ok(Json(json!({ "ok": true })))

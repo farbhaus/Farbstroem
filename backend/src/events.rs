@@ -62,3 +62,9 @@ impl EventChannels {
         }
     }
 }
+
+impl Default for EventChannels {
+    fn default() -> Self {
+        Self::new()
+    }
+}

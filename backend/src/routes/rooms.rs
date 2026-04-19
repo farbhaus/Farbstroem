@@ -3,9 +3,9 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use base64::Engine;
 use rand::RngExt;
 use serde::Deserialize;
-use base64::Engine;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -14,10 +14,10 @@ use crate::error::AppError;
 use crate::livekit::LiveKitClient;
 use crate::state::AppState;
 
-fn row_to_json(row: &rusqlite::Row, columns: &[&str]) -> serde_json::Value {
+fn row_to_json(row: &rusqlite::Row, columns: &[&str]) -> rusqlite::Result<serde_json::Value> {
     let mut map = serde_json::Map::new();
     for (i, col) in columns.iter().enumerate() {
-        let val: rusqlite::types::Value = row.get_unwrap(i);
+        let val: rusqlite::types::Value = row.get(i)?;
         map.insert(
             col.to_string(),
             match val {
@@ -31,7 +31,7 @@ fn row_to_json(row: &rusqlite::Row, columns: &[&str]) -> serde_json::Value {
             },
         );
     }
-    Value::Object(map)
+    Ok(Value::Object(map))
 }
 
 fn generate_slug(name: &str) -> String {
@@ -47,10 +47,7 @@ fn generate_slug(name: &str) -> String {
         .join("-");
     let slug_base = &slug_base[..slug_base.len().min(80)];
     let random_suffix: [u8; 3] = rand::rng().random();
-    let hex: String = random_suffix
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect();
+    let hex: String = random_suffix.iter().map(|b| format!("{:02x}", b)).collect();
     format!("{}-{}", slug_base, hex)
 }
 
@@ -96,7 +93,7 @@ async fn list_rooms(
             "stream_key_name",
         ];
         let rows = stmt
-            .query_map([], |row| Ok(row_to_json(row, cols)))?
+            .query_map([], |row| row_to_json(row, cols))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok::<_, rusqlite::Error>(rows)
     })
@@ -141,11 +138,9 @@ async fn get_room(
             "stream_key_name",
         ];
         let row = stmt
-            .query_row(rusqlite::params![id], |row| Ok(row_to_json(row, cols)))
+            .query_row(rusqlite::params![id], |row| row_to_json(row, cols))
             .map_err(|e| match e {
-                rusqlite::Error::QueryReturnedNoRows => {
-                    AppError::NotFound("Room not found".into())
-                }
+                rusqlite::Error::QueryReturnedNoRows => AppError::NotFound("Room not found".into()),
                 _ => AppError::Internal(e.to_string()),
             })?;
         Ok::<_, AppError>(row)
@@ -246,7 +241,7 @@ async fn create_room(
                 "key_token",
                 "stream_key_name",
             ];
-            let row = stmt.query_row(rusqlite::params![id], |row| Ok(row_to_json(row, cols)))?;
+            let row = stmt.query_row(rusqlite::params![id], |row| row_to_json(row, cols))?;
             Ok::<_, rusqlite::Error>(row)
         })
         .await
@@ -327,7 +322,7 @@ async fn update_room(
         let val = body
             .get("expires_at")
             .and_then(|v| v.as_str())
-            .map(|s| normalize_datetime(s));
+            .map(normalize_datetime);
         set_clauses.push(format!("expires_at = ?{}", set_clauses.len() + 1));
         params.push(Box::new(val));
     }
@@ -388,7 +383,7 @@ async fn update_room(
                 "key_token",
                 "stream_key_name",
             ];
-            let row = stmt.query_row(rusqlite::params![id], |row| Ok(row_to_json(row, cols)))?;
+            let row = stmt.query_row(rusqlite::params![id], |row| row_to_json(row, cols))?;
             Ok::<_, rusqlite::Error>(row)
         })
         .await
@@ -407,8 +402,10 @@ async fn update_room(
     let conn = state.db.get()?;
     let id_clone = id.clone();
     let room = tokio::task::spawn_blocking(move || {
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            params.iter().map(|p| p.as_ref() as &dyn rusqlite::types::ToSql).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params
+            .iter()
+            .map(|p| p.as_ref() as &dyn rusqlite::types::ToSql)
+            .collect();
         let mut all_params = param_refs;
         all_params.push(&id_clone as &dyn rusqlite::types::ToSql);
         conn.execute(&sql, all_params.as_slice())?;
@@ -439,7 +436,7 @@ async fn update_room(
             "key_token",
             "stream_key_name",
         ];
-        let row = stmt.query_row(rusqlite::params![id_clone], |row| Ok(row_to_json(row, cols)))?;
+        let row = stmt.query_row(rusqlite::params![id_clone], |row| row_to_json(row, cols))?;
         Ok::<_, rusqlite::Error>(row)
     })
     .await
@@ -460,12 +457,14 @@ async fn update_room(
                     .and_then(|v| v.as_str())
                     .unwrap_or_default()
                     .to_string();
-                let _ = state.events.stream_key_assigned.send(
-                    crate::events::StreamKeyAssignedEvent {
-                        slug: slug_for_event,
-                        stream_key: key_token,
-                    },
-                );
+                let _ =
+                    state
+                        .events
+                        .stream_key_assigned
+                        .send(crate::events::StreamKeyAssignedEvent {
+                            slug: slug_for_event,
+                            stream_key: key_token,
+                        });
             }
             (true, false) => {
                 let _ = state.events.stream_key_removed.send(slug_for_event);
@@ -586,9 +585,7 @@ async fn enter_room(
                 ))
             })
             .map_err(|e| match e {
-                rusqlite::Error::QueryReturnedNoRows => {
-                    AppError::NotFound("Room not found".into())
-                }
+                rusqlite::Error::QueryReturnedNoRows => AppError::NotFound("Room not found".into()),
                 _ => AppError::Internal(e.to_string()),
             })?;
         Ok::<_, AppError>(result)
@@ -643,7 +640,7 @@ async fn get_waiting(
         )?;
         let cols = &["id", "name", "role", "joined_at"];
         let rows = stmt
-            .query_map(rusqlite::params![id], |row| Ok(row_to_json(row, cols)))?
+            .query_map(rusqlite::params![id], |row| row_to_json(row, cols))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok::<_, rusqlite::Error>(rows)
     })
@@ -711,7 +708,7 @@ async fn get_kicked(
         )?;
         let cols = &["id", "name", "role", "joined_at"];
         let rows = stmt
-            .query_map(rusqlite::params![id], |row| Ok(row_to_json(row, cols)))?
+            .query_map(rusqlite::params![id], |row| row_to_json(row, cols))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok::<_, rusqlite::Error>(rows)
     })

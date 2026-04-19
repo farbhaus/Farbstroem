@@ -1,15 +1,15 @@
+use crate::state::AppState;
 use axum::{
     extract::{FromRequestParts, Query},
     http::{request::Parts, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
-use std::collections::HashMap;
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation, Algorithm};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 use std::sync::Arc;
-use crate::state::AppState;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminClaims {
@@ -23,7 +23,10 @@ pub struct AdminAuth(pub AdminClaims);
 impl FromRequestParts<Arc<AppState>> for AdminAuth {
     type Rejection = Response;
 
-    async fn from_request_parts(parts: &mut Parts, state: &Arc<AppState>) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
         let auth_header = parts
             .headers
             .get("authorization")
@@ -48,7 +51,8 @@ impl FromRequestParts<Arc<AppState>> for AdminAuth {
                 return Err((
                     StatusCode::UNAUTHORIZED,
                     Json(json!({ "error": "Unauthorised" })),
-                ).into_response());
+                )
+                    .into_response());
             }
         };
 
@@ -64,7 +68,8 @@ impl FromRequestParts<Arc<AppState>> for AdminAuth {
             Err(_) => Err((
                 StatusCode::UNAUTHORIZED,
                 Json(json!({ "error": "Invalid or expired token" })),
-            ).into_response()),
+            )
+                .into_response()),
         }
     }
 }
