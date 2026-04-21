@@ -1016,6 +1016,7 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
             const whipUrl = `${proto}://${INGEST_HOST}/live/${k.key_token}?direction=whip`;
             const webrtcUrl = `${wsproto}://${INGEST_HOST}/live/${k.key_token}`;
             const llhlsUrl  = `${proto}://${INGEST_HOST}/live/${k.key_token}/llhls.m3u8`;
+            const srtPlayUrl = `srt://${INGEST_HOST}:9998?streamid=default/live/${k.key_token}/playlist`;
 
             return `
             <div class="key-card">
@@ -1060,6 +1061,11 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
                         <span class="url-label" style="color:var(--accent)">LLHLS</span>
                         <input readonly class="url-input" style="font-family:monospace;font-size:11px" value="${esc(llhlsUrl)}">
                         <button class="btn btn-copy" onclick="copy('${esc(llhlsUrl)}')">Copy</button>
+                    </div>
+                    <div class="url-row">
+                        <span class="url-label" style="color:var(--accent)">SRT</span>
+                        <input readonly class="url-input" style="font-family:monospace;font-size:11px" value="${esc(srtPlayUrl)}">
+                        <button class="btn btn-copy" onclick="copy('${esc(srtPlayUrl)}')">Copy</button>
                     </div>
                 </div>
             </div>`;
