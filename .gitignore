@@ -7,9 +7,6 @@ data/
 # Dependencies
 backend/target/
 
-# Override (author's server-specific port mappings)
-docker-compose.override.yml
-
 # OS
 .DS_Store
 
