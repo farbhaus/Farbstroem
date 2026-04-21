@@ -83,7 +83,8 @@ services:
       - ./ome/origin_conf:/opt/ovenmediaengine/bin/origin_conf
     ports:
       - "1935:1935"                    # RTMP ingest
-      - "9999:9999/udp"               # SRT ingest
+      - "9999:9999/udp"                # SRT ingest
+      - "9998:9998/udp"                # SRT playback
       - "3478:3478"                    # TURN
       - "10000-10009:10000-10009/udp"  # ICE candidates
     healthcheck:
