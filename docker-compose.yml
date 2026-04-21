@@ -120,7 +120,7 @@ services:
       # /healthz is a static "ok" that does not touch the DB pool, so a stuck
       # pool still leaves the container marked unhealthy via the 4001 listener
       # failing rather than timing out on SQLite.
-      test: ["CMD-SHELL", "wget -q -O- http://localhost:4001/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:4001/healthz || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3
