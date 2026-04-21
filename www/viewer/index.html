@@ -163,29 +163,29 @@ html, body { overflow: hidden; }
     flex: 1; min-height: 0;
     display: flex; flex-direction: row;
     position: relative;
+    background: var(--bg);
 }
 
 /* ---- Side panels ---- */
 .side-panel {
-    position: absolute; top: 0; bottom: 0;
+    flex-shrink: 0;
     width: 0; overflow: hidden;
+    margin: 0;
     background: var(--surface);
     display: flex; flex-direction: column;
-    transition: width 0.25s ease, top 0.25s ease, bottom 0.25s ease, left 0.25s ease, right 0.25s ease;
+    transition: width 0.25s ease, margin 0.25s ease;
     border: 1px solid transparent;
     border-radius: var(--r-lg);
     z-index: 20;
     box-shadow: 0 8px 24px rgba(0,0,0,0.35);
 }
-.side-panel.open { width: var(--panel-w); border-color: var(--border); }
+.side-panel.open { border-color: var(--border); }
 
 /* Left panel — Conference */
-#left-panel { left: 0; }
-#left-panel.open { top: 8px; bottom: 8px; left: 8px; }
+#left-panel.open { width: 200px; margin: 8px 8px 8px 8px; }
 
 /* Right panel — Chat */
-#right-panel { right: 0; }
-#right-panel.open { top: 8px; bottom: 8px; right: 8px; }
+#right-panel.open { width: var(--panel-w); margin: 8px; }
 
 /* ---- Center — Video area ---- */
 #center-area {
@@ -277,7 +277,7 @@ html, body { overflow: hidden; }
 #conf-tiles { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 
 .conf-tile {
-    position: relative; width: 100%; aspect-ratio: 16/9; background: #000;
+    position: relative; width: 100%; aspect-ratio: 3/2; background: #000;
     border: 1px solid var(--border); overflow: hidden; flex-shrink: 0;
     border-radius: var(--r-lg);
     transition: border-color var(--dur-fast) var(--ease-out),
@@ -385,7 +385,7 @@ body.mode-call #call-grid .conf-empty { grid-column: 1 / -1; }
    a floating panel on the left, matching the broadcast-mode conference panel. */
 body.mode-call.call-layout-presenter #call-grid {
     inset: 8px auto 8px 8px;
-    width: var(--panel-w);
+    width: 200px;
     grid-template-columns: 1fr;
     grid-auto-rows: min-content;
     padding: 8px;
@@ -637,12 +637,20 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         width: 100% !important;
         height: auto !important;
         overflow: visible !important;
+        margin: 0 !important;
         border-right: none !important;
         border-bottom: 1px solid var(--border);
         flex-direction: column;
         flex-shrink: 0;
         display: flex !important;
         transition: none !important;
+    }
+
+    /* Chat panel overlays the full view on mobile */
+    #right-panel { position: absolute; }
+    #right-panel.open {
+        inset: 0; width: 100% !important; margin: 0 !important;
+        border-radius: 0; z-index: 30;
     }
     #left-panel .panel-header { display: none; }
     #conf-tiles {
@@ -692,18 +700,17 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     .tb-btn { width: 32px; height: 32px; }
     .tb-btn svg { width: 15px; height: 15px; }
 
-    /* Panels overlay the video (same as desktop) */
     #main-row { flex-direction: row; }
     #center-area { flex: 1; min-width: 0; min-height: 0; }
 
-    /* Smaller panel widths for landscape; positioning/overlay behaviour inherited from desktop rules */
-    #left-panel.open { width: 220px; }
+    /* Smaller panel widths for landscape */
+    #left-panel.open { width: 200px; }
     #left-panel .panel-header { display: flex !important; }
     #conf-tiles {
         flex-direction: column; height: auto; overflow-y: auto; overflow-x: hidden;
     }
 
-    #right-panel.open { width: 680px; }
+    #right-panel.open { width: 280px; }
 
     /* Files section — tighter cap in landscape since total height is ~440px */
     #files-section { max-height: 72px; }
