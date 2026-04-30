@@ -646,6 +646,7 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
             <div class="form-row">
                 <label>Expires</label>
                 <input type="datetime-local" id="room-expires">
+                <small style="color:var(--dim);font-size:var(--fs-xs);margin-top:var(--sp-1)">Your local time</small>
             </div>
             <div class="form-row">
                 <label>Stream Key</label>
@@ -797,6 +798,19 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
         return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     }
 
+    // Parse a SQLite "YYYY-MM-DD HH:MM:SS" UTC string (no zone marker) into a Date.
+    // Real ISO strings (with T and Z) are passed through.
+    function parseDbDate(s) {
+        if (!s) return null;
+        return /[TZ]/.test(s) ? new Date(s) : new Date(s.replace(' ', 'T') + 'Z');
+    }
+
+    function fmtDateTime(s) {
+        const d = parseDbDate(s);
+        if (!d) return null;
+        return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
     async function apiFetch(path, opts = {}) {
         const res = await fetch(API + path, {
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) },
@@ -927,7 +941,7 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
 
         container.innerHTML = rooms.map(r => {
             const viewerUrl = `${VIEWER_BASE}/${r.slug}`;
-            const expires   = fmtDate(r.expires_at);
+            const expires   = fmtDateTime(r.expires_at);
             const keyLabel     = r.stream_key_name || '—';
 
             const metaParts = [`/${r.slug}`];
@@ -950,6 +964,7 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
                         <span class="badge badge-${r.delivery_mode}">${r.delivery_mode}</span>
                     </div>
                     <div class="room-card-actions">
+                        ${r.status === 'ended' ? `<button class="btn btn-sm" onclick="reactivateRoom('${r.id}')">Reactivate</button>` : ''}
                         <button class="btn btn-sm" onclick="editRoom('${r.id}')">Edit</button>
                         <button class="btn btn-sm btn-danger" onclick="deleteRoom('${r.id}')">Delete</button>
                     </div>
@@ -1095,8 +1110,11 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
             document.getElementById('room-delivery').value  = r.delivery_mode;
             document.getElementById('room-waiting').checked = !!r.waiting_room;
             if (r.expires_at) {
-                const d = new Date(r.expires_at);
-                document.getElementById('room-expires').value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                // expires_at is stored as UTC "YYYY-MM-DD HH:MM:SS" with no zone marker.
+                // Force UTC parse, then format the local-time wall clock for datetime-local.
+                const d = new Date(r.expires_at.replace(' ', 'T') + 'Z');
+                const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+                document.getElementById('room-expires').value = local.toISOString().slice(0, 16);
             } else {
                 document.getElementById('room-expires').value = '';
             }
@@ -1195,6 +1213,12 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
         const res = await apiFetch(`/api/rooms/${id}`, { method: 'DELETE' });
         if (res && res.ok) { toast('Room deleted'); loadAll(); }
         else toast('Delete failed');
+    };
+
+    window.reactivateRoom = async (id) => {
+        const res = await apiFetch(`/api/rooms/${id}/reactivate`, { method: 'POST' });
+        if (res && res.ok) { toast('Room reactivated'); loadAll(); }
+        else toast('Reactivate failed');
     };
 
     // ---- Stream Key modal ----

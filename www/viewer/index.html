@@ -778,6 +778,15 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     </div>
 </div>
 
+<!-- Session-ended screen -->
+<div id="session-ended-screen" class="screen hidden">
+    <div class="waiting-box">
+        <div class="waiting-label">Ended</div>
+        <div class="waiting-name">This session has ended.</div>
+        <div class="waiting-msg">Thanks for joining.</div>
+    </div>
+</div>
+
 <!-- Left screen -->
 <div id="left-screen" class="screen hidden">
     <div class="waiting-box">
@@ -2055,7 +2064,16 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             }
             if (msg.type === 'room:live')    { clearTimeout(offlineTimer); setRoomStatus('live'); reloadPlayer(); }
             if (msg.type === 'room:pending') { setRoomStatus('pending'); }
-            if (msg.type === 'room:ended')   { setRoomStatus('ended'); sessionStorage.removeItem(`viewer_session_${slug}`); }
+            if (msg.type === 'room:ended') {
+                clearAllPointers();
+                if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
+                sessionStorage.removeItem(`viewer_session_${slug}`);
+                localStorage.removeItem(PREF_KEY);
+                document.getElementById('app').classList.remove('visible');
+                document.getElementById('session-ended-screen').classList.remove('hidden');
+                wsReconnect = false;
+                return;
+            }
             if (msg.type === 'stream:assigned') handleStreamAssigned(msg.streamKey);
             if (msg.type === 'stream:removed')  handleStreamRemoved();
             if (msg.type === 'participants:update') updateRoster(msg.participants);
@@ -2088,8 +2106,14 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             clearAllPointers();
             // Room ended/deleted — stop reconnecting
             if (e.code === 1001) {
-                setRoomStatus('ended');
+                if (livekitRoom) { try { livekitRoom.disconnect(); } catch {} livekitRoom = null; }
                 sessionStorage.removeItem(`viewer_session_${slug}`);
+                localStorage.removeItem(PREF_KEY);
+                wsReconnect = false;
+                if (document.getElementById('session-ended-screen').classList.contains('hidden')) {
+                    document.getElementById('app').classList.remove('visible');
+                    document.getElementById('session-ended-screen').classList.remove('hidden');
+                }
                 return;
             }
             if (e.code === 1008) {
