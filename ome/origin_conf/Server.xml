@@ -157,32 +157,42 @@
 
 
                                 <!--
-                                    Audio: bypass if already AAC (common from OBS),
-                                    otherwise encode to AAC for LLHLS compatibility.
+                                    LLHLS / SRT path. AAC from OBS at 48 kHz stereo is passed
+                                    through untouched (Passthrough:0 in transcoder logs). The
+                                    Bitrate / Samplerate / Channel below are only used if the
+                                    source ever fails the BypassIfMatch (e.g. a different codec
+                                    or higher samplerate).
                                 -->
                                 <Audio>
                                     <Name>aac_audio</Name>
                                     <Codec>aac</Codec>
-                                    <Bitrate>128000</Bitrate>
+                                    <Bitrate>320000</Bitrate>
                                     <Samplerate>48000</Samplerate>
                                     <Channel>2</Channel>
                                     <BypassIfMatch>
                                         <Codec>eq</Codec>
+                                        <Samplerate>lte</Samplerate>
+                                        <Channel>eq</Channel>
                                     </BypassIfMatch>
                                 </Audio>
 
                                 <!--
-                                    Opus: needed for WebRTC playback.
-                                    Bypass if already Opus, encode otherwise.
+                                    WebRTC path. Per OME docs, WebRTC does not support AAC, so
+                                    this encode is mandatory whenever the source is AAC — there
+                                    is no bypass option. BypassIfMatch only kicks in if the
+                                    source ever arrives as Opus already (uncommon from
+                                    OBS/SRT/RTMP).
                                 -->
                                 <Audio>
                                     <Name>opus_audio</Name>
                                     <Codec>opus</Codec>
-                                    <Bitrate>128000</Bitrate>
+                                    <Bitrate>320000</Bitrate>
                                     <Samplerate>48000</Samplerate>
                                     <Channel>2</Channel>
                                     <BypassIfMatch>
                                         <Codec>eq</Codec>
+                                        <Samplerate>lte</Samplerate>
+                                        <Channel>eq</Channel>
                                     </BypassIfMatch>
                                 </Audio>
                             </Encodes>
@@ -206,7 +216,7 @@
 
                         <WebRTC>
                             <Timeout>30000</Timeout>
-                            <Rtx>true</Rtx>
+                            <Rtx>false</Rtx>
                             <Ulpfec>false</Ulpfec>
                             <JitterBuffer>false</JitterBuffer>
                         </WebRTC>
