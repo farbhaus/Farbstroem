@@ -33,23 +33,23 @@
         <Providers>
             <RTMP>
                 <Port>1935</Port>
-                <WorkerCount>2</WorkerCount>
+                <WorkerCount>1</WorkerCount>
             </RTMP>
             <SRT>
                 <Port>9999</Port>
-                <WorkerCount>2</WorkerCount>
+                <WorkerCount>1</WorkerCount>
             </SRT>
             <WebRTC>
                 <Signalling>
                     <Port>3333</Port>
                     <TLSPort>3334</TLSPort>
-                    <WorkerCount>2</WorkerCount>
+                    <WorkerCount>1</WorkerCount>
                 </Signalling>
                 <IceCandidates>
                     <IceCandidate>*:10000-10009/udp</IceCandidate>
                     <TcpRelay>*:3478</TcpRelay>
                     <TcpForce>false</TcpForce>
-                    <TcpRelayWorkerCount>2</TcpRelayWorkerCount>
+                    <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
                 </IceCandidates>
             </WebRTC>
         </Providers>
@@ -60,7 +60,7 @@
                 <!-- Caddy proxies /live/* → stream-ome:3333 to handle both protocols -->
                 <Port>3333</Port>
                 <TLSPort>3334</TLSPort>
-                <WorkerCount>4</WorkerCount>
+                <WorkerCount>2</WorkerCount>
             </LLHLS>
             <WebRTC>
                 <Signalling>
@@ -212,7 +212,7 @@
 
                     <Publishers>
                         <AppWorkerCount>1</AppWorkerCount>
-                        <StreamWorkerCount>4</StreamWorkerCount>
+                        <StreamWorkerCount>2</StreamWorkerCount>
 
                         <WebRTC>
                             <Timeout>30000</Timeout>
@@ -223,6 +223,7 @@
 
                         <LLHLS>
                             <ChunkDuration>0.2</ChunkDuration>
+                            <PartHoldBack>0.6</PartHoldBack>
                             <SegmentDuration>6</SegmentDuration>
                             <SegmentCount>10</SegmentCount>
                             <DVR>
