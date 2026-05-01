@@ -169,9 +169,7 @@ fn migrate_session_files_room_id_setnull(conn: &rusqlite::Connection) {
         .expect("Failed to re-enable foreign_keys after session_files room_id FK migration");
     result.expect("Failed to migrate session_files.room_id to ON DELETE SET NULL");
 
-    tracing::info!(
-        "[migration] session_files.room_id: ON DELETE CASCADE -> ON DELETE SET NULL"
-    );
+    tracing::info!("[migration] session_files.room_id: ON DELETE CASCADE -> ON DELETE SET NULL");
 }
 
 /// One-shot: move every blob from `{data_path}/uploads/{room_id}/{file}` to

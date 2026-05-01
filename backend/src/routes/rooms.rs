@@ -598,7 +598,11 @@ async fn delete_room(
     // cleanup_room_files (which keys off room_id) has a chance to find
     // them, leaking blobs on disk.
     if let Err(e) = crate::tasks::cleanup_room_files(&state, &slug).await {
-        tracing::warn!("[files] cleanup before room delete failed for {}: {}", slug, e);
+        tracing::warn!(
+            "[files] cleanup before room delete failed for {}: {}",
+            slug,
+            e
+        );
     }
 
     {
