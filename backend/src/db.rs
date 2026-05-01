@@ -74,15 +74,18 @@ fn migrate_session_files_library(conn: &rusqlite::Connection) {
     );
 }
 
-/// Self-heal room_files if its foreign key still points at the transient
-/// `session_files_old` table (left over from a partially-failed earlier run
-/// of `migrate_session_files_library`). Rebuilds the table with the correct
-/// FK target and restores any surviving rows.
+/// Self-heal room_files if its foreign key still points at any transient
+/// session_files rebuild table. SQLite ≥3.25's `ALTER TABLE ... RENAME TO`
+/// rewrites every dependent FK to the new name, so any rebuild of
+/// `session_files` via the rename ⇒ create ⇒ copy ⇒ drop dance leaves
+/// `room_files` pointing at the dropped transient. This runs after every
+/// `session_files` migration to repair the breakage.
 fn repair_room_files_fk(conn: &rusqlite::Connection) {
     let broken: bool = conn
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='room_files' \
-             AND sql LIKE '%session_files_old%'",
+             AND (sql LIKE '%session_files_old%' \
+                  OR sql LIKE '%session_files_setnull_old%')",
             [],
             |row| row.get::<_, i64>(0),
         )
@@ -361,6 +364,8 @@ pub fn init_pool(db_path: &str, data_path: &str) -> DbPool {
     migrate_session_files_library(&conn);
     repair_room_files_fk(&conn);
     migrate_session_files_room_id_setnull(&conn);
+    // Re-run repair: the room_id setnull migration also rewrites FK refs.
+    repair_room_files_fk(&conn);
 
     // Ensure indexes that reference content_hash exist on both fresh + migrated DBs.
     conn.execute_batch(
