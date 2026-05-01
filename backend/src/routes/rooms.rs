@@ -506,34 +506,115 @@ async fn end_room(
     Ok(Json(json!({ "ok": true })))
 }
 
+// POST /:id/reactivate - reactivate an ended room
+async fn reactivate_room(
+    _auth: AdminAuth,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    let conn = state.db.get()?;
+    let room = tokio::task::spawn_blocking(move || {
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM rooms WHERE id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => AppError::NotFound("Room not found".into()),
+                other => AppError::Internal(other.to_string()),
+            })?;
+        if status != "ended" {
+            return Err(AppError::BadRequest(
+                "Only ended rooms can be reactivated".into(),
+            ));
+        }
+        conn.execute(
+            "UPDATE rooms SET status = 'pending', ended_at = NULL, expires_at = NULL \
+             WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+        let mut stmt = conn.prepare(
+            "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, \
+             r.expires_at, r.status, r.stream_key_id, r.created_at, \
+             r.started_at, r.ended_at, r.presenter_key, r.password_hash, \
+             sk.key_token, sk.name as stream_key_name \
+             FROM rooms r \
+             LEFT JOIN stream_keys sk ON sk.id = r.stream_key_id \
+             WHERE r.id = ?1",
+        )?;
+        let cols = &[
+            "id",
+            "name",
+            "slug",
+            "delivery_mode",
+            "waiting_room",
+            "expires_at",
+            "status",
+            "stream_key_id",
+            "created_at",
+            "started_at",
+            "ended_at",
+            "presenter_key",
+            "password_hash",
+            "key_token",
+            "stream_key_name",
+        ];
+        let row = stmt.query_row(rusqlite::params![id], |row| row_to_json(row, cols))?;
+        Ok::<_, AppError>(row)
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))??;
+
+    Ok(Json(room))
+}
+
 // DELETE /:id - delete a room
 async fn delete_room(
     _auth: AdminAuth,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    let conn = state.db.get()?;
-    let slug = {
+    let slug: String = {
+        let conn = state.db.get()?;
         let id = id.clone();
         tokio::task::spawn_blocking(move || {
-            let slug: String = conn
-                .query_row(
-                    "SELECT slug FROM rooms WHERE id = ?1",
-                    rusqlite::params![id],
-                    |row| row.get(0),
-                )
-                .map_err(|e| match e {
-                    rusqlite::Error::QueryReturnedNoRows => {
-                        AppError::NotFound("Room not found".into())
-                    }
-                    _ => AppError::Internal(e.to_string()),
-                })?;
-            conn.execute("DELETE FROM rooms WHERE id = ?1", rusqlite::params![id])?;
-            Ok::<_, AppError>(slug)
+            conn.query_row(
+                "SELECT slug FROM rooms WHERE id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => AppError::NotFound("Room not found".into()),
+                _ => AppError::Internal(e.to_string()),
+            })
         })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
     }?;
+
+    // Run file cleanup BEFORE deleting the room. Schema cascade on
+    // session_files.room_id would otherwise wipe the rows before
+    // cleanup_room_files (which keys off room_id) has a chance to find
+    // them, leaking blobs on disk.
+    if let Err(e) = crate::tasks::cleanup_room_files(&state, &slug).await {
+        tracing::warn!(
+            "[files] cleanup before room delete failed for {}: {}",
+            slug,
+            e
+        );
+    }
+
+    {
+        let conn = state.db.get()?;
+        let id = id.clone();
+        tokio::task::spawn_blocking(move || {
+            conn.execute("DELETE FROM rooms WHERE id = ?1", rusqlite::params![id])
+                .map_err(|e| AppError::Internal(e.to_string()))
+        })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))??;
+    }
 
     let _ = state.events.room_ended.send(slug.clone());
 
@@ -746,6 +827,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/", get(list_rooms).post(create_room))
         .route("/{id}", get(get_room).put(update_room).delete(delete_room))
         .route("/{id}/end", post(end_room))
+        .route("/{id}/reactivate", post(reactivate_room))
         .route("/{id}/enter", post(enter_room))
         .route("/{id}/waiting", get(get_waiting))
         .route("/{id}/admit/{participantId}", post(admit_participant))

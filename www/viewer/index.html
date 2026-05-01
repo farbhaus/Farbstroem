@@ -778,6 +778,15 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     </div>
 </div>
 
+<!-- Session-ended screen -->
+<div id="session-ended-screen" class="screen hidden">
+    <div class="waiting-box">
+        <div class="waiting-label">Ended</div>
+        <div class="waiting-name">This session has ended.</div>
+        <div class="waiting-msg">Thanks for joining.</div>
+    </div>
+</div>
+
 <!-- Left screen -->
 <div id="left-screen" class="screen hidden">
     <div class="waiting-box">
@@ -1461,9 +1470,11 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 nameEl.appendChild(badge);
             }
             if (roomInfo.has_password) document.getElementById('password-row').style.display = '';
-            // If this tab was kicked, stay on kicked screen until manually cleared
+            // If this tab was kicked, stay on kicked screen but poll so we
+            // automatically rejoin when the admin clears the kick.
             if (sessionStorage.getItem(`viewer_kicked_${slug}`)) {
                 document.getElementById('kicked-screen').classList.remove('hidden');
+                startKickedPoller();
                 return;
             }
             const savedSession = JSON.parse(sessionStorage.getItem(`viewer_session_${slug}`) || 'null');
@@ -1501,9 +1512,9 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                         }
                         const sdata = await sres.json();
                         if (sdata.kicked) {
-                            sessionStorage.removeItem(`viewer_session_${slug}`);
                             sessionStorage.setItem(`viewer_kicked_${slug}`, '1');
                             document.getElementById('kicked-screen').classList.remove('hidden');
+                            startKickedPoller();
                             return;
                         }
                         if (sdata.admitted) {
@@ -1597,15 +1608,22 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 
     // ---- Waiting room ----
 
+    function clearAdmissionPoll() {
+        if (statusInterval) { clearInterval(statusInterval); statusInterval = null; }
+    }
+
     function pollAdmission() {
         const sse = new EventSource(`${API}/${slug}/waiting/events/${participantId}?token=${encodeURIComponent(myToken)}`);
         sse.addEventListener('admitted', () => { sse.close(); showApp(); });
         sse.addEventListener('error', () => {
             sse.close();
+            clearAdmissionPoll();
             statusInterval = setInterval(async () => {
-                const res  = await fetch(`${API}/${slug}/status/${participantId}?token=${encodeURIComponent(myToken)}`);
-                const data = await res.json();
-                if (data.admitted) { clearInterval(statusInterval); showApp(); }
+                const res = await fetch(`${API}/${slug}/status/${participantId}?token=${encodeURIComponent(myToken)}`);
+                if (!res.ok) return;
+                let data;
+                try { data = await res.json(); } catch { return; }
+                if (data.admitted) { clearAdmissionPoll(); showApp(); }
             }, 3000);
         });
     }
@@ -1748,6 +1766,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     // ---- Show app ----
 
     function showApp(initialStatus) {
+        clearAdmissionPoll();
         document.getElementById('join-screen').classList.add('hidden');
         document.getElementById('waiting-screen').classList.add('hidden');
         document.getElementById('app').classList.add('visible');
@@ -1778,21 +1797,29 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             applyConfPref(saved, false);
             return;
         }
-        // Pre-highlight "Microphone Only" as the recommended default
         document.getElementById('prompt-mic').classList.add('pref-saved');
         const overlay = document.getElementById('conf-prompt-overlay');
         overlay.classList.remove('hidden');
-        // Clicking outside the box applies mic-only default
-        overlay.addEventListener('click', function dismissHandler(e) {
-            if (e.target === overlay) {
-                overlay.removeEventListener('click', dismissHandler);
-                applyConfPref('mic');
-            }
-        });
+        if (overlay._dismissHandler) {
+            overlay.removeEventListener('click', overlay._dismissHandler);
+        }
+        const dismiss = (e) => {
+            if (e.target !== overlay) return;
+            overlay.removeEventListener('click', dismiss);
+            overlay._dismissHandler = null;
+            applyConfPref('mic');
+        };
+        overlay._dismissHandler = dismiss;
+        overlay.addEventListener('click', dismiss);
     }
 
     async function applyConfPref(pref, save = true) {
-        document.getElementById('conf-prompt-overlay').classList.add('hidden');
+        const overlay = document.getElementById('conf-prompt-overlay');
+        if (overlay._dismissHandler) {
+            overlay.removeEventListener('click', overlay._dismissHandler);
+            overlay._dismissHandler = null;
+        }
+        overlay.classList.add('hidden');
         if (save) localStorage.setItem(PREF_KEY, pref);
 
         if      (pref === 'both') { cameraOn = true;  micOn = true;  }
@@ -2028,6 +2055,45 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         if (lbl) { lbl.textContent = label; }
     }
 
+    // Poll the server while the kicked screen is showing. As soon as the
+    // admin clears is_kicked, reload so the saved-session resume path puts
+    // the user back into the room from the same tab.
+    let kickedPollTimer = null;
+    function startKickedPoller() {
+        if (kickedPollTimer) return;
+        const tick = async () => {
+            const sess = JSON.parse(sessionStorage.getItem(`viewer_session_${slug}`) || 'null');
+            if (!sess || !sess.participantId || !sess.token) {
+                stopKickedPoller();
+                return;
+            }
+            try {
+                const res = await fetch(`${API}/${slug}/status/${sess.participantId}?token=${encodeURIComponent(sess.token)}`);
+                if (res.status === 404 || res.status === 401) {
+                    stopKickedPoller();
+                    sessionStorage.removeItem(`viewer_session_${slug}`);
+                    sessionStorage.removeItem(`viewer_kicked_${slug}`);
+                    location.reload();
+                    return;
+                }
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.kicked || data.room_status === 'ended') {
+                    stopKickedPoller();
+                    sessionStorage.removeItem(`viewer_kicked_${slug}`);
+                    location.reload();
+                }
+            } catch {
+                // Network blip — try again on the next tick.
+            }
+        };
+        kickedPollTimer = setInterval(tick, 5000);
+        tick();
+    }
+    function stopKickedPoller() {
+        if (kickedPollTimer) { clearInterval(kickedPollTimer); kickedPollTimer = null; }
+    }
+
     function connectWS() {
         setWsStatus('', 'Connecting');
         ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/room/${slug}`);
@@ -2043,19 +2109,31 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 // LiveKit handles track state automatically — no manual sync needed
             }
             if (msg.type === 'kicked') {
+                clearAdmissionPoll();
                 clearAllPointers();
                 if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
-                sessionStorage.removeItem(`viewer_session_${slug}`);
+                // Keep viewer_session_${slug} so we can poll status with the
+                // existing token and auto-rejoin once the admin unkicks.
                 sessionStorage.setItem(`viewer_kicked_${slug}`, '1');
-                localStorage.removeItem(PREF_KEY);
                 document.getElementById('app').classList.remove('visible');
                 document.getElementById('kicked-screen').classList.remove('hidden');
                 wsReconnect = false;
+                startKickedPoller();
                 return;
             }
             if (msg.type === 'room:live')    { clearTimeout(offlineTimer); setRoomStatus('live'); reloadPlayer(); }
             if (msg.type === 'room:pending') { setRoomStatus('pending'); }
-            if (msg.type === 'room:ended')   { setRoomStatus('ended'); sessionStorage.removeItem(`viewer_session_${slug}`); }
+            if (msg.type === 'room:ended') {
+                clearAdmissionPoll();
+                clearAllPointers();
+                if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
+                sessionStorage.removeItem(`viewer_session_${slug}`);
+                localStorage.removeItem(PREF_KEY);
+                document.getElementById('app').classList.remove('visible');
+                document.getElementById('session-ended-screen').classList.remove('hidden');
+                wsReconnect = false;
+                return;
+            }
             if (msg.type === 'stream:assigned') handleStreamAssigned(msg.streamKey);
             if (msg.type === 'stream:removed')  handleStreamRemoved();
             if (msg.type === 'participants:update') updateRoster(msg.participants);
@@ -2088,23 +2166,32 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             clearAllPointers();
             // Room ended/deleted — stop reconnecting
             if (e.code === 1001) {
-                setRoomStatus('ended');
+                if (livekitRoom) { try { livekitRoom.disconnect(); } catch {} livekitRoom = null; }
                 sessionStorage.removeItem(`viewer_session_${slug}`);
+                localStorage.removeItem(PREF_KEY);
+                wsReconnect = false;
+                if (document.getElementById('session-ended-screen').classList.contains('hidden')) {
+                    document.getElementById('app').classList.remove('visible');
+                    document.getElementById('session-ended-screen').classList.remove('hidden');
+                }
                 return;
             }
             if (e.code === 1008) {
-                sessionStorage.removeItem(`viewer_session_${slug}`);
-                // If kicked message already showed the kicked screen, don't override it
+                // If kicked message already showed the kicked screen, the
+                // poller is already running — just keep the sentinel.
                 if (!document.getElementById('kicked-screen').classList.contains('hidden')) {
                     sessionStorage.setItem(`viewer_kicked_${slug}`, '1');
                     return;
                 }
-                // If hub sent kicked flag (reconnect after kick), show kicked screen
+                // If hub sent kicked flag (reconnect after kick), show kicked
+                // screen and start polling for unkick.
                 if (sessionStorage.getItem(`viewer_kicked_${slug}`)) {
                     document.getElementById('kicked-screen').classList.remove('hidden');
+                    startKickedPoller();
                     return;
                 }
                 // Auth rejected — session is stale; return to join form
+                sessionStorage.removeItem(`viewer_session_${slug}`);
                 document.getElementById('app').classList.remove('visible');
                 document.getElementById('join-screen').classList.remove('hidden');
                 document.getElementById('join-error').textContent = 'Session expired. Please re-enter your name.';
@@ -2120,6 +2207,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     // ---- Leave room ----
 
     document.getElementById('leave-btn').addEventListener('click', () => {
+        clearAdmissionPoll();
         wsReconnect = false;
         if (ws) { try { ws.close(); } catch {} ws = null; }
         if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }

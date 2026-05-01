@@ -427,7 +427,7 @@ async fn livekit_token(
     let pid = participant_id.clone();
     let participant_data = tokio::task::spawn_blocking(move || {
         let mut stmt = conn.prepare(
-            "SELECT p.name, p.role, p.is_admitted, p.is_kicked, r.slug \
+            "SELECT p.name, p.role, p.is_admitted, p.is_kicked, r.slug, r.expires_at \
              FROM participants p \
              JOIN rooms r ON r.id = p.room_id \
              WHERE p.id = ?1 AND p.token = ?2 AND r.slug = ?3",
@@ -440,6 +440,7 @@ async fn livekit_token(
                     row.get::<_, i32>(2)?,
                     row.get::<_, i32>(3)?,
                     row.get::<_, String>(4)?,
+                    row.get::<_, Option<String>>(5)?,
                 ))
             })
             .map_err(|e| match e {
@@ -453,7 +454,7 @@ async fn livekit_token(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
-    let (name, role, is_admitted, is_kicked, room_slug) = participant_data;
+    let (name, role, is_admitted, is_kicked, room_slug, expires_at) = participant_data;
 
     if is_kicked == 1 {
         return Err(AppError::Forbidden("You have been kicked".into()));
@@ -462,9 +463,11 @@ async fn livekit_token(
         return Err(AppError::Forbidden("Not yet admitted".into()));
     }
 
+    let expires_at_unix = expires_at.as_deref().and_then(iso_to_unix);
+
     let livekit = LiveKitClient::new(&state.config, state.http_client.clone());
     let lk_token = livekit
-        .create_access_token(&participant_id, &name, &room_slug, &role)
+        .create_access_token(&participant_id, &name, &room_slug, &role, expires_at_unix)
         .map_err(AppError::Internal)?;
 
     Ok(Json(
@@ -710,6 +713,39 @@ fn chrono_now() -> String {
 
 fn is_leap(y: i64) -> bool {
     (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+/// Parse "YYYY-MM-DD HH:MM:SS" (SQLite CURRENT_TIMESTAMP, UTC) to unix seconds.
+fn iso_to_unix(s: &str) -> Option<u64> {
+    let bytes = s.as_bytes();
+    if bytes.len() < 19 {
+        return None;
+    }
+    let y: i64 = s.get(0..4)?.parse().ok()?;
+    let mo: u32 = s.get(5..7)?.parse().ok()?;
+    let d: u32 = s.get(8..10)?.parse().ok()?;
+    let h: u64 = s.get(11..13)?.parse().ok()?;
+    let mi: u64 = s.get(14..16)?.parse().ok()?;
+    let se: u64 = s.get(17..19)?.parse().ok()?;
+    if !(1970..=9999).contains(&y) || !(1..=12).contains(&mo) || !(1..=31).contains(&d) {
+        return None;
+    }
+
+    let mut days: i64 = 0;
+    for yr in 1970..y {
+        days += if is_leap(yr) { 366 } else { 365 };
+    }
+    let month_days = if is_leap(y) {
+        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    } else {
+        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    };
+    for &md in month_days.iter().take(mo as usize - 1) {
+        days += md;
+    }
+    days += d as i64 - 1;
+
+    Some((days as u64) * 86400 + h * 3600 + mi * 60 + se)
 }
 
 pub fn router() -> Router<Arc<AppState>> {

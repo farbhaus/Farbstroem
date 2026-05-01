@@ -6,6 +6,7 @@ use rusqlite::params;
 use serde_json::{json, Value};
 use sha1::Sha1;
 use std::sync::Arc;
+use subtle::ConstantTimeEq;
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -51,7 +52,7 @@ async fn webhook_handler(
     let result = mac.finalize().into_bytes();
     let expected = URL_SAFE_NO_PAD.encode(result);
 
-    if expected != signature {
+    if expected.as_bytes().ct_eq(signature.as_bytes()).unwrap_u8() == 0 {
         return Err(AppError::Unauthorized("Invalid signature".into()));
     }
 

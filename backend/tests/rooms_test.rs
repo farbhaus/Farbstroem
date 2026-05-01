@@ -190,6 +190,83 @@ async fn end_room_succeeds() {
 }
 
 // ---------------------------------------------------------------------------
+// Reactivate room
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn reactivate_room_resets_status_and_clears_expiry() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+    let token = common::admin_token(&state);
+
+    let room_id = common::seed_room(&state, "Old Room", "old-room-abc123");
+    // Mark ended with a past expires_at and ended_at set.
+    {
+        let conn = state.db.get().unwrap();
+        conn.execute(
+            "UPDATE rooms SET status='ended', ended_at=CURRENT_TIMESTAMP, \
+             expires_at='2020-01-01 00:00:00' WHERE id=?1",
+            rusqlite::params![room_id],
+        )
+        .unwrap();
+    }
+
+    let (name, val) = auth_header(&token);
+    let res = server
+        .post(&format!("/api/rooms/{}/reactivate", room_id))
+        .add_header(name, val)
+        .await;
+    assert_eq!(res.status_code(), 200);
+
+    let body: Value = res.json();
+    assert_eq!(body["status"], "pending");
+    assert!(body["ended_at"].is_null());
+    assert!(body["expires_at"].is_null());
+}
+
+#[tokio::test]
+async fn reactivate_room_rejects_non_ended() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+    let token = common::admin_token(&state);
+
+    let room_id = common::seed_room(&state, "Pending Room", "pending-room-abc123");
+
+    let (name, val) = auth_header(&token);
+    let res = server
+        .post(&format!("/api/rooms/{}/reactivate", room_id))
+        .add_header(name, val)
+        .await;
+    assert_eq!(res.status_code(), 400);
+}
+
+#[tokio::test]
+async fn reactivate_room_returns_404_for_missing() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+    let token = common::admin_token(&state);
+
+    let (name, val) = auth_header(&token);
+    let res = server
+        .post("/api/rooms/missing-id/reactivate")
+        .add_header(name, val)
+        .await;
+    assert_eq!(res.status_code(), 404);
+}
+
+#[tokio::test]
+async fn reactivate_room_requires_auth() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+    let room_id = common::seed_room(&state, "Auth Room", "auth-room-abc123");
+
+    let res = server
+        .post(&format!("/api/rooms/{}/reactivate", room_id))
+        .await;
+    assert_eq!(res.status_code(), 401);
+}
+
+// ---------------------------------------------------------------------------
 // Delete room
 // ---------------------------------------------------------------------------
 
