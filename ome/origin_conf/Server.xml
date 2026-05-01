@@ -33,23 +33,23 @@
         <Providers>
             <RTMP>
                 <Port>1935</Port>
-                <WorkerCount>1</WorkerCount>
+                <WorkerCount>2</WorkerCount>
             </RTMP>
             <SRT>
                 <Port>9999</Port>
-                <WorkerCount>1</WorkerCount>
+                <WorkerCount>2</WorkerCount>
             </SRT>
             <WebRTC>
                 <Signalling>
                     <Port>3333</Port>
                     <TLSPort>3334</TLSPort>
-                    <WorkerCount>1</WorkerCount>
+                    <WorkerCount>2</WorkerCount>
                 </Signalling>
                 <IceCandidates>
                     <IceCandidate>*:10000-10009/udp</IceCandidate>
                     <TcpRelay>*:3478</TcpRelay>
                     <TcpForce>false</TcpForce>
-                    <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
+                    <TcpRelayWorkerCount>2</TcpRelayWorkerCount>
                 </IceCandidates>
             </WebRTC>
         </Providers>
@@ -66,18 +66,18 @@
                 <Signalling>
                     <Port>3333</Port>
                     <TLSPort>3334</TLSPort>
-                    <WorkerCount>1</WorkerCount>
+                    <WorkerCount>2</WorkerCount>
                 </Signalling>
                 <IceCandidates>
                     <IceCandidate>*:10000-10009/udp</IceCandidate>
                     <TcpRelay>*:3478</TcpRelay>
                     <TcpForce>false</TcpForce>
-                    <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
+                    <TcpRelayWorkerCount>2</TcpRelayWorkerCount>
                 </IceCandidates>
             </WebRTC>
             <SRT>
                 <Port>9998</Port>
-                <WorkerCount>1</WorkerCount>
+                <WorkerCount>2</WorkerCount>
             </SRT>
         </Publishers>
     </Bind>
@@ -121,7 +121,7 @@
             <AdmissionWebhooks>
                 <ControlServerUrl>http://stream-backend:4001/api/webhook/admission</ControlServerUrl>
                 <SecretKey>${env:OME_WEBHOOK_SECRET:webhook-default-secret}</SecretKey>
-                <Timeout>3000</Timeout>
+                <Timeout>5000</Timeout>
                 <Enables>
                     <!-- Validate all ingest connections (stream key auth) -->
                     <Providers>rtmp,srt,webrtc</Providers>
@@ -223,7 +223,6 @@
 
                         <LLHLS>
                             <ChunkDuration>0.2</ChunkDuration>
-                            <PartHoldBack>0.6</PartHoldBack>
                             <SegmentDuration>6</SegmentDuration>
                             <SegmentCount>10</SegmentCount>
                             <DVR>
