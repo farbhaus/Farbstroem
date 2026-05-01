@@ -1470,9 +1470,11 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 nameEl.appendChild(badge);
             }
             if (roomInfo.has_password) document.getElementById('password-row').style.display = '';
-            // If this tab was kicked, stay on kicked screen until manually cleared
+            // If this tab was kicked, stay on kicked screen but poll so we
+            // automatically rejoin when the admin clears the kick.
             if (sessionStorage.getItem(`viewer_kicked_${slug}`)) {
                 document.getElementById('kicked-screen').classList.remove('hidden');
+                startKickedPoller();
                 return;
             }
             const savedSession = JSON.parse(sessionStorage.getItem(`viewer_session_${slug}`) || 'null');
@@ -1510,9 +1512,9 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                         }
                         const sdata = await sres.json();
                         if (sdata.kicked) {
-                            sessionStorage.removeItem(`viewer_session_${slug}`);
                             sessionStorage.setItem(`viewer_kicked_${slug}`, '1');
                             document.getElementById('kicked-screen').classList.remove('hidden');
+                            startKickedPoller();
                             return;
                         }
                         if (sdata.admitted) {
@@ -2037,6 +2039,45 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         if (lbl) { lbl.textContent = label; }
     }
 
+    // Poll the server while the kicked screen is showing. As soon as the
+    // admin clears is_kicked, reload so the saved-session resume path puts
+    // the user back into the room from the same tab.
+    let kickedPollTimer = null;
+    function startKickedPoller() {
+        if (kickedPollTimer) return;
+        const tick = async () => {
+            const sess = JSON.parse(sessionStorage.getItem(`viewer_session_${slug}`) || 'null');
+            if (!sess || !sess.participantId || !sess.token) {
+                stopKickedPoller();
+                return;
+            }
+            try {
+                const res = await fetch(`${API}/${slug}/status/${sess.participantId}?token=${encodeURIComponent(sess.token)}`);
+                if (res.status === 404 || res.status === 401) {
+                    stopKickedPoller();
+                    sessionStorage.removeItem(`viewer_session_${slug}`);
+                    sessionStorage.removeItem(`viewer_kicked_${slug}`);
+                    location.reload();
+                    return;
+                }
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.kicked || data.room_status === 'ended') {
+                    stopKickedPoller();
+                    sessionStorage.removeItem(`viewer_kicked_${slug}`);
+                    location.reload();
+                }
+            } catch {
+                // Network blip — try again on the next tick.
+            }
+        };
+        kickedPollTimer = setInterval(tick, 5000);
+        tick();
+    }
+    function stopKickedPoller() {
+        if (kickedPollTimer) { clearInterval(kickedPollTimer); kickedPollTimer = null; }
+    }
+
     function connectWS() {
         setWsStatus('', 'Connecting');
         ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/room/${slug}`);
@@ -2054,12 +2095,13 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             if (msg.type === 'kicked') {
                 clearAllPointers();
                 if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
-                sessionStorage.removeItem(`viewer_session_${slug}`);
+                // Keep viewer_session_${slug} so we can poll status with the
+                // existing token and auto-rejoin once the admin unkicks.
                 sessionStorage.setItem(`viewer_kicked_${slug}`, '1');
-                localStorage.removeItem(PREF_KEY);
                 document.getElementById('app').classList.remove('visible');
                 document.getElementById('kicked-screen').classList.remove('hidden');
                 wsReconnect = false;
+                startKickedPoller();
                 return;
             }
             if (msg.type === 'room:live')    { clearTimeout(offlineTimer); setRoomStatus('live'); reloadPlayer(); }
@@ -2117,18 +2159,21 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 return;
             }
             if (e.code === 1008) {
-                sessionStorage.removeItem(`viewer_session_${slug}`);
-                // If kicked message already showed the kicked screen, don't override it
+                // If kicked message already showed the kicked screen, the
+                // poller is already running — just keep the sentinel.
                 if (!document.getElementById('kicked-screen').classList.contains('hidden')) {
                     sessionStorage.setItem(`viewer_kicked_${slug}`, '1');
                     return;
                 }
-                // If hub sent kicked flag (reconnect after kick), show kicked screen
+                // If hub sent kicked flag (reconnect after kick), show kicked
+                // screen and start polling for unkick.
                 if (sessionStorage.getItem(`viewer_kicked_${slug}`)) {
                     document.getElementById('kicked-screen').classList.remove('hidden');
+                    startKickedPoller();
                     return;
                 }
                 // Auth rejected — session is stale; return to join form
+                sessionStorage.removeItem(`viewer_session_${slug}`);
                 document.getElementById('app').classList.remove('visible');
                 document.getElementById('join-screen').classList.remove('hidden');
                 document.getElementById('join-error').textContent = 'Session expired. Please re-enter your name.';

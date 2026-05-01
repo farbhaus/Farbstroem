@@ -905,21 +905,46 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
         await Promise.all([loadRooms(), loadKeys(), loadOme(), loadBranding(), loadDashboard()]);
     }
 
-    async function loadRooms() {
-        const res = await apiFetch('/api/rooms');
-        if (!res) return;
-        rooms = await res.json();
+    let lastListsSnap = '';
 
-        // Fetch waiting + kicked lists for active rooms
+    async function fetchParticipantLists() {
         const withWaiting = rooms.filter(r => r.waiting_room && r.status !== 'ended');
         const activeRooms = rooms.filter(r => r.status !== 'ended');
         const [waitingResults, kickedResults] = await Promise.all([
             Promise.all(withWaiting.map(r => apiFetch(`/api/rooms/${r.id}/waiting`).then(r2 => r2 ? r2.json() : []).then(list => [r.id, list]))),
             Promise.all(activeRooms.map(r => apiFetch(`/api/rooms/${r.id}/kicked`).then(r2 => r2 ? r2.json() : []).then(list => [r.id, list]))),
         ]);
-        waitingMap = Object.fromEntries(waitingResults);
-        kickedMap  = Object.fromEntries(kickedResults);
+        return {
+            waiting: Object.fromEntries(waitingResults),
+            kicked:  Object.fromEntries(kickedResults),
+        };
+    }
 
+    async function loadRooms() {
+        const res = await apiFetch('/api/rooms');
+        if (!res) return;
+        rooms = await res.json();
+
+        const lists = await fetchParticipantLists();
+        waitingMap = lists.waiting;
+        kickedMap  = lists.kicked;
+        lastListsSnap = JSON.stringify([waitingMap, kickedMap]);
+
+        renderRooms();
+    }
+
+    // Fast poll for waiting/kicked lists so the admin sees join requests and
+    // expulsions within seconds instead of waiting for the next loadAll cycle.
+    // Re-renders only when the lists actually changed to avoid disrupting the
+    // admin's hover/focus state.
+    async function refreshParticipantLists() {
+        if (!rooms.length) return;
+        const lists = await fetchParticipantLists();
+        const snap = JSON.stringify([lists.waiting, lists.kicked]);
+        if (snap === lastListsSnap) return;
+        waitingMap = lists.waiting;
+        kickedMap  = lists.kicked;
+        lastListsSnap = snap;
         renderRooms();
     }
 
@@ -948,9 +973,9 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
             if (keyLabel !== '—') metaParts.push(`Key: ${esc(keyLabel)}`);
             if (expires) metaParts.push(`Expires ${expires}`);
 
-            const waitingCount  = r.waiting_count || 0;
-            const showWaiting   = r.waiting_room && r.status !== 'ended';
             const waitingPeople = waitingMap[r.id] || [];
+            const waitingCount  = waitingPeople.length;
+            const showWaiting   = r.waiting_room && r.status !== 'ended';
 
             return `
             <div class="room-card" data-id="${r.id}" data-slug="${esc(r.slug)}">
@@ -2067,6 +2092,7 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
     }
 
     setInterval(() => { if (token) loadAll(); }, 15000);
+    setInterval(() => { if (token) refreshParticipantLists(); }, 3000);
 
 }());
 </script>
