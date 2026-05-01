@@ -36,9 +36,13 @@ CREATE TABLE IF NOT EXISTS participants (
 -- session_files holds both participant uploads and admin-library files.
 -- A NULL room_id means the row is a library-only file (not tied to any room).
 -- Admin-assigned rooms are recorded in room_files (many-to-many).
+-- room_id uses SET NULL (not CASCADE) so deleting the originating room
+-- demotes the file to library status when it's still attached to other
+-- rooms via room_files. Unattached files are cleaned up explicitly by
+-- cleanup_room_files before the room is deleted.
 CREATE TABLE IF NOT EXISTS session_files (
     id            TEXT PRIMARY KEY,
-    room_id       TEXT REFERENCES rooms(id) ON DELETE CASCADE,
+    room_id       TEXT REFERENCES rooms(id) ON DELETE SET NULL,
     uploader_id   TEXT REFERENCES participants(id) ON DELETE SET NULL,
     original_name TEXT NOT NULL,
     stored_path   TEXT NOT NULL,
