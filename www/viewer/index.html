@@ -2112,6 +2112,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 clearAdmissionPoll();
                 clearAllPointers();
                 if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
+                if (player) { try { player.remove(); } catch {} player = null; }
                 // Keep viewer_session_${slug} so we can poll status with the
                 // existing token and auto-rejoin once the admin unkicks.
                 sessionStorage.setItem(`viewer_kicked_${slug}`, '1');
@@ -2127,6 +2128,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 clearAdmissionPoll();
                 clearAllPointers();
                 if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
+                if (player) { try { player.remove(); } catch {} player = null; }
                 sessionStorage.removeItem(`viewer_session_${slug}`);
                 localStorage.removeItem(PREF_KEY);
                 document.getElementById('app').classList.remove('visible');
@@ -2167,6 +2169,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             // Room ended/deleted — stop reconnecting
             if (e.code === 1001) {
                 if (livekitRoom) { try { livekitRoom.disconnect(); } catch {} livekitRoom = null; }
+                if (player) { try { player.remove(); } catch {} player = null; }
                 sessionStorage.removeItem(`viewer_session_${slug}`);
                 localStorage.removeItem(PREF_KEY);
                 wsReconnect = false;
