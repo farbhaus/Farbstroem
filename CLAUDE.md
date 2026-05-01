@@ -69,14 +69,17 @@ Browser (viewer page)
 ## Backend structure
 
 - `src/main.rs` — startup: config, DB pool, background tasks, Axum router mount on :4001
+- `src/lib.rs` — re-exports the app builder so integration tests can spin up the server in-process
 - `src/config.rs` — `AppConfig::from_env`, secret length validation (fail-fast)
 - `src/state.rs` — `AppState` (Arc'd, cloned into handlers)
 - `src/db.rs` — R2D2 SQLite pool (10 connections), WAL mode, schema bootstrap from `schema.sql`
+- `src/error.rs` — `AppError` + `IntoResponse` impl; central error → HTTP mapping
+- `src/events.rs` — typed WS event payloads shared between hub and routes
 - `src/auth.rs` — JWT (HS256, 7d) + bcrypt helpers
 - `src/livekit.rs` — hand-rolled LiveKit client: AccessToken JWT minting + RoomService HTTP
 - `src/ws.rs` — WebSocket hub, broadcast channels per room
 - `src/tasks.rs` — background pollers: OME stream status, room expiry, file cleanup
-- `src/routes/` — one file per resource (`rooms.rs`, `rooms_public.rs`, `files.rs`, `webhook.rs`, etc.)
+- `src/routes/` — one file per resource: `rooms`, `rooms_public`, `files`, `admin_files`, `stream_keys`, `webhook`, `branding`, `metrics`, `ome`, `auth`, `rate_limit`
 - `tests/common/mod.rs` — shared test fixtures (in-memory DB, app setup)
 
 ## Frontend structure
