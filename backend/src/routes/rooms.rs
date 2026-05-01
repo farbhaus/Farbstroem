@@ -575,28 +575,46 @@ async fn delete_room(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    let conn = state.db.get()?;
-    let slug = {
+    let slug: String = {
+        let conn = state.db.get()?;
         let id = id.clone();
         tokio::task::spawn_blocking(move || {
-            let slug: String = conn
-                .query_row(
-                    "SELECT slug FROM rooms WHERE id = ?1",
-                    rusqlite::params![id],
-                    |row| row.get(0),
-                )
-                .map_err(|e| match e {
-                    rusqlite::Error::QueryReturnedNoRows => {
-                        AppError::NotFound("Room not found".into())
-                    }
-                    _ => AppError::Internal(e.to_string()),
-                })?;
-            conn.execute("DELETE FROM rooms WHERE id = ?1", rusqlite::params![id])?;
-            Ok::<_, AppError>(slug)
+            conn.query_row(
+                "SELECT slug FROM rooms WHERE id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => AppError::NotFound("Room not found".into()),
+                _ => AppError::Internal(e.to_string()),
+            })
         })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
     }?;
+
+    // Run file cleanup BEFORE deleting the room. Schema cascade on
+    // session_files.room_id would otherwise wipe the rows before
+    // cleanup_room_files (which keys off room_id) has a chance to find
+    // them, leaking blobs on disk.
+    if let Err(e) = crate::tasks::cleanup_room_files(&state, &slug).await {
+        tracing::warn!(
+            "[files] cleanup before room delete failed for {}: {}",
+            slug,
+            e
+        );
+    }
+
+    {
+        let conn = state.db.get()?;
+        let id = id.clone();
+        tokio::task::spawn_blocking(move || {
+            conn.execute("DELETE FROM rooms WHERE id = ?1", rusqlite::params![id])
+                .map_err(|e| AppError::Internal(e.to_string()))
+        })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))??;
+    }
 
     let _ = state.events.room_ended.send(slug.clone());
 

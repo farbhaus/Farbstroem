@@ -116,6 +116,62 @@ fn repair_room_files_fk(conn: &rusqlite::Connection) {
     tracing::info!("[migration] room_files FK repaired (was pointing at session_files_old)");
 }
 
+/// Change `session_files.room_id` FK from `ON DELETE CASCADE` to
+/// `ON DELETE SET NULL`. Without this, deleting a room cascade-wipes
+/// session_files rows before `cleanup_room_files` can find them, leaking
+/// blobs on disk; and it destroys library attachments for files originating
+/// in the deleted room. Detected by inspecting the table DDL in sqlite_master.
+fn migrate_session_files_room_id_setnull(conn: &rusqlite::Connection) {
+    let needs_migration: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master \
+             WHERE type='table' AND name='session_files' \
+             AND sql LIKE '%room_id%REFERENCES rooms(id) ON DELETE CASCADE%'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        > 0;
+    if !needs_migration {
+        return;
+    }
+
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")
+        .expect("Failed to disable foreign_keys for session_files room_id FK migration");
+    let result = conn.execute_batch(
+        "BEGIN;
+
+         DROP TABLE IF EXISTS session_files_setnull_old;
+         ALTER TABLE session_files RENAME TO session_files_setnull_old;
+
+         CREATE TABLE session_files (
+             id            TEXT PRIMARY KEY,
+             room_id       TEXT REFERENCES rooms(id) ON DELETE SET NULL,
+             uploader_id   TEXT REFERENCES participants(id) ON DELETE SET NULL,
+             original_name TEXT NOT NULL,
+             stored_path   TEXT NOT NULL,
+             mime_type     TEXT NOT NULL,
+             size_bytes    INTEGER NOT NULL,
+             content_hash  TEXT,
+             created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+         );
+
+         INSERT INTO session_files
+             (id, room_id, uploader_id, original_name, stored_path, mime_type, size_bytes, content_hash, created_at)
+             SELECT id, room_id, uploader_id, original_name, stored_path, mime_type, size_bytes, content_hash, created_at
+             FROM session_files_setnull_old;
+
+         DROP TABLE session_files_setnull_old;
+
+         COMMIT;",
+    );
+    conn.execute_batch("PRAGMA foreign_keys = ON;")
+        .expect("Failed to re-enable foreign_keys after session_files room_id FK migration");
+    result.expect("Failed to migrate session_files.room_id to ON DELETE SET NULL");
+
+    tracing::info!("[migration] session_files.room_id: ON DELETE CASCADE -> ON DELETE SET NULL");
+}
+
 /// One-shot: move every blob from `{data_path}/uploads/{room_id}/{file}` to
 /// `{data_path}/files/{file}`, rewrite `session_files.stored_path` to just
 /// the filename (drop the `{room_id}/` prefix), and backfill `content_hash`
@@ -304,6 +360,7 @@ pub fn init_pool(db_path: &str, data_path: &str) -> DbPool {
 
     migrate_session_files_library(&conn);
     repair_room_files_fk(&conn);
+    migrate_session_files_room_id_setnull(&conn);
 
     // Ensure indexes that reference content_hash exist on both fresh + migrated DBs.
     conn.execute_batch(
