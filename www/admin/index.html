@@ -908,8 +908,9 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
     let lastListsSnap = '';
 
     async function fetchParticipantLists() {
-        const withWaiting = rooms.filter(r => r.waiting_room && r.status !== 'ended');
-        const activeRooms = rooms.filter(r => r.status !== 'ended');
+        const snap = rooms.slice();
+        const withWaiting = snap.filter(r => r.waiting_room && r.status !== 'ended');
+        const activeRooms = snap.filter(r => r.status !== 'ended');
         const [waitingResults, kickedResults] = await Promise.all([
             Promise.all(withWaiting.map(r => apiFetch(`/api/rooms/${r.id}/waiting`).then(r2 => (r2 && r2.ok) ? r2.json() : []).then(list => [r.id, list]).catch(() => [r.id, []]))),
             Promise.all(activeRooms.map(r => apiFetch(`/api/rooms/${r.id}/kicked`).then(r2 => (r2 && r2.ok) ? r2.json() : []).then(list => [r.id, list]).catch(() => [r.id, []]))),

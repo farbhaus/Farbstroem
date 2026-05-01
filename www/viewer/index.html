@@ -1797,21 +1797,29 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             applyConfPref(saved, false);
             return;
         }
-        // Pre-highlight "Microphone Only" as the recommended default
         document.getElementById('prompt-mic').classList.add('pref-saved');
         const overlay = document.getElementById('conf-prompt-overlay');
         overlay.classList.remove('hidden');
-        // Clicking outside the box applies mic-only default
-        overlay.addEventListener('click', function dismissHandler(e) {
-            if (e.target === overlay) {
-                overlay.removeEventListener('click', dismissHandler);
-                applyConfPref('mic');
-            }
-        });
+        if (overlay._dismissHandler) {
+            overlay.removeEventListener('click', overlay._dismissHandler);
+        }
+        const dismiss = (e) => {
+            if (e.target !== overlay) return;
+            overlay.removeEventListener('click', dismiss);
+            overlay._dismissHandler = null;
+            applyConfPref('mic');
+        };
+        overlay._dismissHandler = dismiss;
+        overlay.addEventListener('click', dismiss);
     }
 
     async function applyConfPref(pref, save = true) {
-        document.getElementById('conf-prompt-overlay').classList.add('hidden');
+        const overlay = document.getElementById('conf-prompt-overlay');
+        if (overlay._dismissHandler) {
+            overlay.removeEventListener('click', overlay._dismissHandler);
+            overlay._dismissHandler = null;
+        }
+        overlay.classList.add('hidden');
         if (save) localStorage.setItem(PREF_KEY, pref);
 
         if      (pref === 'both') { cameraOn = true;  micOn = true;  }

@@ -160,6 +160,7 @@ impl LiveKitClient {
         name: &str,
         room: &str,
         role: &str,
+        expires_at: Option<u64>,
     ) -> Result<String, String> {
         if role.is_empty() {
             return Err("LiveKit access token requires a non-empty role".into());
@@ -170,11 +171,16 @@ impl LiveKitClient {
             .unwrap_or_default()
             .as_secs();
 
+        // Cap at 1h, and never outlive the room.
+        const MAX_TTL: u64 = 3600;
+        let cap = now + MAX_TTL;
+        let exp = expires_at.map(|e| e.min(cap)).unwrap_or(cap);
+
         let claims = LiveKitClaims {
             iss: self.api_key.clone(),
             sub: identity.to_string(),
             iat: now,
-            exp: now + 86400, // 24 hours
+            exp,
             nbf: now,
             video: Some(LiveKitVideoGrant {
                 room_admin: None,
