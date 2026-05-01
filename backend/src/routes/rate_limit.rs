@@ -1,4 +1,5 @@
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use tower_governor::{
     governor::{GovernorConfig, GovernorConfigBuilder},
@@ -15,10 +16,10 @@ pub fn enabled() -> bool {
 
 type SmartConfig = GovernorConfig<SmartIpKeyExtractor, ::governor::middleware::NoOpMiddleware>;
 
-fn build_config(per_second: u64, burst: u32) -> Arc<SmartConfig> {
+fn build_config(period: Duration, burst: u32) -> Arc<SmartConfig> {
     Arc::new(
         GovernorConfigBuilder::default()
-            .per_second(per_second)
+            .period(period)
             .burst_size(burst)
             .key_extractor(SmartIpKeyExtractor)
             .finish()
@@ -29,13 +30,17 @@ fn build_config(per_second: u64, burst: u32) -> Arc<SmartConfig> {
 /// 5 requests/minute per IP, burst 2. For `POST /api/auth/login`.
 pub fn login_layer() -> GovernorLayer<SmartIpKeyExtractor, ::governor::middleware::NoOpMiddleware> {
     static CFG: OnceLock<Arc<SmartConfig>> = OnceLock::new();
-    let config = CFG.get_or_init(|| build_config(12, 2)).clone();
+    let config = CFG
+        .get_or_init(|| build_config(Duration::from_secs(12), 2))
+        .clone();
     GovernorLayer { config }
 }
 
 /// 30 requests/minute per IP, burst 10. For `POST /api/public/rooms/:slug/join`.
 pub fn join_layer() -> GovernorLayer<SmartIpKeyExtractor, ::governor::middleware::NoOpMiddleware> {
     static CFG: OnceLock<Arc<SmartConfig>> = OnceLock::new();
-    let config = CFG.get_or_init(|| build_config(2, 10)).clone();
+    let config = CFG
+        .get_or_init(|| build_config(Duration::from_secs(2), 10))
+        .clone();
     GovernorLayer { config }
 }

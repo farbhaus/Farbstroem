@@ -1608,15 +1608,22 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 
     // ---- Waiting room ----
 
+    function clearAdmissionPoll() {
+        if (statusInterval) { clearInterval(statusInterval); statusInterval = null; }
+    }
+
     function pollAdmission() {
         const sse = new EventSource(`${API}/${slug}/waiting/events/${participantId}?token=${encodeURIComponent(myToken)}`);
         sse.addEventListener('admitted', () => { sse.close(); showApp(); });
         sse.addEventListener('error', () => {
             sse.close();
+            clearAdmissionPoll();
             statusInterval = setInterval(async () => {
-                const res  = await fetch(`${API}/${slug}/status/${participantId}?token=${encodeURIComponent(myToken)}`);
-                const data = await res.json();
-                if (data.admitted) { clearInterval(statusInterval); showApp(); }
+                const res = await fetch(`${API}/${slug}/status/${participantId}?token=${encodeURIComponent(myToken)}`);
+                if (!res.ok) return;
+                let data;
+                try { data = await res.json(); } catch { return; }
+                if (data.admitted) { clearAdmissionPoll(); showApp(); }
             }, 3000);
         });
     }
@@ -1759,6 +1766,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     // ---- Show app ----
 
     function showApp(initialStatus) {
+        clearAdmissionPoll();
         document.getElementById('join-screen').classList.add('hidden');
         document.getElementById('waiting-screen').classList.add('hidden');
         document.getElementById('app').classList.add('visible');
@@ -1789,21 +1797,29 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             applyConfPref(saved, false);
             return;
         }
-        // Pre-highlight "Microphone Only" as the recommended default
         document.getElementById('prompt-mic').classList.add('pref-saved');
         const overlay = document.getElementById('conf-prompt-overlay');
         overlay.classList.remove('hidden');
-        // Clicking outside the box applies mic-only default
-        overlay.addEventListener('click', function dismissHandler(e) {
-            if (e.target === overlay) {
-                overlay.removeEventListener('click', dismissHandler);
-                applyConfPref('mic');
-            }
-        });
+        if (overlay._dismissHandler) {
+            overlay.removeEventListener('click', overlay._dismissHandler);
+        }
+        const dismiss = (e) => {
+            if (e.target !== overlay) return;
+            overlay.removeEventListener('click', dismiss);
+            overlay._dismissHandler = null;
+            applyConfPref('mic');
+        };
+        overlay._dismissHandler = dismiss;
+        overlay.addEventListener('click', dismiss);
     }
 
     async function applyConfPref(pref, save = true) {
-        document.getElementById('conf-prompt-overlay').classList.add('hidden');
+        const overlay = document.getElementById('conf-prompt-overlay');
+        if (overlay._dismissHandler) {
+            overlay.removeEventListener('click', overlay._dismissHandler);
+            overlay._dismissHandler = null;
+        }
+        overlay.classList.add('hidden');
         if (save) localStorage.setItem(PREF_KEY, pref);
 
         if      (pref === 'both') { cameraOn = true;  micOn = true;  }
@@ -2093,6 +2109,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 // LiveKit handles track state automatically — no manual sync needed
             }
             if (msg.type === 'kicked') {
+                clearAdmissionPoll();
                 clearAllPointers();
                 if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
                 // Keep viewer_session_${slug} so we can poll status with the
@@ -2107,6 +2124,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             if (msg.type === 'room:live')    { clearTimeout(offlineTimer); setRoomStatus('live'); reloadPlayer(); }
             if (msg.type === 'room:pending') { setRoomStatus('pending'); }
             if (msg.type === 'room:ended') {
+                clearAdmissionPoll();
                 clearAllPointers();
                 if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
                 sessionStorage.removeItem(`viewer_session_${slug}`);
@@ -2189,6 +2207,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     // ---- Leave room ----
 
     document.getElementById('leave-btn').addEventListener('click', () => {
+        clearAdmissionPoll();
         wsReconnect = false;
         if (ws) { try { ws.close(); } catch {} ws = null; }
         if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }

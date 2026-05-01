@@ -35,6 +35,7 @@ impl AppConfig {
         let jwt_secret = required_min_len("JWT_SECRET", 32);
         let ome_webhook_secret = required_min_len("OME_WEBHOOK_SECRET", 32);
         let livekit_api_secret = required_min_len("LIVEKIT_API_SECRET", 32);
+        let ome_api_token = required_min_len("OME_API_TOKEN", 32);
 
         // Admin password is bcrypt-hashed at startup; enforce a sensible minimum.
         let _admin_password = required_min_len("ADMIN_PASSWORD", 12);
@@ -48,7 +49,7 @@ impl AppConfig {
             ome_webhook_secret,
             ome_api_url: env::var("OME_API_URL")
                 .unwrap_or_else(|_| "http://stream-ome:8081/v1".into()),
-            ome_api_token: env::var("OME_API_TOKEN").unwrap_or_default(),
+            ome_api_token,
             livekit_api_key,
             livekit_api_secret,
             livekit_internal_url: env::var("LIVEKIT_INTERNAL_URL")
