@@ -11,11 +11,11 @@
     "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
-    "outDir": "../www/admin/dist",
+    "outDir": "../www/dist",
     "rootDir": ".",
     "sourceMap": true,
     "declaration": false,
     "skipLibCheck": true
   },
-  "include": ["admin/**/*.ts", "shared/**/*.ts"]
+  "include": ["admin/**/*.ts", "landing/**/*.ts", "shared/**/*.ts"]
 }

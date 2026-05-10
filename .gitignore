@@ -15,4 +15,4 @@ backend/target/
 
 # Frontend build artifacts
 frontend/node_modules/
-www/admin/dist/
+www/dist/
