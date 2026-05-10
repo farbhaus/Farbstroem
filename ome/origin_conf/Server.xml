@@ -48,7 +48,7 @@
                 <IceCandidates>
                     <IceCandidate>*:10000-10009/udp</IceCandidate>
                     <TcpRelay>*:3478</TcpRelay>
-                    <TcpForce>false</TcpForce>
+                    <TcpForce>true</TcpForce>
                     <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
                 </IceCandidates>
             </WebRTC>
@@ -71,7 +71,7 @@
                 <IceCandidates>
                     <IceCandidate>*:10000-10009/udp</IceCandidate>
                     <TcpRelay>*:3478</TcpRelay>
-                    <TcpForce>false</TcpForce>
+                    <TcpForce>true</TcpForce>
                     <TcpRelayWorkerCount>2</TcpRelayWorkerCount>
                 </IceCandidates>
             </WebRTC>
