@@ -559,7 +559,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 #tb-break { display: none; }
 
 .tb-btn {
-    width: 42px; height: 42px;
+    width: 42px; height: 42px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     background: var(--surface2); border: 1.5px solid var(--border);
     border-radius: 8px; color: var(--dim); cursor: pointer;
@@ -614,16 +614,12 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     #top-bar { padding: 0 10px; }
     #top-center { gap: 6px; }
 
-    /* Toolbar — two rows */
+    /* Toolbar — keep desktop button size and bar padding; only allow wrapping
+       to a second row on narrow viewports. */
     #bottom-toolbar {
-        height: auto; display: flex; flex-wrap: wrap;
-        justify-content: center; align-items: center;
-        gap: 0; padding: 4px 8px;
-        padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+        height: auto; min-height: calc(var(--toolbar-h) + env(safe-area-inset-bottom, 0px));
+        flex-wrap: wrap;
     }
-    .tb-btn { width: 36px; height: 36px; }
-    .tb-btn svg { width: 17px; height: 17px; }
-    .tb-sep { height: 24px; margin: 0 6px; }
     /* Conference strip is inline above the video in portrait — toggle is a no-op. */
     #conf-toggle, .tb-sep:has(+ #conf-toggle) { display: none; }
     .toolbar-group { display: flex; gap: 2px; }
@@ -695,17 +691,10 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 /* Mobile landscape — maximize video area */
 @media (max-height: 440px) and (orientation: landscape) {
     #top-bar { height: 36px; }
-    /* Explicit height — the base rule sets 56px + safe-area which dominates
-       the player's vertical budget on short screens. 32px button + 2px of
-       padding each side = 36px is enough. */
-    #bottom-toolbar {
-        height: calc(25px + env(safe-area-inset-bottom, 0px));
-        flex-wrap: nowrap;
-        padding: 2px 8px;
-        /* padding-bottom: calc(2px + env(safe-area-inset-bottom, 0px)); */
-    }
-    .tb-btn { width: 32px; height: 32px; }
-    .tb-btn svg { width: 15px; height: 15px; }
+    /* Toolbar keeps its desktop sizing — flex-wrap remains so buttons can wrap
+       rather than be squeezed by the flex algorithm (Firefox shrinks flex items
+       below their declared width more aggressively than Safari otherwise). */
+    #bottom-toolbar { flex-wrap: wrap; }
 
     #main-row { flex-direction: row; }
     #center-area { flex: 1; min-width: 0; min-height: 0; }
