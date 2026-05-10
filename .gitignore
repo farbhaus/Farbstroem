@@ -12,3 +12,7 @@ backend/target/
 
 # Claude Claude's local files
 .claude
+
+# Frontend build artifacts
+frontend/node_modules/
+www/admin/dist/
