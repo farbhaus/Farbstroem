@@ -559,7 +559,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 #tb-break { display: none; }
 
 .tb-btn {
-    width: 42px; height: 42px;
+    width: 42px; height: 42px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     background: var(--surface2); border: 1.5px solid var(--border);
     border-radius: 8px; color: var(--dim); cursor: pointer;
@@ -614,16 +614,12 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     #top-bar { padding: 0 10px; }
     #top-center { gap: 6px; }
 
-    /* Toolbar — two rows */
+    /* Toolbar — keep desktop button size and bar padding; only allow wrapping
+       to a second row on narrow viewports. */
     #bottom-toolbar {
-        height: auto; display: flex; flex-wrap: wrap;
-        justify-content: center; align-items: center;
-        gap: 0; padding: 4px 8px;
-        padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+        height: auto; min-height: calc(var(--toolbar-h) + env(safe-area-inset-bottom, 0px));
+        flex-wrap: wrap;
     }
-    .tb-btn { width: 36px; height: 36px; }
-    .tb-btn svg { width: 17px; height: 17px; }
-    .tb-sep { height: 24px; margin: 0 6px; }
     /* Conference strip is inline above the video in portrait — toggle is a no-op. */
     #conf-toggle, .tb-sep:has(+ #conf-toggle) { display: none; }
     .toolbar-group { display: flex; gap: 2px; }
@@ -695,17 +691,10 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 /* Mobile landscape — maximize video area */
 @media (max-height: 440px) and (orientation: landscape) {
     #top-bar { height: 36px; }
-    /* Explicit height — the base rule sets 56px + safe-area which dominates
-       the player's vertical budget on short screens. 32px button + 2px of
-       padding each side = 36px is enough. */
-    #bottom-toolbar {
-        height: calc(25px + env(safe-area-inset-bottom, 0px));
-        flex-wrap: nowrap;
-        padding: 2px 8px;
-        /* padding-bottom: calc(2px + env(safe-area-inset-bottom, 0px)); */
-    }
-    .tb-btn { width: 32px; height: 32px; }
-    .tb-btn svg { width: 15px; height: 15px; }
+    /* Toolbar keeps its desktop sizing — flex-wrap remains so buttons can wrap
+       rather than be squeezed by the flex algorithm (Firefox shrinks flex items
+       below their declared width more aggressively than Safari otherwise). */
+    #bottom-toolbar { flex-wrap: wrap; }
 
     #main-row { flex-direction: row; }
     #center-area { flex: 1; min-width: 0; min-height: 0; }
@@ -2522,6 +2511,26 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 
     pOverlay.addEventListener('touchend', () => { if (pointerMode) sendPointerHide(); });
 
+    // ---- Device permission errors ----
+    // Browsers (Safari especially) surface permission/hardware failures as DOMException names
+    // rather than messages. Map them to actionable copy so the toggle doesn't just silently revert.
+    function deviceErrorMessage(err, kind) {
+        const label = kind === 'mic' ? 'Microphone' : 'Camera';
+        switch (err && err.name) {
+            case 'NotAllowedError':
+            case 'SecurityError':
+                return `${label} blocked — enable it in your browser's site settings.`;
+            case 'NotFoundError':
+            case 'OverconstrainedError':
+                return `No ${label.toLowerCase()} found on this device.`;
+            case 'NotReadableError':
+            case 'AbortError':
+                return `${label} is in use by another app.`;
+            default:
+                return `Couldn't enable ${label.toLowerCase()}.`;
+        }
+    }
+
     // ---- Camera toggle ----
 
     document.getElementById('cam-btn').addEventListener('click', toggleCamera);
@@ -2539,8 +2548,9 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 await initLiveKit();
             }
         } catch (err) {
-            console.error('[conf cam]', err);
+            console.error('[conf cam]', err && err.name, err);
             cameraOn = prev;
+            window.zs?.toast(deviceErrorMessage(err, 'cam'), 'error');
         }
         refreshConfButtons();
     }
@@ -2564,8 +2574,9 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
                 await initLiveKit();
             }
         } catch (err) {
-            console.error('[conf mic]', err);
+            console.error('[conf mic]', err && err.name, err);
             micOn = prev;
+            window.zs?.toast(deviceErrorMessage(err, 'mic'), 'error');
         } finally {
             selfMuteInFlight = false;
         }
@@ -2589,7 +2600,11 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         try {
             // Request permission first to get labeled devices
             await navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(s => s.getTracks().forEach(t => t.stop()));
-        } catch {}
+        } catch (err) {
+            // Most often NotAllowedError on Safari — surface it so the user knows why labels/devices are missing.
+            console.warn('[device picker] pre-prompt failed', err && err.name, err);
+            window.zs?.toast(deviceErrorMessage(err, 'cam'), 'error');
+        }
         const devices = await navigator.mediaDevices.enumerateDevices();
         populateDeviceSelect('device-camera', devices.filter(d => d.kind === 'videoinput'));
         populateDeviceSelect('device-mic', devices.filter(d => d.kind === 'audioinput'));

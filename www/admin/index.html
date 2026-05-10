@@ -61,7 +61,23 @@ main { margin-top: var(--nav-h); padding: 32px; }
 .stat-sub { font-size: 12px; color: var(--dim); margin-top: 4px; }
 .stat-dim { color: var(--dim); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-left: 6px; }
 .stat-bar { height: 6px; background: var(--surface2); border-radius: 3px; margin-top: 14px; overflow: hidden; }
-.stat-bar-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.3s; }
+.stat-bar-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.3s, background-color 0.3s; }
+.stat-bar-fill.ok   { background: var(--green); }
+.stat-bar-fill.warn { background: var(--accent); }
+.stat-bar-fill.crit { background: var(--danger); }
+.stat-bar-tight { height: 4px; margin-top: 2px; }
+/* Per-CPU mini-bars */
+.cpu-cores { display: grid; grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); gap: 4px 8px; margin-top: 12px; }
+.cpu-core { font-size: 10px; color: var(--dim); }
+.cpu-core-label { display: flex; justify-content: space-between; font-family: monospace; }
+/* Stacked memory segments */
+.mem-stack { display: flex; height: 6px; background: var(--surface2); border-radius: 3px; margin-top: 14px; overflow: hidden; }
+.mem-seg { height: 100%; transition: width 0.3s; }
+.mem-seg.used    { background: var(--green); }
+.mem-seg.buffers { background: var(--accent); }
+.mem-seg.cached  { background: var(--dim); opacity: 0.5; }
+.mem-legend { display: flex; gap: 12px; margin-top: 8px; font-size: 11px; color: var(--dim); flex-wrap: wrap; }
+.mem-legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
 
 /* ---- Room cards ---- */
 .room-card {
@@ -376,10 +392,9 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
     <div class="nav-tabs">
         <button class="btn btn-tab active" data-tab="rooms">Rooms</button>
         <button class="btn btn-tab" data-tab="keys">Stream Keys</button>
-        <button class="btn btn-tab" data-tab="ome">Stats</button>
-        <button class="btn btn-tab" data-tab="dashboard">Dashboard</button>
-        <button class="btn btn-tab" data-tab="branding">Branding</button>
         <button class="btn btn-tab" data-tab="files">Files</button>
+        <button class="btn btn-tab" data-tab="ome">Dashboard</button>
+        <button class="btn btn-tab" data-tab="branding">Branding</button>
     </div>
     <div class="nav-right">
         <button class="btn btn-sm" id="logout-btn">Sign out</button>
@@ -401,9 +416,47 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
         </div>
     </div>
 
-    <!-- Stats tab -->
+    <!-- Dashboard tab (host metrics + live streams) -->
     <div id="tab-ome" class="u-hidden">
         <div class="section-header">
+            <span class="section-title">Host</span>
+            <span class="stat-sub" id="dash-uptime" style="margin-top:0"></span>
+        </div>
+        <div class="stat-grid">
+            <div class="stat-card">
+                <div class="stat-label">CPU</div>
+                <div class="stat-value" id="stat-cpu-value">—</div>
+                <div class="stat-bar"><div class="stat-bar-fill" id="stat-cpu-bar"></div></div>
+                <div class="cpu-cores" id="stat-cpu-cores"></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Memory</div>
+                <div class="stat-value" id="stat-mem-value">—</div>
+                <div class="stat-sub" id="stat-mem-sub"></div>
+                <div class="mem-stack">
+                    <div class="mem-seg used"    id="stat-mem-seg-used"></div>
+                    <div class="mem-seg buffers" id="stat-mem-seg-buffers"></div>
+                    <div class="mem-seg cached"  id="stat-mem-seg-cached"></div>
+                </div>
+                <div class="mem-legend">
+                    <span><span class="mem-legend-dot" style="background:var(--green)"></span>used</span>
+                    <span><span class="mem-legend-dot" style="background:var(--accent)"></span>buffers</span>
+                    <span><span class="mem-legend-dot" style="background:var(--dim);opacity:0.5"></span>cache</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Network <span class="stat-dim" id="stat-net-iface"></span></div>
+                <div class="stat-value stat-value-sm"><span id="stat-net-rx">—</span> <span class="stat-dim">in</span></div>
+                <div class="stat-value stat-value-sm"><span id="stat-net-tx">—</span> <span class="stat-dim">out</span></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Load Average</div>
+                <div class="stat-value" id="stat-load-value">—</div>
+                <div class="stat-sub">1m / 5m / 15m</div>
+            </div>
+        </div>
+
+        <div class="section-header" style="margin-top:32px">
             <span class="section-title">Live Streams</span>
             <button class="btn btn-sm" id="ome-refresh-btn">Refresh</button>
         </div>
@@ -419,31 +472,6 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
         </div>
         <div id="keys-list">
             <div class="empty">Loading…</div>
-        </div>
-    </div>
-
-    <!-- Dashboard tab -->
-    <div id="tab-dashboard" class="u-hidden">
-        <div class="section-header">
-            <span class="section-title">Dashboard</span>
-        </div>
-        <div class="stat-grid">
-            <div class="stat-card">
-                <div class="stat-label">CPU</div>
-                <div class="stat-value" id="stat-cpu-value">—</div>
-                <div class="stat-bar"><div class="stat-bar-fill" id="stat-cpu-bar"></div></div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Memory</div>
-                <div class="stat-value" id="stat-mem-value">—</div>
-                <div class="stat-sub" id="stat-mem-sub"></div>
-                <div class="stat-bar"><div class="stat-bar-fill" id="stat-mem-bar"></div></div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Network</div>
-                <div class="stat-value stat-value-sm"><span id="stat-net-rx">—</span> <span class="stat-dim">rx</span></div>
-                <div class="stat-value stat-value-sm"><span id="stat-net-tx">—</span> <span class="stat-dim">tx</span></div>
-            </div>
         </div>
     </div>
 
@@ -889,11 +917,9 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
             document.getElementById('tab-rooms').style.display     = activeTab === 'rooms'     ? 'block' : 'none';
             document.getElementById('tab-keys').style.display      = activeTab === 'keys'      ? 'block' : 'none';
             document.getElementById('tab-ome').style.display       = activeTab === 'ome'       ? 'block' : 'none';
-            document.getElementById('tab-dashboard').style.display = activeTab === 'dashboard' ? 'block' : 'none';
             document.getElementById('tab-branding').style.display  = activeTab === 'branding'  ? 'block' : 'none';
             document.getElementById('tab-files').style.display     = activeTab === 'files'     ? 'block' : 'none';
-            if (activeTab === 'ome') renderOme();
-            if (activeTab === 'dashboard') loadDashboard();
+            if (activeTab === 'ome') { renderOme(); loadDashboard(); startDashboardTicker(); } else { stopDashboardTicker(); }
             if (activeTab === 'branding') loadBranding();
             if (activeTab === 'files') { loadFiles(); loadStorageStats(); }
         });
@@ -1391,9 +1417,36 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
         return bps + ' B/s';
     }
 
+    // Bits-per-second from a bytes/sec input. Used for network display, since
+    // link capacity (e.g. 1 Gbps) is conventionally measured in bits.
+    function fmtBitRate(bytesPerSec) {
+        const bps = (bytesPerSec || 0) * 8;
+        if (bps >= 1e9) return (bps / 1e9).toFixed(2) + ' Gbps';
+        if (bps >= 1e6) return (bps / 1e6).toFixed(1) + ' Mbps';
+        if (bps >= 1e3) return (bps / 1e3).toFixed(0) + ' kbps';
+        return bps + ' bps';
+    }
+
+    function fmtDuration(secs) {
+        secs = Math.floor(secs || 0);
+        const d = Math.floor(secs / 86400);
+        const h = Math.floor((secs % 86400) / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        if (d > 0) return `up ${d}d ${h}h`;
+        if (h > 0) return `up ${h}h ${m}m`;
+        return `up ${m}m`;
+    }
+
+    function pctClass(p) {
+        if (p > 85) return 'crit';
+        if (p > 60) return 'warn';
+        return 'ok';
+    }
+
     // ---- Dashboard ----
 
     let metricsData = null;
+    let dashTickerId = null;
 
     async function loadDashboard() {
         const res = await apiFetch('/api/admin/metrics');
@@ -1402,18 +1455,63 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
         renderDashboard();
     }
 
+    function startDashboardTicker() {
+        if (dashTickerId) return;
+        let tick = 0;
+        dashTickerId = setInterval(() => {
+            if (activeTab !== 'ome') return;
+            loadDashboard();
+            // Refresh OME stream list every 3rd tick (~4.5s) — heavier query.
+            if (tick % 3 === 0) loadOme();
+            tick++;
+        }, 1500);
+    }
+
+    function stopDashboardTicker() {
+        if (dashTickerId) { clearInterval(dashTickerId); dashTickerId = null; }
+    }
+
     function renderDashboard() {
         if (!metricsData) return;
-        const { cpu, memory, network } = metricsData;
+        const { cpu, memory, network, loadavg, uptime_secs } = metricsData;
+
+        // --- CPU
         const cpuPct = cpu.percent || 0;
-        const memPct = memory.percent || 0;
         document.getElementById('stat-cpu-value').textContent = cpuPct.toFixed(1) + '%';
-        document.getElementById('stat-cpu-bar').style.width   = Math.min(100, cpuPct) + '%';
+        const cpuBar = document.getElementById('stat-cpu-bar');
+        cpuBar.style.width = Math.min(100, cpuPct) + '%';
+        cpuBar.className = 'stat-bar-fill ' + pctClass(cpuPct);
+
+        const coresEl = document.getElementById('stat-cpu-cores');
+        const cores = cpu.cores || [];
+        coresEl.innerHTML = cores.map((p, i) => `
+            <div class="cpu-core">
+                <div class="cpu-core-label"><span>${i}</span><span>${p.toFixed(0)}%</span></div>
+                <div class="stat-bar stat-bar-tight"><div class="stat-bar-fill ${pctClass(p)}" style="width:${Math.min(100, p)}%"></div></div>
+            </div>
+        `).join('');
+
+        // --- Memory
+        const memPct = memory.percent || 0;
         document.getElementById('stat-mem-value').textContent = memPct.toFixed(1) + '%';
-        document.getElementById('stat-mem-sub').textContent   = `${fmtBytes(memory.used_bytes)} / ${fmtBytes(memory.total_bytes)}`;
-        document.getElementById('stat-mem-bar').style.width   = Math.min(100, memPct) + '%';
-        document.getElementById('stat-net-rx').textContent    = fmtByteRate(network.rx_bps);
-        document.getElementById('stat-net-tx').textContent    = fmtByteRate(network.tx_bps);
+        document.getElementById('stat-mem-sub').textContent =
+            `${fmtBytes(memory.used_bytes)} used · ${fmtBytes(memory.cached_bytes)} cache · ${fmtBytes(memory.total_bytes)} total`;
+        const total = memory.total_bytes || 1;
+        document.getElementById('stat-mem-seg-used').style.width    = ((memory.used_bytes    / total) * 100) + '%';
+        document.getElementById('stat-mem-seg-buffers').style.width = ((memory.buffers_bytes / total) * 100) + '%';
+        document.getElementById('stat-mem-seg-cached').style.width  = ((memory.cached_bytes  / total) * 100) + '%';
+
+        // --- Network
+        document.getElementById('stat-net-iface').textContent = network.interface || '';
+        document.getElementById('stat-net-rx').textContent = fmtBitRate(network.rx_bps);
+        document.getElementById('stat-net-tx').textContent = fmtBitRate(network.tx_bps);
+
+        // --- Load avg + uptime
+        if (Array.isArray(loadavg) && loadavg.length === 3) {
+            document.getElementById('stat-load-value').textContent =
+                `${loadavg[0].toFixed(2)} / ${loadavg[1].toFixed(2)} / ${loadavg[2].toFixed(2)}`;
+        }
+        document.getElementById('dash-uptime').textContent = uptime_secs ? fmtDuration(uptime_secs) : '';
     }
 
     function fmtSourceIp(url) {

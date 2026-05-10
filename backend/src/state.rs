@@ -12,8 +12,9 @@ pub type SharedState = Arc<AppState>;
 /// previous request.
 #[derive(Default)]
 pub struct MetricsSamples {
-    pub net: Option<(u64, u64, Instant)>, // (rx_total, tx_total, ts)
-    pub cpu: Option<(u64, u64)>,          // (idle_total, total_total) jiffies
+    pub net: Option<(u64, u64, Instant)>, // (rx_total, tx_total, ts) for primary iface
+    pub cpu: Option<(u64, u64)>,          // (idle_total, total_total) jiffies — aggregate
+    pub cpu_per: Vec<(u64, u64)>,         // per-core (idle, total) jiffies, index = core
 }
 
 pub struct AppState {
