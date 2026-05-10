@@ -1,6 +1,6 @@
 import { apiFetch } from './auth.js';
 import { closeModal, openModal } from '../shared/components.js';
-import { copyToClipboard, esc, toast } from '../shared/utils.js';
+import { esc, toast } from '../shared/utils.js';
 import type { StreamKey } from './types.js';
 
 const INGEST_HOST = location.hostname;
@@ -43,11 +43,10 @@ function renderKeys(): void {
       const llhlsUrl = `${proto}://${INGEST_HOST}/live/${k.key_token}/llhls.m3u8`;
       const srtPlayUrl = `srt://${INGEST_HOST}:9998?streamid=default/live/${k.key_token}/playlist`;
 
-      const row = (label: string, value: string, copyLabel = 'Copy', labelStyle = ''): string => `
+      const row = (label: string, value: string, labelStyle = ''): string => `
         <div class="url-row">
           <span class="url-label" ${labelStyle ? `style="${labelStyle}"` : ''}>${esc(label)}</span>
           <input readonly class="url-input" style="font-family:monospace;font-size:11px" value="${esc(value)}">
-          <button class="btn btn-copy" data-action="copy" data-value="${esc(value)}">${esc(copyLabel)}</button>
         </div>`;
 
       return `
@@ -58,23 +57,18 @@ function renderKeys(): void {
           <button class="btn btn-sm btn-danger" data-action="delete-key" data-id="${esc(k.id)}">Delete</button>
         </div>
         <div class="key-card-body">
-          <div class="url-row">
-            <span class="url-label">Stream Key</span>
-            <input readonly class="url-input" style="font-family:monospace;font-size:11px" value="${esc(k.key_token)}">
-            <button class="btn btn-primary btn-copy" data-action="copy" data-value="${esc(k.key_token)}">Copy</button>
-          </div>
+          ${row('Stream Key', k.key_token)}
           ${row('SRT', srtUrl)}
-          ${row('RTMP', rtmpServer, 'Copy Server')}
+          ${row('RTMP', rtmpServer)}
           <div class="url-row">
             <span class="url-label"></span>
             <input readonly class="url-input" style="font-family:monospace;font-size:11px" value="${esc(k.key_token)}">
-            <button class="btn btn-copy" data-action="copy" data-value="${esc(k.key_token)}">Copy Key</button>
           </div>
           ${row('WHIP', whipUrl)}
           <hr class="url-divider">
-          ${row('WebRTC', webrtcUrl, 'Copy', 'color:var(--accent)')}
-          ${row('LLHLS', llhlsUrl, 'Copy', 'color:var(--accent)')}
-          ${row('SRT', srtPlayUrl, 'Copy', 'color:var(--accent)')}
+          ${row('WebRTC', webrtcUrl, 'color:var(--accent)')}
+          ${row('LLHLS', llhlsUrl, 'color:var(--accent)')}
+          ${row('SRT', srtPlayUrl, 'color:var(--accent)')}
         </div>
       </div>`;
     })
@@ -131,7 +125,5 @@ export function handleKeyAction(action: string, target: HTMLElement): void {
   if (action === 'delete-key') {
     const id = target.getAttribute('data-id') || '';
     void deleteKey(id);
-  } else if (action === 'copy') {
-    copyToClipboard(target.getAttribute('data-value') || '');
   }
 }

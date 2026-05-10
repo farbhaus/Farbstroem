@@ -127,7 +127,6 @@ function renderRooms(): void {
           <div class="url-row">
             <span class="url-label">Viewer</span>
             <input readonly class="url-input" value="${esc(viewerUrl)}">
-            <button class="btn btn-copy" data-action="copy" data-value="${esc(viewerUrl)}">Copy</button>
           </div>
           <div class="url-row">
             <span class="url-label">Presenter</span>

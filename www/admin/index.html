@@ -200,6 +200,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
 .files-dropzone {
     background: var(--surface); border: 1px dashed var(--border); border-radius: 10px;
     min-height: 80px; transition: border-color 0.15s, background 0.15s;
+    overflow: hidden;
 }
 .files-dropzone.dragover { border-color: var(--accent); background: #1a1508; }
 
@@ -227,10 +228,21 @@ main { margin-top: var(--nav-h); padding: 32px; }
 
 .file-row {
     display: grid;
-    grid-template-columns: 30px 36px minmax(0, 2fr) 90px 80px 140px minmax(0, 1fr) auto;
-    align-items: center; gap: 14px; padding: 10px 16px;
+    grid-template-columns:
+        24px
+        36px
+        minmax(60px, 3fr)
+        minmax(36px, 1fr)
+        minmax(36px, 1fr)
+        minmax(72px, 1.5fr)
+        minmax(80px, 1.5fr)
+        200px;
+    align-items: center; column-gap: 10px; padding: 10px 16px;
     border-bottom: 1px solid var(--border); font-size: 13px;
 }
+/* Don't anchor actions to the right of its grid cell — if button widths
+   exceed the 200px cell, the element would extend leftward into the
+   chips column. Keep it stretched and right-align buttons internally. */
 .file-row:last-child { border-bottom: none; }
 .file-row:hover { background: var(--surface2); }
 .file-row.selected { background: #1a1508; }
@@ -245,7 +257,7 @@ main { margin-top: var(--nav-h); padding: 32px; }
 .file-name.editing { cursor: text; }
 .file-name-input { width: 100%; padding: 4px 6px; background: var(--surface); border: 1px solid var(--accent); color: var(--text); font: inherit; font-size: 13px; border-radius: var(--r-md); outline: none; box-shadow: var(--ring-accent); }
 .file-meta { font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-chips { display: flex; flex-wrap: wrap; gap: 4px; overflow: hidden; }
+.file-chips { display: flex; flex-wrap: wrap; gap: 4px; overflow: hidden; margin-right: 12px; }
 .file-chip {
     display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
     background: #1a1508; color: var(--accent); border-radius: 10px;
@@ -257,16 +269,24 @@ main { margin-top: var(--nav-h); padding: 32px; }
 }
 .file-chip button:hover { opacity: 1; }
 .file-chip-empty { color: var(--faint); font-size: 11px; font-style: italic; }
-.file-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.file-actions { display: flex; gap: 4px; flex-shrink: 0; justify-content: flex-end; }
 
 .files-list-head {
     display: grid;
-    grid-template-columns: 30px 36px minmax(0, 2fr) 90px 80px 140px minmax(0, 1fr) auto;
-    align-items: center; gap: 14px; padding: 10px 16px;
+    grid-template-columns:
+        24px
+        36px
+        minmax(60px, 3fr)
+        minmax(36px, 1fr)
+        minmax(36px, 1fr)
+        minmax(72px, 1.5fr)
+        minmax(80px, 1.5fr)
+        200px;
+    align-items: center; column-gap: 10px; padding: 10px 16px;
     font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
     color: var(--dim); border-bottom: 1px solid var(--border); background: var(--surface2);
 }
-.files-list-actions-spacer { width: 180px; }
+.files-list-actions-spacer {} /* placeholder cell in the actions column */
 
 .assign-room-row {
     display: flex; align-items: center; gap: 10px; padding: 10px 14px;
@@ -287,18 +307,33 @@ main { margin-top: var(--nav-h); padding: 32px; }
 .preview-body iframe { width: 100%; height: 70vh; border: none; background: #fff; }
 .preview-unsupported { color: var(--dim); font-size: 13px; padding: 40px; text-align: center; }
 
-@media (max-width: 900px) {
-    .file-row, .files-list-head {
-        grid-template-columns: 24px 32px minmax(0, 1fr) auto;
+/* Below ~1000px, the 8-column single-row layout can't fit without the
+   actions column getting clipped. Reflow into three rows: name on top,
+   type/size/date/chips on the middle row, and actions on the bottom
+   right. Keeps every field visible. */
+@media (max-width: 1000px) {
+    .file-row {
+        grid-template-columns: 24px 32px auto auto auto minmax(0, 1fr);
+        grid-template-areas:
+            "check icon name name name name"
+            ".     .    type size date chips"
+            "acts  acts acts acts acts acts";
+        column-gap: 10px;
+        row-gap: 4px;
     }
-    .file-row > .file-meta-type,
-    .file-row > .file-meta-size,
-    .file-row > .file-meta-date,
-    .file-row > .file-chips,
-    .files-list-head > span:nth-child(4),
-    .files-list-head > span:nth-child(5),
-    .files-list-head > span:nth-child(6),
-    .files-list-head > span:nth-child(7) { display: none; }
+    .file-row > input[type=checkbox] { grid-area: check; align-self: center; }
+    .file-row > .file-icon          { grid-area: icon; }
+    .file-row > .file-name          { grid-area: name; align-self: center; }
+    .file-row > .file-meta-type     { grid-area: type; }
+    .file-row > .file-meta-size     { grid-area: size; }
+    .file-row > .file-meta-date     { grid-area: date; }
+    .file-row > .file-chips         { grid-area: chips; min-width: 0; }
+    .file-row > .file-actions       {
+        grid-area: acts;
+        justify-self: end;
+        flex-wrap: wrap;
+    }
+    .files-list-head { display: none; }
 }
 
 /* ---- Responsive ---- */
