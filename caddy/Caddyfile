@@ -11,6 +11,10 @@
 		}
 	}
 
+	# Trailing-slash redirects so relative <script src="./..."> paths resolve
+	# the same regardless of how users type the URL.
+	redir /admin /admin/ permanent
+
 	# Everything else → backend (API + WebSocket + static files)
 	reverse_proxy stream-backend:4001
 }

@@ -1,0 +1,224 @@
+import { apiFetch } from './auth.js';
+import {
+  esc,
+  fmtBitRate,
+  fmtBitrate,
+  fmtBytes,
+  fmtDuration,
+  fmtSourceIp,
+  fmtUptime,
+  pctClass,
+  toast,
+} from '../shared/utils.js';
+import type { MetricsResponse, OmeData } from './types.js';
+
+let metricsData: MetricsResponse | null = null;
+let omeData: OmeData | null = null;
+let dashTickerId: ReturnType<typeof setInterval> | null = null;
+
+let getActiveTab: () => string = () => '';
+let onStreamKicked: () => void = () => {};
+
+export function configureDashboard(opts: {
+  getActiveTab: () => string;
+  onStreamKicked: () => void;
+}): void {
+  getActiveTab = opts.getActiveTab;
+  onStreamKicked = opts.onStreamKicked;
+}
+
+export async function loadDashboard(): Promise<void> {
+  const res = await apiFetch('/api/admin/metrics');
+  if (!res || !res.ok) return;
+  metricsData = await res.json();
+  renderDashboard();
+}
+
+export async function loadOme(): Promise<void> {
+  const res = await apiFetch('/api/ome/status');
+  if (!res) return;
+  omeData = await res.json();
+  if (getActiveTab() === 'ome') renderOme();
+}
+
+export function startDashboardTicker(): void {
+  if (dashTickerId) return;
+  let tick = 0;
+  dashTickerId = setInterval(() => {
+    if (getActiveTab() !== 'ome') return;
+    void loadDashboard();
+    // Refresh OME stream list every 3rd tick (~4.5s) — heavier query.
+    if (tick % 3 === 0) void loadOme();
+    tick++;
+  }, 1500);
+}
+
+export function stopDashboardTicker(): void {
+  if (dashTickerId) {
+    clearInterval(dashTickerId);
+    dashTickerId = null;
+  }
+}
+
+function setText(id: string, text: string): void {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function renderDashboard(): void {
+  if (!metricsData) return;
+  const { cpu, memory, network, loadavg, uptime_secs } = metricsData;
+
+  // CPU
+  const cpuPct = cpu.percent || 0;
+  setText('stat-cpu-value', cpuPct.toFixed(1) + '%');
+  const cpuBar = document.getElementById('stat-cpu-bar') as HTMLElement | null;
+  if (cpuBar) {
+    cpuBar.style.width = Math.min(100, cpuPct) + '%';
+    cpuBar.className = 'stat-bar-fill ' + pctClass(cpuPct);
+  }
+  const coresEl = document.getElementById('stat-cpu-cores');
+  if (coresEl) {
+    const cores = cpu.cores || [];
+    coresEl.innerHTML = cores
+      .map(
+        (p, i) => `
+        <div class="cpu-core">
+          <div class="cpu-core-label"><span>${i}</span><span>${p.toFixed(0)}%</span></div>
+          <div class="stat-bar stat-bar-tight"><div class="stat-bar-fill ${pctClass(p)}" style="width:${Math.min(100, p)}%"></div></div>
+        </div>`,
+      )
+      .join('');
+  }
+
+  // Memory
+  const memPct = memory.percent || 0;
+  setText('stat-mem-value', memPct.toFixed(1) + '%');
+  setText(
+    'stat-mem-sub',
+    `${fmtBytes(memory.used_bytes)} used · ${fmtBytes(memory.cached_bytes)} cache · ${fmtBytes(memory.total_bytes)} total`,
+  );
+  const total = memory.total_bytes || 1;
+  const setSeg = (id: string, bytes: number) => {
+    const el = document.getElementById(id);
+    if (el) (el as HTMLElement).style.width = ((bytes / total) * 100).toFixed(2) + '%';
+  };
+  setSeg('stat-mem-seg-used', memory.used_bytes);
+  setSeg('stat-mem-seg-buffers', memory.buffers_bytes);
+  setSeg('stat-mem-seg-cached', memory.cached_bytes);
+
+  // Network
+  setText('stat-net-iface', network.interface || '');
+  setText('stat-net-rx', fmtBitRate(network.rx_bps));
+  setText('stat-net-tx', fmtBitRate(network.tx_bps));
+
+  // Load avg + uptime
+  if (loadavg && loadavg.length === 3) {
+    setText(
+      'stat-load-value',
+      `${loadavg[0].toFixed(2)} / ${loadavg[1].toFixed(2)} / ${loadavg[2].toFixed(2)}`,
+    );
+  }
+  setText('dash-uptime', uptime_secs ? fmtDuration(uptime_secs) : '');
+}
+
+function renderOme(): void {
+  const container = document.getElementById('ome-list');
+  const subheader = document.getElementById('ome-subheader');
+  if (!container || !subheader) return;
+
+  if (!omeData) {
+    container.innerHTML = '<div class="empty">Loading…</div>';
+    return;
+  }
+  if (omeData.error) {
+    container.innerHTML = `<div class="empty">OME unavailable — ${esc(omeData.error)}</div>`;
+    subheader.textContent = '';
+    return;
+  }
+
+  const { streams, conf_count } = omeData;
+  subheader.textContent =
+    conf_count > 0 ? `${conf_count} conference stream${conf_count !== 1 ? 's' : ''} active` : '';
+
+  if (!streams.length) {
+    container.innerHTML = '<div class="empty">No streams currently live.</div>';
+    return;
+  }
+
+  container.innerHTML = streams
+    .map((s) => {
+      const input = s.detail?.input || {};
+      const tracks = input.tracks || [];
+      const vTrack = tracks.find((t) => t.type === 'Video');
+      const aTrack = tracks.find((t) => t.type === 'Audio');
+      const v = vTrack?.video;
+      const a = aTrack?.audio;
+
+      const videoStr = v
+        ? `${v.codec} · ${v.width}×${v.height} · ${Math.round(v.framerate)}fps · ${fmtBitrate(v.bitrateLatest)}`
+        : '—';
+      const audioStr = a
+        ? `${a.codec} · ${Math.round(a.samplerate / 1000)}kHz · ${a.channel}ch · ${fmtBitrate(a.bitrateLatest)}`
+        : '—';
+
+      const sourceType = input.sourceType || '?';
+      const sourceIp = fmtSourceIp(input.sourceUrl);
+      const uptime = input.createdTime ? fmtUptime(input.createdTime) : '';
+      const meta = [uptime ? `Live ${uptime}` : '', sourceIp ? `from ${esc(sourceIp)}` : '']
+        .filter(Boolean)
+        .join(' · ');
+
+      const displayName = s.key_name || (s.name.length > 16 ? s.name.slice(0, 16) + '…' : s.name);
+
+      return `
+      <div class="stream-card">
+        <div class="stream-card-header">
+          <div class="stream-live-dot"></div>
+          <div class="stream-card-info">
+            <div class="stream-card-name">${esc(displayName)}</div>
+            <div class="stream-card-room">${
+              s.room_name
+                ? `Room: ${esc(s.room_name)}`
+                : '<span style="color:var(--faint)">No room assigned</span>'
+            }</div>
+          </div>
+          <span class="badge badge-source">${esc(sourceType)}</span>
+          <button class="btn btn-sm btn-danger" data-action="kick-stream" data-name="${esc(s.name)}">Kick</button>
+        </div>
+        <div class="stream-card-body">
+          <div class="stream-stat"><span class="stat-label">Video</span><span>${videoStr}</span></div>
+          <div class="stream-stat"><span class="stat-label">Audio</span><span>${audioStr}</span></div>
+        </div>
+        ${meta ? `<div class="stream-meta">${meta}</div>` : ''}
+      </div>`;
+    })
+    .join('');
+}
+
+async function kickStream(name: string): Promise<void> {
+  if (!confirm(`Kick stream "${name}"?\nThis will disconnect the encoder immediately.`)) return;
+  const res = await apiFetch(`/api/ome/streams/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  if (res && res.ok) {
+    toast('Stream kicked');
+    void loadOme();
+    onStreamKicked();
+  } else {
+    toast('Kick failed');
+  }
+}
+
+export function renderOmeIfReady(): void {
+  if (omeData) renderOme();
+}
+
+export function initDashboard(): void {
+  document.getElementById('ome-refresh-btn')?.addEventListener('click', () => void loadOme());
+}
+
+export function handleDashboardAction(action: string, target: HTMLElement): void {
+  if (action === 'kick-stream') {
+    const name = target.getAttribute('data-name') || '';
+    void kickStream(name);
+  }
+}

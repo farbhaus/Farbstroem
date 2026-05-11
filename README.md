@@ -39,7 +39,7 @@ All services run on a single Docker bridge network (`stream-net`) and reference 
 | Conference SFU | LiveKit |
 | Backend | Rust + [Axum](https://github.com/tokio-rs/axum) 0.8, Tokio |
 | Database | SQLite (WAL) via `rusqlite` + `r2d2` pool |
-| Frontend | Vanilla JS — admin SPA (`www/admin/`) + viewer page (`www/viewer/`) with OvenPlayer and the LiveKit JS SDK |
+| Frontend | TypeScript ES modules compiled with `tsc` (no bundler, no runtime npm deps) — admin SPA, viewer page, landing page. CDN-loaded OvenPlayer + HLS.js + LiveKit JS SDK |
 | Reverse proxy | Caddy 2 (container) |
 
 ## Features
@@ -62,7 +62,16 @@ All services run on a single Docker bridge network (`stream-net`) and reference 
 
 ## Local development
 
-See [backend/DEVELOPMENT.md](backend/DEVELOPMENT.md) for the dev loop (`cargo check`, `watchexec`, `cargo test`), required tools (mold/clang on Linux, `watchexec-cli`), and environment variables.
+Backend (Rust): see [backend/DEVELOPMENT.md](backend/DEVELOPMENT.md) for the dev loop (`cargo check`, `watchexec`, `cargo test`), required tools (mold/clang on Linux, `watchexec-cli`), and environment variables.
+
+Frontend (TypeScript): `tsc` only — no bundler. After installing once, keep the watcher running in a side terminal:
+
+```bash
+cd frontend && npm install        # one-time
+npm run watch                     # rebuilds www/dist/ on every .ts save
+```
+
+The backend container bind-mounts `./www`, so hard-refreshing the browser picks up the new build immediately — no Docker rebuild needed for frontend changes. Production hosts must run `npm ci && npm run build` before `docker compose up -d` so `www/dist/` exists on disk.
 
 ## Production deployment
 
@@ -118,10 +127,11 @@ LiveKit needs its own subdomain (e.g. `lk.stream.yourdomain.com`) proxying to po
 ```
 .
 ├── backend/            Rust/Axum backend — see backend/DEVELOPMENT.md
+├── frontend/           TypeScript sources (`tsc` only, no bundler) for admin/viewer/landing SPAs
 ├── caddy/Caddyfile     Container Caddy config (SITE_ADDRESS envar-driven)
 ├── livekit/            LiveKit server config
 ├── ome/                OvenMediaEngine config
-├── www/                Admin SPA + viewer page (served by the backend)
+├── www/                Static HTML/CSS + compiled JS (dist/) served by the backend
 ├── docker-compose.yml
 ├── .env.example        Required env vars, documented inline
 └── Streaming.md        Project memory — architecture details, pitfalls, security notes

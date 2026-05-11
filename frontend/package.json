@@ -1,0 +1,15 @@
+{
+  "name": "zstream-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TypeScript sources for the zStream admin SPA. Output is plain ES modules served by the Rust backend.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
