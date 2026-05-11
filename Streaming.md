@@ -167,15 +167,15 @@ Shown after join: Camera+Mic / Mic Only / Watch Only. Choice saved to `localStor
 
 The matching SSE stream at `/api/public/rooms/:slug/waiting/events/:participantId` emits four event types: `admitted`, `kicked`, `room_ended`, and `ping`. Waiting-room clients can drive the full state machine from SSE alone without keeping a WS open.
 
-### Frontend modularization (future direction)
+### Frontend modularization
 
-If and when [www/viewer/index.html](www/viewer/index.html) and [www/admin/index.html](www/admin/index.html) grow past what's comfortable in a single inline `<script>`, the recommended split is **native ES modules, no bundler** — matching the project's "zero-dependency, no build step" ethos documented at the top of [www/shared/utils.js](www/shared/utils.js).
+Done. Admin, viewer, and landing are TypeScript modules under [frontend/](frontend/), compiled by `tsc` to [www/dist/](www/dist/) as plain ES modules. No bundler, no runtime npm deps — `typescript` is the only devDependency. Sources are split per subsystem:
 
-- Viewer: `app.js` (bootstrap) + `conference.js` (LiveKit tiles) + `chat.js` (chat + files) + `pointer.js` (overlays) + `toolbar.js` (button state), loaded via `<script type="module" src="./app.js"></script>`, symbols surfaced with named `export`s.
-- Admin: `app.js` + `rooms.js` + `files.js` + `streamKeys.js` on the same pattern.
-- Alternatives considered — Vite (introduces a build step, contradicts the ethos); Web Components (larger refactor, not justified for this audience); single mega-module (loses the benefit).
+- Admin: `auth`, `rooms`, `stream-keys`, `files`, `branding`, `dashboard`, `main`, `types`.
+- Viewer: `state` (central reactive store via [frontend/shared/store.ts](frontend/shared/store.ts)), `session`, `screens`, `ws` (typed discriminated `WsMessage` union + exhaustive router), `player` (OvenPlayer), `conference` (LiveKit + tile grid + cam/mic/screen + devices + presenter moderation), `chat`, `pointer`, `layout`, `main`, `types`, plus [globals.d.ts](frontend/viewer/globals.d.ts) for the CDN-loaded `OvenPlayer` and `LivekitClient` globals.
+- Shared: `store`, `utils`, `branding`, `components`.
 
-No ticket for this yet; capture if/when the inline scripts become painful to navigate.
+HTML pages reference the compiled JS via `<script type="module" src="/dist/<page>/main.js">`. Click handlers are delegated via `[data-action]` attributes (no `window.*` globals). The legacy `www/shared/utils.js` has been deleted; CSS tokens/components stay under [www/shared/](www/shared/) and are documented in [www/shared/README.md](www/shared/README.md).
 
 ### Docker
 - **Backend is a compiled Rust binary baked into the image** (multi-stage: `rust:1-alpine` builder → `alpine:3.20` runtime, statically linked against musl). `docker restart` does NOT pick up code changes — must `docker compose up -d --build stream-backend`.

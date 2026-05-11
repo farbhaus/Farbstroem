@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-zStream is a private low-latency streaming platform for color-grading review sessions. It combines OvenMediaEngine (OME) for broadcast ingest/delivery, LiveKit for participant voice/video, and a Rust/Axum backend for API and session management. The frontend is vanilla JS with no build step.
+zStream is a private low-latency streaming platform for color-grading review sessions. It combines OvenMediaEngine (OME) for broadcast ingest/delivery, LiveKit for participant voice/video, and a Rust/Axum backend for API and session management. The frontend is TypeScript compiled with `tsc` (no bundler, no runtime npm deps) emitted as plain ES modules.
 
 ## Commands
 
@@ -84,14 +84,24 @@ Browser (viewer page)
 
 ## Frontend structure
 
-`www/` is served as static files directly by the backend — no build step, no bundler.
+TypeScript sources live under `frontend/`, compiled by `tsc` to `www/dist/` (plain ES modules, no bundler). HTML pages under `www/` import the compiled modules via `<script type="module" src="/dist/<page>/main.js">`. Static files are served directly by the Axum backend — only the type-checking step needs Node.
 
-- `www/shared/` — design system: `tokens.css`, `components.css`, `utils.css`, `utils.js` (API wrapper, toast/modal helpers)
-- `www/viewer/index.html` — participant page: join form → OvenPlayer + LiveKit tiles + chat + pointer overlay
-- `www/admin/index.html` — admin SPA: room CRUD, stream keys, file library, branding
-- `www/landing/index.html` — public homepage
+```bash
+cd frontend && npm install        # one-time
+npm run watch                     # tsc --watch, rebuilds on every save
+npm run typecheck                 # CI gate
+npm run build                     # production build (CI + prod host)
+```
 
-All pages import from `www/shared/` for consistent styling and API calls.
+- `frontend/admin/` — admin SPA modules (`main`, `auth`, `rooms`, `stream-keys`, `files`, `branding`, `dashboard`, `types`)
+- `frontend/viewer/` — viewer SPA modules (`main`, `types`, `state`, `session`, `screens`, `ws`, `player`, `livekit`/`conference`, `chat`, `pointer`, `layout`, plus `globals.d.ts` for the CDN-loaded LiveKit/OvenPlayer globals)
+- `frontend/landing/` — landing page
+- `frontend/shared/` — `store.ts` (tiny reactive store), `utils.ts` (typed API wrapper, toast, formatters), `branding.ts` (read-only branding loader), `components.ts` (modal helpers)
+- `www/shared/` — design system CSS (`tokens.css`, `components.css`, `utils.css`) plus a `README.md` documenting tokens and conventions
+- `www/{admin,viewer,landing}/index.html` — HTML markup, page-specific `<style>`, and the `<script type="module">` tag pointing at the compiled bundle
+- `www/dist/` — build output (gitignored; CI / prod host produces it)
+
+CDN-loaded runtime deps stay as `<script>` tags in the HTML: OvenPlayer, HLS.js, LiveKit client. No npm runtime deps.
 
 ## Key implementation details
 

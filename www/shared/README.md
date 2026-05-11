@@ -9,7 +9,8 @@ Shared tokens, components, and utilities used by every page in `www/`. Loaded as
 | `tokens.css` | CSS custom properties: colors, typography, spacing (4px scale), radii, motion, z-index, layout. The source of truth — every value you'd hardcode goes here first. |
 | `components.css` | Reusable component classes: `.btn`, `.btn-primary`, `.btn-tab`, `.modal-overlay` + `.modal`, `.section-header`, `.badge-*`, `.empty`, form rows. |
 | `utils.css` | Tiny utility layer: `.u-hidden`, layout helpers. Keep this small — prefer real components over utility-class drift. |
-| `utils.js` | Legacy zero-dependency helpers exposed on `window.zs` (used by viewer + landing). Admin no longer uses this — see `frontend/shared/utils.ts`. |
+
+JS helpers (toast, fetch wrapper, branding loader, formatters, store) live under [frontend/shared/](../../frontend/shared/) as TypeScript modules and are imported per-page from the compiled output in `www/dist/shared/`.
 
 ## Color tokens
 
@@ -58,8 +59,6 @@ Page-specific styling stays inline in the page's `<style>` block. If something i
 - **Class names**: descriptive, hyphenated. No BEM. No CSS-in-JS.
 - **Z-index**: only use the `--z-*` scale. New layers should extend the scale, not invent ad-hoc values.
 
-## TypeScript admin (`frontend/`)
+## TypeScript build
 
-The admin SPA is now TypeScript, compiled with `tsc` to `www/admin/dist/`. Sources live under `frontend/admin/` and `frontend/shared/`. See `frontend/package.json` for build commands.
-
-Other pages (viewer, landing) still load `utils.js` directly via `window.zs`. They will migrate in a future round.
+All three SPAs (admin, viewer, landing) are TypeScript, compiled with `tsc` to `www/dist/`. Sources live under `frontend/{admin,viewer,landing,shared}/`. See [frontend/package.json](../../frontend/package.json) for build commands (`build`, `watch`, `typecheck`).
