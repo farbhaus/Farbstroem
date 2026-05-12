@@ -108,7 +108,8 @@ export type WsClientMessage =
   | { type: 'chat:message'; text: string }
   | { type: 'pointer:move'; x: number; y: number }
   | { type: 'pointer:hide' }
-  | { type: 'focus:set'; tileId: TileId | null };
+  | { type: 'focus:set'; tileId: TileId | null }
+  | { type: 'file:share'; fileId: string };
 
 // ---- Saved session (sessionStorage) ----
 

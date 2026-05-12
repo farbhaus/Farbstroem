@@ -490,6 +490,20 @@ body.has-focus.rail-hidden #stage-rail {
 }
 .chat-file-dl:hover { border-color: var(--dim); background: var(--surface2); }
 
+/* Draft chip — same shape as a posted file message, but with an X to remove
+   instead of a download link, and tucked against the input row. */
+.chat-draft-chip { margin: var(--sp-2) var(--sp-3) 0; }
+.chat-draft-remove {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; padding: 0; flex-shrink: 0;
+    background: transparent; border: 1px solid transparent;
+    color: var(--dim); cursor: pointer; border-radius: var(--r-md);
+    transition: background var(--dur-fast) var(--ease-out),
+                color var(--dur-fast) var(--ease-out);
+}
+.chat-draft-remove:hover { background: var(--surface); color: var(--text); }
+.chat-draft-remove svg { width: 14px; height: 14px; }
+
 /* ---- Files section ---- */
 #files-section { flex-shrink: 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; max-height: 180px; }
 #files-header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--surface2); flex-shrink: 0; }

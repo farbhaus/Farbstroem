@@ -15,6 +15,9 @@ use std::sync::{Arc, LazyLock};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info};
 
+use rusqlite::OptionalExtension;
+
+use crate::events::FileSharedEvent;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -369,6 +372,96 @@ async fn handle_text_message(
             });
             broadcast_to_room(&WS_ROOMS, slug, &broadcast_msg.to_string()).await;
         }
+        "file:share" => {
+            let file_id = match msg.get("fileId").and_then(|t| t.as_str()) {
+                Some(s) if !s.is_empty() => s.to_string(),
+                _ => return,
+            };
+
+            let conn = match state.db.get() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            let pid_for_block = participant_id.to_string();
+            let slug_for_block = slug.to_string();
+            let file_id_lookup = file_id.clone();
+            // Pull the draft file row and validate ownership + room match.
+            // Returns (stored_room_id, original_name, mime_type, size_bytes,
+            // is_shared_was) on success.
+            type DraftRow = (String, String, String, i64, i64);
+            let row: Option<DraftRow> = match tokio::task::spawn_blocking(move || {
+                conn.query_row(
+                    "SELECT sf.room_id, sf.original_name, sf.mime_type, sf.size_bytes, sf.is_shared \
+                     FROM session_files sf \
+                     JOIN rooms r ON r.id = sf.room_id \
+                     WHERE sf.id = ?1 AND sf.uploader_id = ?2 AND r.slug = ?3",
+                    rusqlite::params![file_id_lookup, pid_for_block, slug_for_block],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, i64>(3)?,
+                            row.get::<_, i64>(4)?,
+                        ))
+                    },
+                )
+                .optional()
+                .unwrap_or(None)
+            })
+            .await
+            {
+                Ok(opt) => opt,
+                Err(_) => return,
+            };
+
+            let (room_id, original_name, mime, size_bytes, is_shared_was) = match row {
+                Some(t) => t,
+                None => return,
+            };
+
+            // Already shared? Treat as a no-op — the file is already in chat
+            // history. Sending a chat message alongside is unaffected.
+            if is_shared_was != 0 {
+                return;
+            }
+
+            // Flip the draft to shared + mirror into the admin library.
+            let conn = match state.db.get() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            let file_id_db = file_id.clone();
+            let room_id_db = room_id.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                let _ = conn.execute(
+                    "UPDATE session_files SET is_shared = 1 WHERE id = ?1",
+                    rusqlite::params![file_id_db],
+                );
+                let _ = conn.execute(
+                    "INSERT OR IGNORE INTO room_files (room_id, file_id) VALUES (?1, ?2)",
+                    rusqlite::params![room_id_db, file_id_db],
+                );
+            })
+            .await;
+
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+
+            let _ = state.events.file_shared.send(FileSharedEvent {
+                slug: slug.to_string(),
+                id: file_id,
+                participant_id: participant_id.to_string(),
+                uploader_name: name.to_string(),
+                role: role.to_string(),
+                name: original_name,
+                size: size_bytes as u64,
+                mime,
+                ts,
+            });
+        }
         "focus:set" => {
             // Only presenters can drive the host pin. Viewers' clicks are
             // local-only and never reach the server.
@@ -428,7 +521,7 @@ fn send_chat_history(state: &Arc<AppState>, slug: &str, tx: &mpsc::UnboundedSend
              FROM session_files sf \
              JOIN rooms r ON r.id = sf.room_id \
              LEFT JOIN participants p ON p.id = sf.uploader_id \
-             WHERE r.slug = ?1 \
+             WHERE r.slug = ?1 AND sf.is_shared = 1 \
          ) combined \
          ORDER BY ts DESC \
          LIMIT 50",

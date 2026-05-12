@@ -49,6 +49,18 @@ struct ParticipantQuery {
     token: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct UploadQuery {
+    #[serde(rename = "participantId")]
+    participant_id: Option<String>,
+    token: Option<String>,
+    /// When true, the file is stored as a draft (is_shared=0) — no
+    /// `file:shared` WS event, no room_files mirror — until the
+    /// participant explicitly shares it via the WS `file:share` message.
+    #[serde(default)]
+    defer: bool,
+}
+
 struct ParticipantInfo {
     id: String,
     name: String,
@@ -109,9 +121,10 @@ pub fn extract_extension(name: &str) -> String {
 async fn upload_file(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
-    Query(query): Query<ParticipantQuery>,
+    Query(query): Query<UploadQuery>,
     mut multipart: Multipart,
 ) -> Result<Json<Value>, AppError> {
+    let defer = query.defer;
     let pid = query
         .participant_id
         .as_deref()
@@ -167,21 +180,27 @@ async fn upload_file(
                 .await
                 .map_err(|e| AppError::Internal(e.to_string()))?;
 
-            // Look for an existing row with the same hash. If found, reuse
-            // its id and blob; otherwise mint a new file_id and write bytes.
-            let conn = state.db.get()?;
-            let hash_lookup = content_hash.clone();
-            let existing: Option<String> = tokio::task::spawn_blocking(move || {
-                conn.query_row(
-                    "SELECT id FROM session_files WHERE content_hash = ?1 LIMIT 1",
-                    params![hash_lookup],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()
-                .map_err(|e| AppError::Internal(e.to_string()))
-            })
-            .await
-            .map_err(|e| AppError::Internal(e.to_string()))??;
+            // Dedup applies only to non-deferred uploads. Drafts always get
+            // a fresh row (and content_hash = NULL) so we don't entangle
+            // them with already-shared files; the file:share handler later
+            // re-computes the hash for dedup against future uploads.
+            let existing: Option<String> = if defer {
+                None
+            } else {
+                let conn = state.db.get()?;
+                let hash_lookup = content_hash.clone();
+                tokio::task::spawn_blocking(move || {
+                    conn.query_row(
+                        "SELECT id FROM session_files WHERE content_hash = ?1 LIMIT 1",
+                        params![hash_lookup],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()
+                    .map_err(|e| AppError::Internal(e.to_string()))
+                })
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))??
+            };
 
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -213,11 +232,14 @@ async fn upload_file(
                 let mime_clone = mime.clone();
                 let room_id = participant.room_id.clone();
                 let pid_db = participant.id.clone();
-                let hash_clone = content_hash.clone();
+                // Drafts skip the hash so they don't trip the UNIQUE index
+                // against shared rows of the same content.
+                let hash_clone: Option<String> = if defer { None } else { Some(content_hash.clone()) };
+                let is_shared_val: i64 = if defer { 0 } else { 1 };
                 tokio::task::spawn_blocking(move || {
                     conn.execute(
-                        "INSERT INTO session_files (id, room_id, uploader_id, original_name, stored_path, mime_type, size_bytes, content_hash, created_at) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime(?9, 'unixepoch'))",
+                        "INSERT INTO session_files (id, room_id, uploader_id, original_name, stored_path, mime_type, size_bytes, content_hash, is_shared, created_at) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime(?10, 'unixepoch'))",
                         params![
                             new_id_clone,
                             room_id,
@@ -227,6 +249,7 @@ async fn upload_file(
                             mime_clone,
                             size as i64,
                             hash_clone,
+                            is_shared_val,
                             ts as i64,
                         ],
                     )
@@ -237,43 +260,45 @@ async fn upload_file(
                 (new_id, original_name.clone())
             };
 
-            // Best-effort mirror into room_files so the admin library surfaces
-            // the same file with its room chip. A failure here (e.g. schema
-            // drift) must never block the upload or suppress the live WS
-            // event — surface it as a warning and continue.
-            let conn = state.db.get()?;
-            let file_id_mirror = file_id.clone();
-            let room_id_mirror = participant.room_id.clone();
-            let mirror_res = tokio::task::spawn_blocking(move || {
-                conn.execute(
-                    "INSERT OR IGNORE INTO room_files (room_id, file_id) VALUES (?1, ?2)",
-                    params![room_id_mirror, file_id_mirror],
-                )
-            })
-            .await;
-            if let Ok(Err(e)) = mirror_res {
-                tracing::warn!("room_files mirror failed for {}: {}", file_id, e);
-            }
+            // For drafts: skip the library mirror and the live broadcast.
+            // Both run later when the participant fires the file:share WS
+            // message (see ws.rs handler).
+            if !defer {
+                // Best-effort mirror into room_files so the admin library
+                // surfaces the same file with its room chip.
+                let conn = state.db.get()?;
+                let file_id_mirror = file_id.clone();
+                let room_id_mirror = participant.room_id.clone();
+                let mirror_res = tokio::task::spawn_blocking(move || {
+                    conn.execute(
+                        "INSERT OR IGNORE INTO room_files (room_id, file_id) VALUES (?1, ?2)",
+                        params![room_id_mirror, file_id_mirror],
+                    )
+                })
+                .await;
+                if let Ok(Err(e)) = mirror_res {
+                    tracing::warn!("room_files mirror failed for {}: {}", file_id, e);
+                }
 
-            // Emit file:shared event
-            let _ = state.events.file_shared.send(FileSharedEvent {
-                slug: participant.slug.clone(),
-                id: file_id.clone(),
-                participant_id: participant.id.clone(),
-                uploader_name: participant.name.clone(),
-                role: participant.role.clone(),
-                name: effective_name.clone(),
-                size,
-                mime: mime.clone(),
-                ts,
-            });
+                let _ = state.events.file_shared.send(FileSharedEvent {
+                    slug: participant.slug.clone(),
+                    id: file_id.clone(),
+                    participant_id: participant.id.clone(),
+                    uploader_name: participant.name.clone(),
+                    role: participant.role.clone(),
+                    name: effective_name.clone(),
+                    size,
+                    mime: mime.clone(),
+                    ts,
+                });
+            }
 
             info!(
                 room_slug = %participant.slug,
                 actor_id = %participant.id,
                 file_id = %file_id,
                 size,
-                action = "upload_complete",
+                action = if defer { "upload_complete_deferred" } else { "upload_complete" },
                 "file upload complete",
             );
 
@@ -312,13 +337,15 @@ async fn list_files(
         // Union of (a) files whose room_id matches this room (legacy path)
         // and (b) files linked via room_files (library + mirrored participant
         // uploads). DISTINCT because both sources overlap after migration.
+        // Drafts (is_shared = 0) stay invisible until the uploader hits send.
         let mut stmt = conn.prepare(
             "SELECT DISTINCT sf.id, sf.original_name, sf.mime_type, sf.size_bytes, sf.created_at, \
              p.name AS uploader_name, p.role AS uploader_role \
              FROM session_files sf \
              LEFT JOIN participants p ON p.id = sf.uploader_id \
-             WHERE sf.room_id = ?1 \
-                OR sf.id IN (SELECT file_id FROM room_files WHERE room_id = ?1) \
+             WHERE sf.is_shared = 1 \
+               AND (sf.room_id = ?1 \
+                    OR sf.id IN (SELECT file_id FROM room_files WHERE room_id = ?1)) \
              ORDER BY sf.created_at ASC",
         )?;
         let rows = stmt
@@ -406,9 +433,70 @@ async fn download_file(
     ))
 }
 
+/// Delete a draft (unshared) upload. Used when a participant removes the
+/// chip from their chat composer before sending. Only the original
+/// uploader can delete, and only while the file is still a draft —
+/// shared files are part of chat history and stay around.
+async fn delete_draft_file(
+    State(state): State<Arc<AppState>>,
+    Path((slug, file_id)): Path<(String, String)>,
+    Query(query): Query<ParticipantQuery>,
+) -> Result<StatusCode, AppError> {
+    let pid = query
+        .participant_id
+        .as_deref()
+        .ok_or(AppError::Unauthorized("Unauthorized".into()))?
+        .to_string();
+    let token = query
+        .token
+        .as_deref()
+        .ok_or(AppError::Unauthorized("Unauthorized".into()))?
+        .to_string();
+
+    let conn = state.db.get()?;
+    let data_path = state.config.data_path.clone();
+    let stored = tokio::task::spawn_blocking(move || -> Result<Option<String>, AppError> {
+        let participant = validate_participant(&conn, &pid, &token, &slug)?;
+        // Lookup + ownership + draft check in one shot.
+        let stored_path: Option<String> = conn
+            .query_row(
+                "SELECT stored_path FROM session_files \
+                 WHERE id = ?1 AND uploader_id = ?2 AND is_shared = 0",
+                params![file_id, participant.id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let stored_path = match stored_path {
+            Some(p) => p,
+            None => return Ok(None),
+        };
+        conn.execute(
+            "DELETE FROM session_files WHERE id = ?1",
+            params![file_id],
+        )
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(Some(stored_path))
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))??;
+
+    if let Some(stored_name) = stored {
+        let blob_path = format!("{}/files/{}", data_path, stored_name);
+        let _ = tokio::fs::remove_file(&blob_path).await;
+    }
+    // Idempotent: missing/already-shared returns 204 too, since either way
+    // the client's intent ("draft is gone") holds.
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/{slug}/files", post(upload_file).get(list_files))
         .route("/{slug}/files/{fileId}/download", get(download_file))
+        .route(
+            "/{slug}/files/{fileId}",
+            axum::routing::delete(delete_draft_file),
+        )
         .layer(DefaultBodyLimit::max(MAX_FILE_SIZE))
 }

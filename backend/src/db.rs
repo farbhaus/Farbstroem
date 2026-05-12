@@ -367,6 +367,20 @@ pub fn init_pool(db_path: &str, data_path: &str) -> DbPool {
     // Re-run repair: the room_id setnull migration also rewrites FK refs.
     repair_room_files_fk(&conn);
 
+    // is_shared column: drafts are uploaded files not yet posted to chat.
+    let has_is_shared: bool = conn
+        .prepare("PRAGMA table_info(session_files)")
+        .expect("PRAGMA table_info(session_files) failed")
+        .query_map([], |row| row.get::<_, String>(1))
+        .expect("PRAGMA table_info(session_files) query_map failed")
+        .any(|name| name.as_deref() == Ok("is_shared"));
+    if !has_is_shared {
+        conn.execute_batch(
+            "ALTER TABLE session_files ADD COLUMN is_shared INTEGER NOT NULL DEFAULT 1",
+        )
+        .expect("Failed migration: add session_files.is_shared");
+    }
+
     // Ensure indexes that reference content_hash exist on both fresh + migrated DBs.
     conn.execute_batch(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_session_files_hash    ON session_files(content_hash);
