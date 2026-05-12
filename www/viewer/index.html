@@ -165,7 +165,7 @@ html, body { overflow: hidden; }
     background: var(--bg);
 }
 
-/* ---- Side panels ---- */
+/* ---- Side panel (chat) ---- */
 .side-panel {
     flex-shrink: 0;
     width: 0; overflow: hidden;
@@ -179,23 +179,50 @@ html, body { overflow: hidden; }
     box-shadow: 0 8px 24px rgba(0,0,0,0.35);
 }
 .side-panel.open { border-color: var(--border); }
-
-/* Left panel — Conference */
-#left-panel.open { width: 200px; margin: 8px 8px 8px 8px; }
-
-/* Right panel — Chat */
 #right-panel.open { width: var(--panel-w); margin: 8px; }
 
-/* ---- Center — Video area ---- */
-#center-area {
-    flex: 1; min-width: 0; min-height: 0; position: relative;
-    background: #000; display: flex; align-items: center; justify-content: center;
+/* ---- Stage: unified tile grid ---- */
+#stage {
+    flex: 1; min-width: 0; min-height: 0;
+    position: relative;
+    display: grid;
+    gap: 8px;
+    padding: 8px;
+    align-content: center;
+    justify-content: center;
+    background: var(--bg);
     overflow: hidden;
 }
-#player-wrap { flex-shrink: 0; }
-#player { width: 100%; height: 100%; position: relative; overflow: hidden; }
 
-/* Hide all OvenPlayer built-in UI and prevent hover-triggered layout shifts */
+.tile {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    border-radius: var(--r-lg);
+    cursor: pointer;
+    transition: border-color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
+    animation: tile-in 0.2s ease;
+}
+.tile.hidden { display: none !important; }
+.tile:hover { border-color: var(--dim); box-shadow: 0 2px 10px rgba(0,0,0,0.35); }
+@keyframes tile-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+
+.tile-inner { position: absolute; inset: 0; }
+.tile-inner > video {
+    width: 100%; height: 100%; display: block;
+    object-fit: cover;
+}
+/* Stream + share fit-contain so we don't crop the source. */
+#tile-stream .tile-inner > video, #tile-share .tile-inner > video {
+    object-fit: contain; background: #000;
+}
+.conf-player-inner { width: 100%; height: 100%; }
+
+/* OvenPlayer mounts into #player which lives in #tile-stream. */
+#player { position: absolute; inset: 0; overflow: hidden; }
 #player .op-ui-container, #player .op-loading-container,
 #player .op-controls-container, #player .op-bottom-area,
 #player .op-watermark, #player .op-message-container,
@@ -203,28 +230,32 @@ html, body { overflow: hidden; }
 #player .op-player { position: absolute !important; inset: 0 !important; }
 #player video { width: 100% !important; height: 100% !important; object-fit: contain !important; }
 
-#offline-screen {
-    position: absolute; inset: 0; z-index: 5;
-    display: none; flex-direction: column;
-    align-items: center; justify-content: center;
-    background: var(--bg); gap: 12px;
-}
-#offline-screen.visible { display: flex; }
-
-#screenshare-wrap {
-    position: absolute; inset: 0; z-index: 6;
-    display: none; align-items: center; justify-content: center;
-    background: var(--bg);
-}
-#screenshare-wrap.active { display: flex; }
-#screenshare-video { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
-#screenshare-label {
-    position: absolute; bottom: 12px; left: 16px;
-    font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-    color: #fff; background: rgba(0,0,0,0.55); padding: 3px 10px; border-radius: 4px;
+.tile-name {
+    position: absolute; bottom: 6px; left: 6px;
+    padding: 2px 8px; font-size: 11px; font-weight: 600; color: #fff;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    border-radius: var(--r-md);
     pointer-events: none;
+    max-width: calc(100% - 12px);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* ---- Pointer overlay ---- */
+
+/* Empty-state placeholder shown when no tiles are visible. */
+#stage-empty {
+    color: var(--dim); font-size: 13px; text-align: center;
+    padding: 24px;
+    grid-column: 1 / -1;
+}
+
+/* Rail: side strip in focus mode, hidden in grid mode. */
+#stage-rail {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto; overflow-x: hidden;
+}
+
+/* Pointer overlay: lives inside #tile-stream and tracks the video bounds. */
 #pointer-overlay {
     position: absolute; inset: 0; z-index: 7;
     pointer-events: none; overflow: hidden;
@@ -249,16 +280,24 @@ html, body { overflow: hidden; }
     pointer-events: none;
 }
 
+/* Offline overlay inside #tile-stream — shown when status != live. */
+#offline-screen {
+    position: absolute; inset: 0; z-index: 5;
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: var(--bg); gap: 12px;
+}
+#offline-screen.visible { display: flex; }
 .offline-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); animation: pulse-dot 2s ease-in-out infinite; }
 @keyframes pulse-dot { 0%,100%{opacity:1; transform:scale(1)} 50%{opacity:0.3; transform:scale(0.8)} }
 .offline-label { font-size: 13px; color: var(--dim); font-weight: 500; }
 
+/* Chat panel header (right-panel) */
 .panel-header {
     padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); flex-shrink: 0;
     display: flex; align-items: center; justify-content: space-between;
 }
 .panel-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
-/* Always-visible icon button; mirrors .btn-icon-sm from shared components. */
 .panel-close {
     display: inline-flex; align-items: center; justify-content: center;
     width: 28px; height: 28px; padding: 0;
@@ -272,44 +311,13 @@ html, body { overflow: hidden; }
 .panel-close:focus-visible { outline: none; box-shadow: var(--ring-accent); border-color: var(--accent); }
 .panel-close svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
 
-/* Conference tiles */
-#conf-tiles { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-
-.conf-tile {
-    position: relative; width: 100%; aspect-ratio: 3/2; background: #000;
-    border: 1px solid var(--border); overflow: hidden; flex-shrink: 0;
-    border-radius: var(--r-lg);
-    transition: border-color var(--dur-fast) var(--ease-out),
-                box-shadow var(--dur-fast) var(--ease-out);
-    animation: tile-in 0.2s ease;
-}
-.conf-tile:hover { border-color: var(--dim); box-shadow: 0 2px 10px rgba(0,0,0,0.35); }
-@keyframes tile-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-.conf-tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
-.conf-player-inner { width: 100%; height: 100%; }
-.conf-tile .op-ui-container, .conf-tile .op-loading-container,
-.conf-tile .op-controls-container, .conf-tile .op-bottom-area,
-.conf-tile .op-watermark { display: none !important; }
-
-.conf-name {
-    position: absolute; bottom: 6px; left: 6px;
-    padding: 2px 8px; font-size: 11px; font-weight: 600; color: #fff;
-    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-    border-radius: var(--r-md);
-    pointer-events: none;
-    max-width: calc(100% - 12px);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-.conf-empty { color: var(--dim); font-size: 12px; text-align: center; padding: 24px 8px; }
-
 /* Presenter action buttons on tiles */
 .tile-actions {
     position: absolute; top: 6px; right: 6px;
     display: none; gap: 4px;
     z-index: 2;
 }
-.conf-tile:hover .tile-actions { display: flex; }
+.tile:hover .tile-actions { display: flex; }
 .tile-btn {
     width: 28px; height: 28px;
     background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.12);
@@ -323,122 +331,78 @@ html, body { overflow: hidden; }
 .tile-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .tile-btn.muted-indicator { border-color: var(--danger); color: var(--danger); }
 
-/* Mic-only self tile */
-#self-tile.mic-only #self-preview { display: none; }
+/* Only the stream and screenshare tiles are pinnable — drop the clickable
+   affordance from everything else so the cursor matches behavior. */
+.tile { cursor: default; }
+#tile-stream, #tile-share { cursor: pointer; }
+
+/* Mic-only self tile (camera off, mic on) */
+#self-tile.mic-only .tile-inner { display: none; }
 #self-tile.mic-only { background: var(--surface2); display: flex !important; align-items: center; justify-content: center; }
 .mic-only-icon { color: var(--green); user-select: none; display: flex; align-items: center; justify-content: center; }
 .mic-only-icon svg { width: 28px; height: 28px; }
 
-/* Remote tile cam-off */
+/* Participant tile cam-off state */
 .conf-mic-icon { display: none; color: var(--green); }
 .conf-mic-icon svg { width: 22px; height: 22px; }
 .conf-user-icon { display: none; color: var(--dim); }
 .conf-user-icon svg { width: 28px; height: 28px; stroke-width: 1.6; }
-.conf-tile.cam-off .conf-mic-icon { align-items: center; justify-content: center; margin-bottom: 4px; }
-.conf-tile.cam-off .conf-user-icon { align-items: center; justify-content: center; margin-bottom: 4px; }
-.conf-tile.cam-off .conf-player-inner { display: none; }
-.conf-tile.cam-off { background: var(--surface2); display: flex !important; flex-direction: column; align-items: center; justify-content: center; }
-.conf-tile.cam-off .conf-name { position: static; background: none; font-size: 13px; padding: 0; }
+.tile.cam-off .conf-mic-icon { align-items: center; justify-content: center; margin-bottom: 4px; }
+.tile.cam-off .conf-user-icon { align-items: center; justify-content: center; margin-bottom: 4px; }
+.tile.cam-off .conf-player-inner { display: none; }
+.tile.cam-off { background: var(--surface2); display: flex !important; flex-direction: column; align-items: center; justify-content: center; }
+.tile.cam-off .tile-name { position: static; background: none; font-size: 13px; padding: 0; }
 
-/* ---- Call-only room mode ---- */
-/* A room with no stream key attached: no OvenPlayer, no offline screen,
-   no left-panel sidebar. Conference tiles render into #call-grid which
-   fills the center stage. */
-body.mode-call #player-wrap,
-body.mode-call #offline-screen,
-body.mode-call #left-panel,
-body.mode-call #conf-toggle { display: none !important; }
-body.mode-broadcast #call-grid,
-body.mode-broadcast #layout-btn,
-body.mode-broadcast #stream-assigned-banner,
-body.mode-call #stream-removed-overlay { display: none !important; }
-/* Layout toggle is only meaningful while someone is screen-sharing in call mode. */
-body.mode-call:not(.sharing-screen) #layout-btn { display: none !important; }
-
-#call-grid {
-    position: absolute; inset: 0;
-    display: none;
-    padding: 8px; gap: 8px;
-    overflow: auto; align-content: start;
-    background: var(--bg);
-}
-body.mode-call #call-grid {
+/* ---- Focus sub-layout ---- */
+/* Focus mode: stage becomes a 2-column grid — focused tile fills the main
+   area, rail holds everything else vertically. The rail lives inside #stage,
+   so #stage's grid arranges the focused tile (col 1) and rail (col 2). */
+body.has-focus #stage {
     display: grid;
-    grid-auto-rows: auto;
-    align-content: center;
-    justify-content: center;
-}
-body.mode-call #call-grid .conf-tile {
-    width: 100%; height: auto; aspect-ratio: 3/2;
-}
-body.mode-call #call-grid .conf-empty { grid-column: 1 / -1; }
-
-/* Presenter sub-layout: panel and screenshare are flex siblings so they
-   share the stage without overlapping. */
-body.mode-call.call-layout-presenter #center-area {
-    align-items: stretch;
-    justify-content: flex-start;
-    background: var(--bg);
-}
-body.mode-call.call-layout-presenter #call-grid {
-    position: relative;
-    inset: auto;
-    width: 200px;
-    flex-shrink: 0;
-    margin: 8px 0 8px 8px;
-    grid-template-columns: 1fr;
-    grid-auto-rows: min-content;
-    align-content: start;
-    padding: 8px;
+    grid-template-columns: 220px 1fr;
+    grid-template-rows: 1fr;
     gap: 8px;
+    align-content: stretch;
+    justify-content: stretch;
+}
+body.has-focus #stage-rail {
+    grid-column: 1; grid-row: 1;
+    display: flex;
+    padding: 8px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-    overflow-y: auto;
     z-index: 20;
 }
-body.mode-call.call-layout-presenter #call-grid .conf-tile {
-    width: 100%; height: auto; aspect-ratio: 3/2;
-    max-width: 100%; max-height: none;
+body.has-focus #stage > .tile[data-focused] {
+    grid-column: 2; grid-row: 1;
+    aspect-ratio: auto;
+    width: 100%; height: 100%;
+    cursor: default;
 }
-body.mode-call.call-layout-presenter #screenshare-wrap.active {
-    position: relative;
-    inset: auto;
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+body.has-focus #stage-rail .tile {
+    width: 100%; flex: 0 0 auto;
 }
+body.has-focus #stage-empty { display: none; }
 
-/* Stream-key transition affordances */
-#stream-assigned-banner {
-    position: absolute; top: 0; left: 0; right: 0; z-index: 9;
-    display: none; align-items: center; justify-content: center; gap: 12px;
-    padding: 10px 14px; background: rgba(20,20,20,0.95);
-    border-bottom: 1px solid var(--border);
-    color: #fff; font-size: 13px;
-}
-body.mode-call #stream-assigned-banner.visible { display: flex; }
-#stream-assigned-banner button {
-    padding: 6px 14px; border: none; background: var(--text); color: var(--bg);
-    border-radius: var(--r-btn); font: inherit; font-weight: 600; cursor: pointer;
-    transition: background var(--dur-fast) var(--ease-out);
-}
-#stream-assigned-banner button:hover { background: color-mix(in srgb, var(--text) 80%, var(--bg)); }
+/* Conf-toggle (rail show/hide) and pointer overlay are only meaningful in
+   focus mode (they target the focused tile). */
+body:not(.has-focus) #conf-toggle,
+body:not(.has-focus) #pointer-btn { display: none !important; }
 
-/* Matches #offline-screen styling — same background / dot / label layout
-   so the "stream ended" state looks like the familiar "waiting for source"
-   state, just with different copy. */
-#stream-removed-overlay {
-    position: absolute; inset: 0; z-index: 10;
-    display: none; flex-direction: column;
-    align-items: center; justify-content: center;
-    background: var(--bg); gap: 12px; padding: 24px; text-align: center;
+/* Dynamic focus-btn icon: show the icon of the *target* state. */
+#focus-btn .fb-icon-focus, #focus-btn .fb-icon-grid { display: none; }
+body:not(.has-focus) #focus-btn .fb-icon-focus { display: block; }
+body.has-focus #focus-btn .fb-icon-grid { display: block; }
+/* Optional: user can hide the rail entirely while in focus mode. */
+body.has-focus.rail-hidden #stage {
+    grid-template-columns: 1fr;
 }
-body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
-#stream-removed-overlay .offline-label { max-width: 520px; line-height: 1.4; }
+body.has-focus.rail-hidden #stage > .tile[data-focused] {
+    grid-column: 1;
+}
+body.has-focus.rail-hidden #stage-rail { display: none; }
 
 /* Call-room badge on landing screen */
 .call-room-badge {
@@ -608,8 +572,6 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 
 /* ---- Responsive ---- */
 @media (max-width: 640px) {
-    /* Top bar */
-    /* .brand-logo { display: none; } */
     #top-bar { padding: 0 10px; }
     #top-center { gap: 6px; }
 
@@ -619,8 +581,6 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         height: auto; min-height: calc(var(--toolbar-h) + env(safe-area-inset-bottom, 0px));
         flex-wrap: wrap;
     }
-    /* Conference strip is inline above the video in portrait — toggle is a no-op. */
-    #conf-toggle, .tb-sep:has(+ #conf-toggle) { display: none; }
     .toolbar-group { display: flex; gap: 2px; }
     /* Force row break before player controls */
     #tb-break { display: block; order: 9; flex-basis: 100%; height: 2px; }
@@ -630,55 +590,37 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     .tb-sep:has(+ #utility-controls) { order: 11; }
     #volume-slider { display: none; }
 
-    /* Main layout: conference strip above video */
-    #main-row { flex-direction: column; overflow: hidden; }
-
-    /* Conference panel — inline strip above the player, always visible */
-    #left-panel {
-        position: static !important;
-        width: 100% !important;
-        height: auto !important;
-        overflow: visible !important;
-        margin: 0 !important;
-        border-right: none !important;
-        border-bottom: 1px solid var(--border);
-        flex-direction: column;
-        flex-shrink: 0;
-        display: flex !important;
-        transition: none !important;
-    }
-
     /* Chat panel overlays the full view on mobile */
     #right-panel { position: absolute; }
     #right-panel.open {
         inset: 0; width: 100% !important; margin: 0 !important;
         border-radius: 0; z-index: 30;
     }
-    #left-panel .panel-header { display: none; }
-    #conf-tiles {
+
+    /* Tile action buttons stay visible on touch */
+    .tile .tile-actions { display: flex; }
+
+    /* Focus mode on mobile: focused tile on top, rail underneath as a
+       horizontal carousel. */
+    body.has-focus #stage {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr auto;
+    }
+    body.has-focus #stage > .tile[data-focused] {
+        grid-column: 1; grid-row: 1;
+    }
+    body.has-focus #stage-rail {
+        grid-column: 1; grid-row: 2;
         flex-direction: row;
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        overflow-y: hidden;
-        padding: 8px;
-        gap: 6px;
-        min-height: 0;
         height: 104px;
-        flex: none;
+        overflow-x: auto; overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
     }
-    .conf-tile .tile-actions { display: flex; }
-    #conf-tiles .conf-tile, #conf-tiles #self-tile {
-        width: 130px;
-        flex-shrink: 0;
-        aspect-ratio: 4/3;
-        min-height: 0;
+    body.has-focus #stage-rail .tile {
+        flex: 0 0 auto;
+        width: auto; height: 100%;
+        aspect-ratio: 16 / 9;
     }
-    #conf-empty { min-width: max-content; padding: 36px 16px; }
-
-    /* Video area fills remaining space */
-    #center-area { flex: 1; min-height: 0; }
-
 
     /* Files section — cap to ~2 rows so messages get most of the panel */
     #files-section { max-height: 96px; }
@@ -687,23 +629,10 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     .join-box, .waiting-box, #landing-screen .panel-box { width: calc(100vw - 32px); padding: 32px 24px; }
 }
 
-/* Mobile landscape — maximize video area */
+/* Mobile landscape — maximize stage area */
 @media (max-height: 440px) and (orientation: landscape) {
     #top-bar { height: 36px; }
-    /* Toolbar keeps its desktop sizing — flex-wrap remains so buttons can wrap
-       rather than be squeezed by the flex algorithm (Firefox shrinks flex items
-       below their declared width more aggressively than Safari otherwise). */
     #bottom-toolbar { flex-wrap: wrap; }
-
-    #main-row { flex-direction: row; }
-    #center-area { flex: 1; min-width: 0; min-height: 0; }
-
-    /* Smaller panel widths for landscape */
-    #left-panel.open { width: 200px; }
-    #left-panel .panel-header { display: flex !important; }
-    #conf-tiles {
-        flex-direction: column; height: auto; overflow-y: auto; overflow-x: hidden;
-    }
 
     #right-panel.open { width: 280px; }
 
@@ -852,52 +781,42 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         </div>
     </div>
 
-    <!-- Main row: panels + video -->
+    <!-- Main row: stage + chat -->
     <div id="main-row">
 
-        <!-- Conference panel (left) -->
-        <div id="left-panel" class="side-panel">
-            <div class="panel-header">
-                <div class="panel-label">Participants</div>
-                <button class="panel-close" id="conf-close" title="Close">
-                    <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-            </div>
-            <div id="conf-tiles">
-                <div class="conf-tile" id="self-tile" style="display:none">
-                    <video id="self-preview" autoplay muted playsinline></video>
-                    <div class="mic-only-icon" id="self-mic-icon" style="display:none">
-                        <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="1" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-                    </div>
-                    <div class="conf-name">You</div>
+        <!-- Unified stage: every video source (OvenPlayer broadcast,
+             screenshare, participant cameras) is a tile in the same grid.
+             #stage-rail holds non-focused tiles when focus sub-layout is
+             active; in grid view it is empty and hidden. -->
+        <div id="stage">
+            <div class="tile hidden" id="tile-stream">
+                <div class="tile-inner">
+                    <div id="player"></div>
                 </div>
-                <div class="conf-empty" id="conf-empty">No active participants.</div>
+                <div id="pointer-overlay"></div>
+                <div id="offline-screen">
+                    <div class="offline-dot"></div>
+                    <div class="offline-label" id="offline-msg">Waiting for livestream source...</div>
+                </div>
+                <div class="tile-name">Stream</div>
             </div>
-        </div>
-
-        <!-- Video area (center) -->
-        <div id="center-area">
-            <div id="player-wrap">
-                <div id="player"></div>
+            <div class="tile hidden" id="tile-share">
+                <div class="tile-inner">
+                    <video id="screenshare-video" autoplay playsinline></video>
+                </div>
+                <div class="tile-name" id="tile-share-name">Screen</div>
             </div>
-            <div id="call-grid"></div>
-            <div id="screenshare-wrap">
-                <video id="screenshare-video" autoplay playsinline></video>
-                <div id="screenshare-label"></div>
+            <div class="tile" id="self-tile" style="display:none">
+                <div class="tile-inner">
+                    <video id="self-preview" autoplay muted playsinline></video>
+                </div>
+                <div class="mic-only-icon" id="self-mic-icon" style="display:none">
+                    <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="1" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                </div>
+                <div class="tile-name">You</div>
             </div>
-            <div id="pointer-overlay"></div>
-            <div id="offline-screen">
-                <div class="offline-dot"></div>
-                <div class="offline-label" id="offline-msg">Waiting for livestream source...</div>
-            </div>
-            <div id="stream-assigned-banner">
-                <span>The session has started — please refresh the page.</span>
-                <button type="button" id="stream-assigned-refresh">Refresh</button>
-            </div>
-            <div id="stream-removed-overlay">
-                <div class="offline-dot"></div>
-                <div class="offline-label">This session has ended but the room can still be used for call purposes, please exit and rejoin the room.</div>
-            </div>
+            <div id="stage-empty">Waiting for participants…</div>
+            <div id="stage-rail"></div>
         </div>
 
         <!-- Chat panel (right) -->
@@ -954,19 +873,19 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             <button class="tb-btn" id="screen-btn" title="Share Screen">
                 <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
             </button>
-            <button class="tb-btn" id="device-btn" title="Devices">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            </button>
         </div>
         <div class="tb-sep"></div>
         <div class="toolbar-group">
             <button class="tb-btn" id="pointer-btn" title="Pointer">
                 <svg viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6" stroke-linecap="round"/></svg>
             </button>
-            <button class="tb-btn" id="layout-btn" title="Switch layout">
-                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <button class="tb-btn" id="focus-btn" title="Toggle focus view">
+                <!-- Shown in grid view (click to enter focus): rail-and-main icon. -->
+                <svg class="fb-icon-focus" viewBox="0 0 24 24"><rect x="3" y="4" width="3" height="5" rx="0.5"/><rect x="3" y="10.5" width="3" height="5" rx="0.5"/><rect x="3" y="17" width="3" height="3" rx="0.5"/><rect x="8" y="4" width="13" height="16" rx="1"/></svg>
+                <!-- Shown in focus view (click to return to grid): 2x2 grid icon. -->
+                <svg class="fb-icon-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
             </button>
-            <button class="tb-btn" id="conf-toggle" title="Participants">
+            <button class="tb-btn" id="conf-toggle" title="Show/hide rail">
                 <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </button>
             <button class="tb-btn" id="chat-toggle" title="Chat">
@@ -988,6 +907,9 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         </div>
         <div class="tb-sep"></div>
         <div class="toolbar-group" id="utility-controls">
+            <button class="tb-btn" id="device-btn" title="Devices">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
             <button class="tb-btn" id="resync-btn" title="Resync">
                 <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             </button>

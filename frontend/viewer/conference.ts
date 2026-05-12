@@ -4,15 +4,22 @@
 // LiveKit's track state.
 
 import { toast } from '../shared/utils.js';
-import { sizeCallGrid } from './layout.js';
+import { sizeStage } from './layout.js';
 import { getParticipantId, getToken, PREF_KEY, slug } from './session.js';
 import { viewerStore } from './state.js';
-import type { LivekitTokenResponse, RosterEntry } from './types.js';
+import type { LivekitTokenResponse, RosterEntry, TileId, WsClientMessage } from './types.js';
 
 let livekitRoom: LkRoom | null = null;
 let activeScreenShareId: string | null = null; // participant.identity or 'local'
 let activeScreenShareTrack: LkTrack | null = null;
 let selfMuteInFlight = false;
+
+// Wired by main.ts so conference.ts can broadcast host-pin events without
+// importing ws.ts (which already imports from here).
+let wsSend: (msg: WsClientMessage) => void = () => {};
+export function configureConference(opts: { send: (msg: WsClientMessage) => void }): void {
+  wsSend = opts.send;
+}
 
 const SVG_USER =
   '<svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>';
@@ -29,6 +36,98 @@ export function getLivekitRoom(): LkRoom | null {
   return livekitRoom;
 }
 
+// ---- Focus / auto-pin ----
+
+// Resolves a TileId to its DOM element. Self-tile and remote participant
+// tiles both map through participantId.
+function findTileEl(tileId: TileId): HTMLElement | null {
+  if (tileId === 'stream') return document.getElementById('tile-stream');
+  if (tileId === 'share') return document.getElementById('tile-share');
+  if (tileId === getParticipantId()) return document.getElementById('self-tile');
+  return document.getElementById(`conf-tile-${tileId}`);
+}
+
+// Inverse of findTileEl — used by the tile click handler to know which tile
+// the user pressed.
+function getTileIdFromEl(tile: HTMLElement): TileId | null {
+  if (tile.id === 'tile-stream') return 'stream';
+  if (tile.id === 'tile-share') return 'share';
+  if (tile.id === 'self-tile') return getParticipantId();
+  if (tile.id.startsWith('conf-tile-')) return tile.id.slice('conf-tile-'.length);
+  return null;
+}
+
+// Pin a tile to the focus stage (rail on the side), or unpin (grid view).
+// `override: true` records the choice as manual so auto-pin won't fight it.
+export function setFocus(tileId: TileId | null, opts: { override?: boolean } = {}): void {
+  const patch: { focusedTile: TileId | null; focusOverride?: boolean } = {
+    focusedTile: tileId,
+  };
+  if (opts.override !== undefined) patch.focusOverride = opts.override;
+  viewerStore.set(patch);
+
+  const stage = document.getElementById('stage');
+  const rail = document.getElementById('stage-rail');
+  if (!stage || !rail) return;
+
+  if (tileId === null) {
+    // Grid mode: all tiles back to the main stage as direct children.
+    document.body.classList.remove('has-focus');
+    for (const tile of Array.from(rail.querySelectorAll<HTMLElement>(':scope > .tile'))) {
+      stage.insertBefore(tile, rail);
+    }
+    stage
+      .querySelectorAll<HTMLElement>('[data-focused]')
+      .forEach((el) => el.removeAttribute('data-focused'));
+  } else {
+    document.body.classList.add('has-focus');
+    // Sync the rail-toggle button's lit state to the current confOpen flag
+    // — without this it looks "off" on first entry into focus mode even
+    // though the rail is visible.
+    document
+      .getElementById('conf-toggle')
+      ?.classList.toggle('panel-open', viewerStore.get().confOpen);
+    const focusedEl = findTileEl(tileId);
+    // Everything not the focused tile goes into the rail.
+    const all = [
+      ...Array.from(stage.querySelectorAll<HTMLElement>(':scope > .tile')),
+      ...Array.from(rail.querySelectorAll<HTMLElement>(':scope > .tile')),
+    ];
+    for (const tile of all) {
+      if (tile === focusedEl) {
+        tile.setAttribute('data-focused', '');
+        if (tile.parentElement !== stage) stage.insertBefore(tile, rail);
+      } else {
+        tile.removeAttribute('data-focused');
+        if (tile.parentElement !== rail) rail.appendChild(tile);
+      }
+    }
+  }
+
+  document.getElementById('focus-btn')?.classList.toggle('panel-open', tileId !== null);
+  requestAnimationFrame(sizeStage);
+}
+
+// Apply auto-pin rules unless the viewer has set a manual override.
+// preferred is an explicit hint (e.g. the share just started) — useful when
+// the call site knows the natural target.
+export function requestAutoFocus(preferred?: TileId): void {
+  const { focusOverride, streamKey, focusedTile } = viewerStore.get();
+  if (focusOverride) return;
+  let target: TileId | null;
+  if (preferred && findTileEl(preferred)) {
+    target = preferred;
+  } else if (activeScreenShareTrack) {
+    target = 'share';
+  } else if (streamKey) {
+    target = 'stream';
+  } else {
+    target = null;
+  }
+  if (focusedTile === target) return;
+  setFocus(target, { override: false });
+}
+
 // ---- Screen share ----
 
 function showScreenShare(track: LkTrack, label: string): void {
@@ -37,14 +136,11 @@ function showScreenShare(track: LkTrack, label: string): void {
   }
   activeScreenShareTrack = track;
   track.attach(document.getElementById('screenshare-video'));
-  const lblEl = document.getElementById('screenshare-label');
+  const lblEl = document.getElementById('tile-share-name');
   if (lblEl) lblEl.textContent = label;
-  document.getElementById('screenshare-wrap')?.classList.add('active');
+  document.getElementById('tile-share')?.classList.remove('hidden');
   document.body.classList.add('sharing-screen');
-  // Auto-switch call-mode to Presenter unless the user has manually picked
-  // a layout for this share session.
-  const { mode, layoutOverride } = viewerStore.get();
-  if (mode === 'call' && !layoutOverride) setCallLayout('presenter');
+  requestAutoFocus('share');
 }
 
 function hideScreenShare(): void {
@@ -52,23 +148,15 @@ function hideScreenShare(): void {
     activeScreenShareTrack.detach(document.getElementById('screenshare-video'));
     activeScreenShareTrack = null;
   }
-  document.getElementById('screenshare-wrap')?.classList.remove('active');
+  document.getElementById('tile-share')?.classList.add('hidden');
   document.body.classList.remove('sharing-screen');
   activeScreenShareId = null;
-  // Share ended → return to Grid and drop the manual-override flag so the
-  // next share can auto-switch again.
-  if (viewerStore.get().mode === 'call') {
-    viewerStore.set({ layoutOverride: false });
-    setCallLayout('grid');
+  // If the viewer had pinned the share, that target no longer exists —
+  // clear the override and let auto-pin pick the next natural target.
+  if (viewerStore.get().focusedTile === 'share') {
+    viewerStore.set({ focusOverride: false });
   }
-}
-
-export function setCallLayout(layout: 'grid' | 'presenter'): void {
-  viewerStore.set({ layout });
-  document.body.classList.toggle('call-layout-grid', layout === 'grid');
-  document.body.classList.toggle('call-layout-presenter', layout === 'presenter');
-  document.getElementById('layout-btn')?.classList.toggle('panel-open', layout === 'presenter');
-  requestAnimationFrame(sizeCallGrid);
+  requestAutoFocus();
 }
 
 // ---- LiveKit init ----
@@ -214,16 +302,15 @@ function updateSelfTile(): void {
 // ---- Tile grid sync ----
 
 export function syncConferenceTiles(): void {
-  const { mode, roster, role: myRole, cameraOn, micOn } = viewerStore.get();
-  // In call mode the tiles live in the center-stage grid; otherwise in the
-  // left sidebar. Move #self-tile + #conf-empty into the active container
-  // so existing CSS keeps working unchanged.
-  const tilesEl = document.getElementById(mode === 'call' ? 'call-grid' : 'conf-tiles');
-  const emptyEl = document.getElementById('conf-empty');
-  const selfTile = document.getElementById('self-tile');
-  if (!tilesEl) return;
-  if (selfTile && selfTile.parentElement !== tilesEl) tilesEl.appendChild(selfTile);
-  if (emptyEl && emptyEl.parentElement !== tilesEl) tilesEl.appendChild(emptyEl);
+  const { focusedTile, roster, role: myRole, cameraOn, micOn } = viewerStore.get();
+  const stage = document.getElementById('stage');
+  const rail = document.getElementById('stage-rail');
+  const emptyEl = document.getElementById('stage-empty');
+  if (!stage || !rail) return;
+  // New tiles created below go into the rail when focus mode is active,
+  // otherwise straight into the stage. Existing tiles stay where they are
+  // (setFocus is the only thing that re-parents tiles).
+  const newTileHost = focusedTile !== null ? rail : stage;
 
   const lkMap: Map<string, LkRemoteParticipant> = livekitRoom
     ? new Map(Array.from(livekitRoom.remoteParticipants.values()).map((p) => [p.identity, p]))
@@ -250,8 +337,11 @@ export function syncConferenceTiles(): void {
     }
   }
 
-  // Remove tiles for participants no longer present.
-  for (const tile of Array.from(tilesEl.querySelectorAll('.conf-tile[id^="conf-tile-"]'))) {
+  // Remove tiles for participants no longer present (search both stage and rail).
+  for (const tile of [
+    ...Array.from(stage.querySelectorAll<HTMLElement>('.tile[id^="conf-tile-"]')),
+    ...Array.from(rail.querySelectorAll<HTMLElement>('.tile[id^="conf-tile-"]')),
+  ]) {
     const id = tile.id.slice('conf-tile-'.length);
     if (!byId.has(id)) tile.remove();
   }
@@ -267,18 +357,18 @@ export function syncConferenceTiles(): void {
     if (!tile) {
       tile = document.createElement('div');
       tile.id = `conf-tile-${pid}`;
-      tile.className = 'conf-tile';
+      tile.className = 'tile';
 
       const isTargetPresenter = rp.role === 'presenter';
       const micSid = micPub?.trackSid || '';
       const micMuted = micPub?.isMuted ?? true;
 
       tile.innerHTML =
-        `<div id="conf-player-${pid}" class="conf-player-inner">` +
-        `<video autoplay playsinline style="width:100%;height:100%;object-fit:cover"></video></div>` +
+        `<div id="conf-player-${pid}" class="tile-inner">` +
+        `<video autoplay playsinline></video></div>` +
         `<div class="conf-user-icon">${SVG_USER}</div>` +
         `<div class="conf-mic-icon" style="display:none">${SVG_MIC}</div>` +
-        `<div class="conf-name">${escAttr(rp.name || pid)}</div>` +
+        `<div class="tile-name">${escAttr(rp.name || pid)}</div>` +
         (myRole === 'presenter' && !isTargetPresenter
           ? `<div class="tile-actions">` +
             `<button class="tile-btn${micMuted ? ' muted-indicator' : ''}" title="${micMuted ? 'Unmute' : 'Mute'}" ` +
@@ -288,11 +378,11 @@ export function syncConferenceTiles(): void {
             `<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>` +
             `</div>`
           : '');
-      tilesEl.insertBefore(tile, emptyEl);
+      newTileHost.appendChild(tile);
     }
 
     // Keep the display name in sync with roster updates.
-    const nameEl = tile.querySelector('.conf-name');
+    const nameEl = tile.querySelector('.tile-name');
     const nextName = rp.name || pid;
     if (nameEl && nameEl.textContent !== nextName) nameEl.textContent = nextName;
 
@@ -315,10 +405,16 @@ export function syncConferenceTiles(): void {
     if (userIconEl) userIconEl.style.display = !hasMic && !hasCam ? 'flex' : 'none';
   }
 
+  // Empty-state placeholder: only meaningful in grid view when there are no
+  // tiles at all. In focus mode the focused tile is always visible.
   const hasRemoteTiles = byId.size > 0;
-  if (emptyEl)
-    emptyEl.style.display = hasRemoteTiles || cameraOn || micOn ? 'none' : '';
-  sizeCallGrid();
+  const streamVisible = !document.getElementById('tile-stream')?.classList.contains('hidden');
+  const shareVisible = !document.getElementById('tile-share')?.classList.contains('hidden');
+  if (emptyEl) {
+    const anyTile = hasRemoteTiles || cameraOn || micOn || streamVisible || shareVisible;
+    emptyEl.style.display = anyTile ? 'none' : '';
+  }
+  sizeStage();
 }
 
 function attachTrack(track: LkTrack, participant: LkRemoteParticipant): void {
@@ -494,12 +590,6 @@ async function applyConfPref(pref: 'both' | 'cam' | 'mic' | 'none', save = true)
   }
   viewerStore.set({ cameraOn, micOn });
 
-  // Auto-open conference panel when camera or mic is enabled.
-  // (Use direct toggle instead of the layout module to avoid a cycle.)
-  if ((cameraOn || micOn) && !viewerStore.get().confOpen) {
-    document.getElementById('conf-toggle')?.click();
-  }
-
   refreshConfButtons();
   setConfBtns({ disabled: true }, { disabled: true });
   try {
@@ -641,14 +731,57 @@ export function initConference(): void {
   document.getElementById('mic-btn')?.addEventListener('click', toggleMic);
   document.getElementById('screen-btn')?.addEventListener('click', toggleScreenShare);
 
-  document.getElementById('layout-btn')?.addEventListener('click', () => {
-    if (viewerStore.get().mode !== 'call') return;
-    const next = viewerStore.get().layout === 'grid' ? 'presenter' : 'grid';
-    setCallLayout(next);
-    // If a share is active, remember the user's choice so auto-switch
-    // doesn't clobber it until the share ends.
-    if (activeScreenShareTrack) viewerStore.set({ layoutOverride: true });
+  document.getElementById('focus-btn')?.addEventListener('click', () => {
+    const { focusedTile, role } = viewerStore.get();
+    const isPresenter = role === 'presenter';
+    if (focusedTile !== null) {
+      // Unpin. Host broadcasts; viewer's is local-only.
+      if (isPresenter) wsSend({ type: 'focus:set', tileId: null });
+      setFocus(null, { override: false });
+    } else {
+      // Pin whatever the auto-pin target would be (share > stream).
+      requestAutoFocus();
+      const newFocus = viewerStore.get().focusedTile;
+      if (isPresenter && newFocus !== null) {
+        wsSend({ type: 'focus:set', tileId: newFocus });
+      }
+    }
   });
+
+  // Tile click → toggle focus on that tile. Only the stream and screenshare
+  // tiles are pinnable; participant cameras aren't a useful focus target
+  // (and pinning yourself is doubly silly). Clicks on moderation buttons
+  // (or anything with [data-action]) are ignored.
+  document.getElementById('stage')?.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-action]')) return;
+    const tile = target.closest<HTMLElement>('.tile');
+    if (!tile) return;
+    if (tile.id !== 'tile-stream' && tile.id !== 'tile-share') return;
+    const tileId = getTileIdFromEl(tile);
+    if (!tileId) return;
+    const current = viewerStore.get().focusedTile;
+    const isPresenter = viewerStore.get().role === 'presenter';
+    if (current === tileId) {
+      // Toggle off. Host's unpin broadcasts; viewer's is local-only.
+      if (isPresenter) {
+        wsSend({ type: 'focus:set', tileId: null });
+        setFocus(null, { override: false });
+      } else {
+        setFocus(null, { override: false });
+      }
+    } else if (isPresenter) {
+      // Host pins for everyone. Apply locally for snappiness, server echoes
+      // back to keep late joiners in sync.
+      wsSend({ type: 'focus:set', tileId });
+      setFocus(tileId, { override: false });
+    } else {
+      // Viewer overrides locally only.
+      setFocus(tileId, { override: true });
+    }
+  });
+  // The rail lives inside #stage, so the delegation above handles its
+  // clicks too — no separate listener needed.
 
   document.getElementById('prompt-both')?.addEventListener('click', () => void applyConfPref('both'));
   document.getElementById('prompt-mic')?.addEventListener('click', () => void applyConfPref('mic'));
@@ -689,8 +822,8 @@ export function initConference(): void {
     }
   });
 
-  // Presenter moderation, delegated at #app level — tiles live in #left-panel
-  // in broadcast mode and #call-grid in call mode. One listener handles both.
+  // Presenter moderation, delegated at #app level — tiles live in #stage
+  // (focused) or #stage-rail (unfocused). One listener handles both.
   document.getElementById('app')?.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
     if (!btn || viewerStore.get().role !== 'presenter') return;

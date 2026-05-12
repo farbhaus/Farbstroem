@@ -6,8 +6,10 @@
 export type Role = 'presenter' | 'viewer';
 export type RoomStatus = 'pending' | 'live' | 'ended';
 export type DeliveryMode = 'webrtc' | 'llhls';
-export type RoomMode = 'broadcast' | 'call';
-export type CallLayout = 'grid' | 'presenter';
+// A tile in the unified viewer stage. 'stream' is the OvenPlayer broadcast,
+// 'share' is the active screenshare, anything else is a LiveKit participant
+// identity.
+export type TileId = 'stream' | 'share' | string;
 
 export interface RoomInfo {
   name: string;
@@ -96,7 +98,8 @@ export type WsMessage =
       uploaderName: string;
     }
   | { type: 'pointer:move'; participantId: string; name: string; x: number; y: number }
-  | { type: 'pointer:hide'; participantId: string };
+  | { type: 'pointer:hide'; participantId: string }
+  | { type: 'focus:set'; tileId: TileId | null };
 
 // ---- WebSocket message variants (client → server) ----
 
@@ -104,7 +107,8 @@ export type WsClientMessage =
   | { type: 'auth'; participantId: string; token: string }
   | { type: 'chat:message'; text: string }
   | { type: 'pointer:move'; x: number; y: number }
-  | { type: 'pointer:hide' };
+  | { type: 'pointer:hide' }
+  | { type: 'focus:set'; tileId: TileId | null };
 
 // ---- Saved session (sessionStorage) ----
 

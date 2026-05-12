@@ -33,6 +33,13 @@ pub struct WsParticipant {
 
 static WS_ROOMS: LazyLock<WsRooms> = LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
 
+// Current host-pinned focus per room. Held in memory only — late joiners
+// receive the current value on auth, but a server restart resets it.
+// Value is the tile id ("stream" | "share") or absence = unpinned.
+type WsRoomFocus = Arc<RwLock<HashMap<String, String>>>;
+static WS_ROOM_FOCUS: LazyLock<WsRoomFocus> =
+    LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
+
 // ---------------------------------------------------------------------------
 // Auth message
 // ---------------------------------------------------------------------------
@@ -206,6 +213,19 @@ async fn handle_socket(socket: WebSocket, slug: String, state: Arc<AppState>) {
     // Send auth:ok
     let _ = tx.send(Message::Text(json!({"type": "auth:ok"}).to_string().into()));
 
+    // Replay current host-pinned focus so a late joiner lands in the same
+    // view as everyone else.
+    {
+        let focus = WS_ROOM_FOCUS.read().await;
+        if let Some(tile_id) = focus.get(&slug) {
+            let _ = tx.send(Message::Text(
+                json!({"type": "focus:set", "tileId": tile_id})
+                    .to_string()
+                    .into(),
+            ));
+        }
+    }
+
     // Send chat history (last 50)
     send_chat_history(&state, &slug, &tx);
 
@@ -346,6 +366,33 @@ async fn handle_text_message(
             let broadcast_msg = json!({
                 "type": "pointer:hide",
                 "participantId": participant_id,
+            });
+            broadcast_to_room(&WS_ROOMS, slug, &broadcast_msg.to_string()).await;
+        }
+        "focus:set" => {
+            // Only presenters can drive the host pin. Viewers' clicks are
+            // local-only and never reach the server.
+            if role != "presenter" {
+                return;
+            }
+            // tileId may be a string ("stream"/"share") or null (unpin).
+            let tile_id = msg.get("tileId");
+            let valid_tile = match tile_id {
+                Some(Value::String(s)) if s == "stream" || s == "share" => Some(s.clone()),
+                Some(Value::Null) | None => None,
+                _ => return, // unknown tile id — ignore
+            };
+            {
+                let mut focus = WS_ROOM_FOCUS.write().await;
+                if let Some(t) = &valid_tile {
+                    focus.insert(slug.to_string(), t.clone());
+                } else {
+                    focus.remove(slug);
+                }
+            }
+            let broadcast_msg = json!({
+                "type": "focus:set",
+                "tileId": valid_tile,
             });
             broadcast_to_room(&WS_ROOMS, slug, &broadcast_msg.to_string()).await;
         }
