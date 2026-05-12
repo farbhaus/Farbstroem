@@ -613,31 +613,40 @@ body.has-focus.rail-hidden #stage-rail {
     .tb-sep:has(+ #utility-controls) { order: 11; }
     #volume-slider { display: none; }
 
-    /* Chat panel overlays the full view on mobile */
-    #right-panel { position: absolute; }
+    /* Chat panel overlays the stage on mobile, anchored right so it
+       expands/collapses toward the right edge. Keeps desktop's rounded
+       corners and margin so it floats over what's behind. */
+    #right-panel { position: absolute; top: 0; right: 0; bottom: 0; }
     #right-panel.open {
-        inset: 0; width: 100% !important; margin: 0 !important;
-        border-radius: 0; z-index: 30;
+        width: calc(100% - 16px) !important;
+        margin: 8px 8px 8px 0 !important;
+        z-index: 30;
     }
 
     /* Tile action buttons stay visible on touch */
     .tile .tile-actions { display: flex; }
 
-    /* Focus mode on mobile: focused tile on top, rail underneath as a
-       horizontal carousel. */
+    /* Focus mode on mobile: rail on top as a horizontal carousel, focused
+       tile underneath. */
     body.has-focus #stage {
         grid-template-columns: 1fr;
-        grid-template-rows: 1fr auto;
+        grid-template-rows: auto 1fr;
     }
     body.has-focus #stage > .tile[data-focused] {
-        grid-column: 1; grid-row: 1;
+        grid-column: 1; grid-row: 2;
     }
     body.has-focus #stage-rail {
-        grid-column: 1; grid-row: 2;
+        grid-column: 1; grid-row: 1;
         flex-direction: row;
         height: 104px;
         overflow-x: auto; overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
+    }
+    /* Override desktop rail-hidden (which collapses a column) — on mobile
+       the rail occupies a row, so collapse the row instead. */
+    body.has-focus.rail-hidden #stage {
+        grid-template-columns: 1fr;
+        grid-template-rows: 0 1fr;
     }
     body.has-focus #stage-rail .tile {
         flex: 0 0 auto;
