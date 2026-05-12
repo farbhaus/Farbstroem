@@ -279,9 +279,7 @@ function updateSelfTile(): void {
     selfTile.style.display = 'none';
     selfTile.classList.remove('mic-only');
     micIcon.style.display = 'none';
-    return;
-  }
-  if (cameraOn && livekitRoom) {
+  } else if (cameraOn && livekitRoom) {
     const camPub = livekitRoom.localParticipant.getTrackPublication(
       LivekitClient.Track.Source.Camera,
     );
@@ -297,6 +295,9 @@ function updateSelfTile(): void {
     micIcon.style.display = '';
     selfTile.style.display = 'flex';
   }
+  // Visibility just changed — re-run the grid sizer so the column count
+  // matches the new visible-tile total.
+  requestAnimationFrame(sizeStage);
 }
 
 // ---- Tile grid sync ----

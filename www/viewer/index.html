@@ -364,6 +364,7 @@ body.has-focus #stage {
     gap: 8px;
     align-content: stretch;
     justify-content: stretch;
+    transition: grid-template-columns 0.25s ease, gap 0.25s ease;
 }
 body.has-focus #stage-rail {
     grid-column: 1; grid-row: 1;
@@ -374,6 +375,8 @@ body.has-focus #stage-rail {
     border-radius: var(--r-lg);
     box-shadow: 0 8px 24px rgba(0,0,0,0.35);
     z-index: 20;
+    transition: padding 0.25s ease, opacity 0.25s ease, border-color 0.25s ease;
+    opacity: 1;
 }
 body.has-focus #stage > .tile[data-focused] {
     grid-column: 2; grid-row: 1;
@@ -396,13 +399,19 @@ body:not(.has-focus) #pointer-btn { display: none !important; }
 body:not(.has-focus) #focus-btn .fb-icon-focus { display: block; }
 body.has-focus #focus-btn .fb-icon-grid { display: block; }
 /* Optional: user can hide the rail entirely while in focus mode. */
+/* Hide rail by collapsing its grid column to 0 — keeps display:flex so the
+   transition plays. The rail itself fades + un-pads to disguise the
+   width-clip. */
 body.has-focus.rail-hidden #stage {
-    grid-template-columns: 1fr;
+    grid-template-columns: 0 1fr;
+    gap: 0;
 }
-body.has-focus.rail-hidden #stage > .tile[data-focused] {
-    grid-column: 1;
+body.has-focus.rail-hidden #stage-rail {
+    padding: 0;
+    opacity: 0;
+    border-color: transparent;
+    overflow: hidden;
 }
-body.has-focus.rail-hidden #stage-rail { display: none; }
 
 /* Call-room badge on landing screen */
 .call-room-badge {
