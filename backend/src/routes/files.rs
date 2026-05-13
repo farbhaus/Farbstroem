@@ -234,7 +234,11 @@ async fn upload_file(
                 let pid_db = participant.id.clone();
                 // Drafts skip the hash so they don't trip the UNIQUE index
                 // against shared rows of the same content.
-                let hash_clone: Option<String> = if defer { None } else { Some(content_hash.clone()) };
+                let hash_clone: Option<String> = if defer {
+                    None
+                } else {
+                    Some(content_hash.clone())
+                };
                 let is_shared_val: i64 = if defer { 0 } else { 1 };
                 tokio::task::spawn_blocking(move || {
                     conn.execute(
@@ -471,11 +475,8 @@ async fn delete_draft_file(
             Some(p) => p,
             None => return Ok(None),
         };
-        conn.execute(
-            "DELETE FROM session_files WHERE id = ?1",
-            params![file_id],
-        )
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        conn.execute("DELETE FROM session_files WHERE id = ?1", params![file_id])
+            .map_err(|e| AppError::Internal(e.to_string()))?;
         Ok(Some(stored_path))
     })
     .await
