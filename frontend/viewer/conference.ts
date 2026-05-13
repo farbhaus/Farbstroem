@@ -749,40 +749,29 @@ export function initConference(): void {
     }
   });
 
-  // Tile click → toggle focus on that tile. Only the stream and screenshare
-  // tiles are pinnable; participant cameras aren't a useful focus target
-  // (and pinning yourself is doubly silly). Clicks on moderation buttons
-  // (or anything with [data-action]) are ignored.
+  // Pin button (top-right of #tile-stream / #tile-share) → toggle focus on
+  // that tile. Host pins broadcast via focus:set; viewer pins are local
+  // override. The rail lives inside #stage so this delegator covers both
+  // the grid and the rail.
   document.getElementById('stage')?.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('[data-action]')) return;
-    const tile = target.closest<HTMLElement>('.tile');
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-action="toggle-focus"]');
+    if (!btn) return;
+    const tile = btn.closest<HTMLElement>('.tile');
     if (!tile) return;
-    if (tile.id !== 'tile-stream' && tile.id !== 'tile-share') return;
     const tileId = getTileIdFromEl(tile);
     if (!tileId) return;
     const current = viewerStore.get().focusedTile;
     const isPresenter = viewerStore.get().role === 'presenter';
     if (current === tileId) {
-      // Toggle off. Host's unpin broadcasts; viewer's is local-only.
-      if (isPresenter) {
-        wsSend({ type: 'focus:set', tileId: null });
-        setFocus(null, { override: false });
-      } else {
-        setFocus(null, { override: false });
-      }
+      if (isPresenter) wsSend({ type: 'focus:set', tileId: null });
+      setFocus(null, { override: false });
     } else if (isPresenter) {
-      // Host pins for everyone. Apply locally for snappiness, server echoes
-      // back to keep late joiners in sync.
       wsSend({ type: 'focus:set', tileId });
       setFocus(tileId, { override: false });
     } else {
-      // Viewer overrides locally only.
       setFocus(tileId, { override: true });
     }
   });
-  // The rail lives inside #stage, so the delegation above handles its
-  // clicks too — no separate listener needed.
 
   document.getElementById('prompt-both')?.addEventListener('click', () => void applyConfPref('both'));
   document.getElementById('prompt-mic')?.addEventListener('click', () => void applyConfPref('mic'));
