@@ -10,7 +10,6 @@
 <link rel="stylesheet" href="/shared/tokens.css">
 <link rel="stylesheet" href="/shared/components.css">
 <link rel="stylesheet" href="/shared/utils.css">
-<script src="/shared/utils.js"></script>
 <style>
 html, body { overflow: hidden; }
 
@@ -166,7 +165,7 @@ html, body { overflow: hidden; }
     background: var(--bg);
 }
 
-/* ---- Side panels ---- */
+/* ---- Side panel (chat) ---- */
 .side-panel {
     flex-shrink: 0;
     width: 0; overflow: hidden;
@@ -180,23 +179,46 @@ html, body { overflow: hidden; }
     box-shadow: 0 8px 24px rgba(0,0,0,0.35);
 }
 .side-panel.open { border-color: var(--border); }
+#right-panel.open { width: var(--panel-w); margin: 8px 8px 8px 0; }
 
-/* Left panel — Conference */
-#left-panel.open { width: 200px; margin: 8px 8px 8px 8px; }
-
-/* Right panel — Chat */
-#right-panel.open { width: var(--panel-w); margin: 8px; }
-
-/* ---- Center — Video area ---- */
-#center-area {
-    flex: 1; min-width: 0; min-height: 0; position: relative;
-    background: #000; display: flex; align-items: center; justify-content: center;
+/* ---- Stage: unified tile grid ---- */
+#stage {
+    flex: 1; min-width: 0; min-height: 0;
+    position: relative;
+    display: grid;
+    gap: 8px;
+    padding: 8px;
+    align-content: center;
+    justify-content: center;
+    background: var(--bg);
     overflow: hidden;
 }
-#player-wrap { flex-shrink: 0; }
-#player { width: 100%; height: 100%; position: relative; overflow: hidden; }
 
-/* Hide all OvenPlayer built-in UI and prevent hover-triggered layout shifts */
+.tile {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    border-radius: var(--r-lg);
+    animation: tile-in 0.2s ease;
+}
+.tile.hidden { display: none !important; }
+@keyframes tile-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+
+.tile-inner { position: absolute; inset: 0; }
+.tile-inner > video {
+    width: 100%; height: 100%; display: block;
+    object-fit: cover;
+}
+/* Stream + share fit-contain so we don't crop the source. */
+#tile-stream .tile-inner > video, #tile-share .tile-inner > video {
+    object-fit: contain; background: #000;
+}
+.conf-player-inner { width: 100%; height: 100%; }
+
+/* OvenPlayer mounts into #player which lives in #tile-stream. */
+#player { position: absolute; inset: 0; overflow: hidden; }
 #player .op-ui-container, #player .op-loading-container,
 #player .op-controls-container, #player .op-bottom-area,
 #player .op-watermark, #player .op-message-container,
@@ -204,28 +226,32 @@ html, body { overflow: hidden; }
 #player .op-player { position: absolute !important; inset: 0 !important; }
 #player video { width: 100% !important; height: 100% !important; object-fit: contain !important; }
 
-#offline-screen {
-    position: absolute; inset: 0; z-index: 5;
-    display: none; flex-direction: column;
-    align-items: center; justify-content: center;
-    background: var(--bg); gap: 12px;
-}
-#offline-screen.visible { display: flex; }
-
-#screenshare-wrap {
-    position: absolute; inset: 0; z-index: 6;
-    display: none; align-items: center; justify-content: center;
-    background: var(--bg);
-}
-#screenshare-wrap.active { display: flex; }
-#screenshare-video { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
-#screenshare-label {
-    position: absolute; bottom: 12px; left: 16px;
-    font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-    color: #fff; background: rgba(0,0,0,0.55); padding: 3px 10px; border-radius: 4px;
+.tile-name {
+    position: absolute; bottom: 6px; left: 6px;
+    padding: 2px 8px; font-size: 11px; font-weight: 600; color: #fff;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    border-radius: var(--r-md);
     pointer-events: none;
+    max-width: calc(100% - 12px);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* ---- Pointer overlay ---- */
+
+/* Empty-state placeholder shown when no tiles are visible. */
+#stage-empty {
+    color: var(--dim); font-size: 13px; text-align: center;
+    padding: 24px;
+    grid-column: 1 / -1;
+}
+
+/* Rail: side strip in focus mode, hidden in grid mode. */
+#stage-rail {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto; overflow-x: hidden;
+}
+
+/* Pointer overlay: lives inside #tile-stream and tracks the video bounds. */
 #pointer-overlay {
     position: absolute; inset: 0; z-index: 7;
     pointer-events: none; overflow: hidden;
@@ -250,16 +276,24 @@ html, body { overflow: hidden; }
     pointer-events: none;
 }
 
+/* Offline overlay inside #tile-stream — shown when status != live. */
+#offline-screen {
+    position: absolute; inset: 0; z-index: 5;
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: var(--bg); gap: 12px;
+}
+#offline-screen.visible { display: flex; }
 .offline-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); animation: pulse-dot 2s ease-in-out infinite; }
 @keyframes pulse-dot { 0%,100%{opacity:1; transform:scale(1)} 50%{opacity:0.3; transform:scale(0.8)} }
 .offline-label { font-size: 13px; color: var(--dim); font-weight: 500; }
 
+/* Chat panel header (right-panel) */
 .panel-header {
     padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); flex-shrink: 0;
     display: flex; align-items: center; justify-content: space-between;
 }
 .panel-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
-/* Always-visible icon button; mirrors .btn-icon-sm from shared components. */
 .panel-close {
     display: inline-flex; align-items: center; justify-content: center;
     width: 28px; height: 28px; padding: 0;
@@ -273,44 +307,15 @@ html, body { overflow: hidden; }
 .panel-close:focus-visible { outline: none; box-shadow: var(--ring-accent); border-color: var(--accent); }
 .panel-close svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
 
-/* Conference tiles */
-#conf-tiles { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-
-.conf-tile {
-    position: relative; width: 100%; aspect-ratio: 3/2; background: #000;
-    border: 1px solid var(--border); overflow: hidden; flex-shrink: 0;
-    border-radius: var(--r-lg);
-    transition: border-color var(--dur-fast) var(--ease-out),
-                box-shadow var(--dur-fast) var(--ease-out);
-    animation: tile-in 0.2s ease;
-}
-.conf-tile:hover { border-color: var(--dim); box-shadow: 0 2px 10px rgba(0,0,0,0.35); }
-@keyframes tile-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-.conf-tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
-.conf-player-inner { width: 100%; height: 100%; }
-.conf-tile .op-ui-container, .conf-tile .op-loading-container,
-.conf-tile .op-controls-container, .conf-tile .op-bottom-area,
-.conf-tile .op-watermark { display: none !important; }
-
-.conf-name {
-    position: absolute; bottom: 6px; left: 6px;
-    padding: 2px 8px; font-size: 11px; font-weight: 600; color: #fff;
-    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-    border-radius: var(--r-md);
-    pointer-events: none;
-    max-width: calc(100% - 12px);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-.conf-empty { color: var(--dim); font-size: 12px; text-align: center; padding: 24px 8px; }
-
 /* Presenter action buttons on tiles */
 .tile-actions {
     position: absolute; top: 6px; right: 6px;
     display: none; gap: 4px;
-    z-index: 2;
+    z-index: 8;
 }
-.conf-tile:hover .tile-actions { display: flex; }
+.tile:hover .tile-actions { display: flex; }
+/* Pointer mode owns the stream tile — suppress hover actions while active. */
+#pointer-overlay.active ~ .tile-actions { display: none !important; }
 .tile-btn {
     width: 28px; height: 28px;
     background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.12);
@@ -324,122 +329,88 @@ html, body { overflow: hidden; }
 .tile-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .tile-btn.muted-indicator { border-color: var(--danger); color: var(--danger); }
 
-/* Mic-only self tile */
-#self-tile.mic-only #self-preview { display: none; }
+/* Pin button is "active" while its tile is the focus target. */
+.tile[data-focused] .tile-pin-btn {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Mic-only self tile (camera off, mic on) */
+#self-tile.mic-only .tile-inner { display: none; }
 #self-tile.mic-only { background: var(--surface2); display: flex !important; align-items: center; justify-content: center; }
 .mic-only-icon { color: var(--green); user-select: none; display: flex; align-items: center; justify-content: center; }
 .mic-only-icon svg { width: 28px; height: 28px; }
 
-/* Remote tile cam-off */
+/* Participant tile cam-off state */
 .conf-mic-icon { display: none; color: var(--green); }
 .conf-mic-icon svg { width: 22px; height: 22px; }
 .conf-user-icon { display: none; color: var(--dim); }
 .conf-user-icon svg { width: 28px; height: 28px; stroke-width: 1.6; }
-.conf-tile.cam-off .conf-mic-icon { align-items: center; justify-content: center; margin-bottom: 4px; }
-.conf-tile.cam-off .conf-user-icon { align-items: center; justify-content: center; margin-bottom: 4px; }
-.conf-tile.cam-off .conf-player-inner { display: none; }
-.conf-tile.cam-off { background: var(--surface2); display: flex !important; flex-direction: column; align-items: center; justify-content: center; }
-.conf-tile.cam-off .conf-name { position: static; background: none; font-size: 13px; padding: 0; }
+.tile.cam-off .conf-mic-icon { align-items: center; justify-content: center; margin-bottom: 4px; }
+.tile.cam-off .conf-user-icon { align-items: center; justify-content: center; margin-bottom: 4px; }
+.tile.cam-off .conf-player-inner { display: none; }
+.tile.cam-off { background: var(--surface2); display: flex !important; flex-direction: column; align-items: center; justify-content: center; }
+.tile.cam-off .tile-name { position: static; background: none; font-size: 13px; padding: 0; }
 
-/* ---- Call-only room mode ---- */
-/* A room with no stream key attached: no OvenPlayer, no offline screen,
-   no left-panel sidebar. Conference tiles render into #call-grid which
-   fills the center stage. */
-body.mode-call #player-wrap,
-body.mode-call #offline-screen,
-body.mode-call #left-panel,
-body.mode-call #conf-toggle { display: none !important; }
-body.mode-broadcast #call-grid,
-body.mode-broadcast #layout-btn,
-body.mode-broadcast #stream-assigned-banner,
-body.mode-call #stream-removed-overlay { display: none !important; }
-/* Layout toggle is only meaningful while someone is screen-sharing in call mode. */
-body.mode-call:not(.sharing-screen) #layout-btn { display: none !important; }
-
-#call-grid {
-    position: absolute; inset: 0;
-    display: none;
-    padding: 8px; gap: 8px;
-    overflow: auto; align-content: start;
-    background: var(--bg);
-}
-body.mode-call #call-grid {
+/* ---- Focus sub-layout ---- */
+/* Focus mode: stage becomes a 2-column grid — focused tile fills the main
+   area, rail holds everything else vertically. The rail lives inside #stage,
+   so #stage's grid arranges the focused tile (col 1) and rail (col 2). */
+body.has-focus #stage {
     display: grid;
-    grid-auto-rows: auto;
-    align-content: center;
-    justify-content: center;
-}
-body.mode-call #call-grid .conf-tile {
-    width: 100%; height: auto; aspect-ratio: 3/2;
-}
-body.mode-call #call-grid .conf-empty { grid-column: 1 / -1; }
-
-/* Presenter sub-layout: panel and screenshare are flex siblings so they
-   share the stage without overlapping. */
-body.mode-call.call-layout-presenter #center-area {
-    align-items: stretch;
-    justify-content: flex-start;
-    background: var(--bg);
-}
-body.mode-call.call-layout-presenter #call-grid {
-    position: relative;
-    inset: auto;
-    width: 200px;
-    flex-shrink: 0;
-    margin: 8px 0 8px 8px;
-    grid-template-columns: 1fr;
-    grid-auto-rows: min-content;
-    align-content: start;
-    padding: 8px;
+    grid-template-columns: 220px 1fr;
+    grid-template-rows: 1fr;
     gap: 8px;
+    align-content: stretch;
+    justify-content: stretch;
+    transition: grid-template-columns 0.25s ease, gap 0.25s ease;
+}
+body.has-focus #stage-rail {
+    grid-column: 1; grid-row: 1;
+    display: flex;
+    padding: 8px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-    overflow-y: auto;
     z-index: 20;
+    transition: padding 0.25s ease, opacity 0.25s ease, border-color 0.25s ease;
+    opacity: 1;
 }
-body.mode-call.call-layout-presenter #call-grid .conf-tile {
-    width: 100%; height: auto; aspect-ratio: 3/2;
-    max-width: 100%; max-height: none;
+body.has-focus #stage > .tile[data-focused] {
+    grid-column: 2; grid-row: 1;
+    aspect-ratio: auto;
+    width: 100%; height: 100%;
+    cursor: default;
 }
-body.mode-call.call-layout-presenter #screenshare-wrap.active {
-    position: relative;
-    inset: auto;
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+body.has-focus #stage-rail .tile {
+    width: 100%; flex: 0 0 auto;
 }
+body.has-focus #stage-empty { display: none; }
 
-/* Stream-key transition affordances */
-#stream-assigned-banner {
-    position: absolute; top: 0; left: 0; right: 0; z-index: 9;
-    display: none; align-items: center; justify-content: center; gap: 12px;
-    padding: 10px 14px; background: rgba(20,20,20,0.95);
-    border-bottom: 1px solid var(--border);
-    color: #fff; font-size: 13px;
-}
-body.mode-call #stream-assigned-banner.visible { display: flex; }
-#stream-assigned-banner button {
-    padding: 6px 14px; border: none; background: var(--text); color: var(--bg);
-    border-radius: var(--r-btn); font: inherit; font-weight: 600; cursor: pointer;
-    transition: background var(--dur-fast) var(--ease-out);
-}
-#stream-assigned-banner button:hover { background: color-mix(in srgb, var(--text) 80%, var(--bg)); }
+/* Conf-toggle (rail show/hide) and pointer overlay are only meaningful in
+   focus mode (they target the focused tile). */
+body:not(.has-focus) #conf-toggle,
+body:not(.has-focus) #pointer-btn { display: none !important; }
 
-/* Matches #offline-screen styling — same background / dot / label layout
-   so the "stream ended" state looks like the familiar "waiting for source"
-   state, just with different copy. */
-#stream-removed-overlay {
-    position: absolute; inset: 0; z-index: 10;
-    display: none; flex-direction: column;
-    align-items: center; justify-content: center;
-    background: var(--bg); gap: 12px; padding: 24px; text-align: center;
+/* Dynamic focus-btn icon: show the icon of the *target* state. */
+#focus-btn .fb-icon-focus, #focus-btn .fb-icon-grid { display: none; }
+body:not(.has-focus) #focus-btn .fb-icon-focus { display: block; }
+body.has-focus #focus-btn .fb-icon-grid { display: block; }
+/* Optional: user can hide the rail entirely while in focus mode. */
+/* Hide rail by collapsing its grid column to 0 — keeps display:flex so the
+   transition plays. The rail itself fades + un-pads to disguise the
+   width-clip. */
+body.has-focus.rail-hidden #stage {
+    grid-template-columns: 0 1fr;
+    gap: 0;
 }
-body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
-#stream-removed-overlay .offline-label { max-width: 520px; line-height: 1.4; }
+body.has-focus.rail-hidden #stage-rail {
+    padding: 0;
+    opacity: 0;
+    border-color: transparent;
+    overflow: hidden;
+}
 
 /* Call-room badge on landing screen */
 .call-room-badge {
@@ -518,6 +489,20 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 }
 .chat-file-dl:hover { border-color: var(--dim); background: var(--surface2); }
 
+/* Draft chip — same shape as a posted file message, but with an X to remove
+   instead of a download link, and tucked against the input row. */
+.chat-draft-chip { margin: var(--sp-2) var(--sp-3) 0; }
+.chat-draft-remove {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; padding: 0; flex-shrink: 0;
+    background: transparent; border: 1px solid transparent;
+    color: var(--dim); cursor: pointer; border-radius: var(--r-md);
+    transition: background var(--dur-fast) var(--ease-out),
+                color var(--dur-fast) var(--ease-out);
+}
+.chat-draft-remove:hover { background: var(--surface); color: var(--text); }
+.chat-draft-remove svg { width: 14px; height: 14px; }
+
 /* ---- Files section ---- */
 #files-section { flex-shrink: 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; max-height: 180px; }
 #files-header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--surface2); flex-shrink: 0; }
@@ -559,7 +544,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 #tb-break { display: none; }
 
 .tb-btn {
-    width: 42px; height: 42px;
+    width: 42px; height: 42px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     background: var(--surface2); border: 1.5px solid var(--border);
     border-radius: 8px; color: var(--dim); cursor: pointer;
@@ -609,23 +594,15 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 
 /* ---- Responsive ---- */
 @media (max-width: 640px) {
-    /* Top bar */
-    /* .brand-logo { display: none; } */
     #top-bar { padding: 0 10px; }
     #top-center { gap: 6px; }
 
-    /* Toolbar — two rows */
+    /* Toolbar — keep desktop button size and bar padding; only allow wrapping
+       to a second row on narrow viewports. */
     #bottom-toolbar {
-        height: auto; display: flex; flex-wrap: wrap;
-        justify-content: center; align-items: center;
-        gap: 0; padding: 4px 8px;
-        padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+        height: auto; min-height: calc(var(--toolbar-h) + env(safe-area-inset-bottom, 0px));
+        flex-wrap: wrap;
     }
-    .tb-btn { width: 36px; height: 36px; }
-    .tb-btn svg { width: 17px; height: 17px; }
-    .tb-sep { height: 24px; margin: 0 6px; }
-    /* Conference strip is inline above the video in portrait — toggle is a no-op. */
-    #conf-toggle, .tb-sep:has(+ #conf-toggle) { display: none; }
     .toolbar-group { display: flex; gap: 2px; }
     /* Force row break before player controls */
     #tb-break { display: block; order: 9; flex-basis: 100%; height: 2px; }
@@ -635,55 +612,46 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     .tb-sep:has(+ #utility-controls) { order: 11; }
     #volume-slider { display: none; }
 
-    /* Main layout: conference strip above video */
-    #main-row { flex-direction: column; overflow: hidden; }
-
-    /* Conference panel — inline strip above the player, always visible */
-    #left-panel {
-        position: static !important;
-        width: 100% !important;
-        height: auto !important;
-        overflow: visible !important;
-        margin: 0 !important;
-        border-right: none !important;
-        border-bottom: 1px solid var(--border);
-        flex-direction: column;
-        flex-shrink: 0;
-        display: flex !important;
-        transition: none !important;
-    }
-
-    /* Chat panel overlays the full view on mobile */
-    #right-panel { position: absolute; }
+    /* Chat panel overlays the stage on mobile, anchored right so it
+       expands/collapses toward the right edge. Keeps desktop's rounded
+       corners and margin so it floats over what's behind. */
+    #right-panel { position: absolute; top: 0; right: 0; bottom: 0; }
     #right-panel.open {
-        inset: 0; width: 100% !important; margin: 0 !important;
-        border-radius: 0; z-index: 30;
+        width: calc(100% - 16px) !important;
+        margin: 8px 8px 8px 0 !important;
+        z-index: 30;
     }
-    #left-panel .panel-header { display: none; }
-    #conf-tiles {
+
+    /* Tile action buttons stay visible on touch */
+    .tile .tile-actions { display: flex; }
+
+    /* Focus mode on mobile: rail on top as a horizontal carousel, focused
+       tile underneath. */
+    body.has-focus #stage {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+    }
+    body.has-focus #stage > .tile[data-focused] {
+        grid-column: 1; grid-row: 2;
+    }
+    body.has-focus #stage-rail {
+        grid-column: 1; grid-row: 1;
         flex-direction: row;
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        overflow-y: hidden;
-        padding: 8px;
-        gap: 6px;
-        min-height: 0;
         height: 104px;
-        flex: none;
+        overflow-x: auto; overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
     }
-    .conf-tile .tile-actions { display: flex; }
-    #conf-tiles .conf-tile, #conf-tiles #self-tile {
-        width: 130px;
-        flex-shrink: 0;
-        aspect-ratio: 4/3;
-        min-height: 0;
+    /* Override desktop rail-hidden (which collapses a column) — on mobile
+       the rail occupies a row, so collapse the row instead. */
+    body.has-focus.rail-hidden #stage {
+        grid-template-columns: 1fr;
+        grid-template-rows: 0 1fr;
     }
-    #conf-empty { min-width: max-content; padding: 36px 16px; }
-
-    /* Video area fills remaining space */
-    #center-area { flex: 1; min-height: 0; }
-
+    body.has-focus #stage-rail .tile {
+        flex: 0 0 auto;
+        width: auto; height: 100%;
+        aspect-ratio: 16 / 9;
+    }
 
     /* Files section — cap to ~2 rows so messages get most of the panel */
     #files-section { max-height: 96px; }
@@ -692,29 +660,18 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     .join-box, .waiting-box, #landing-screen .panel-box { width: calc(100vw - 32px); padding: 32px 24px; }
 }
 
-/* Mobile landscape — maximize video area */
+/* Mobile landscape — maximize stage area */
 @media (max-height: 440px) and (orientation: landscape) {
     #top-bar { height: 36px; }
-    /* Explicit height — the base rule sets 56px + safe-area which dominates
-       the player's vertical budget on short screens. 32px button + 2px of
-       padding each side = 36px is enough. */
+    /* iOS reserves a bottom safe-area for the home indicator; the toolbar's
+       base rule pads that into its content box, which pushes buttons up
+       and breaks vertical centering. In landscape the indicator overlay
+       sits *under* the toolbar surface, so we can safely drop the inset. */
     #bottom-toolbar {
-        height: calc(25px + env(safe-area-inset-bottom, 0px));
-        flex-wrap: nowrap;
-        padding: 2px 8px;
-        /* padding-bottom: calc(2px + env(safe-area-inset-bottom, 0px)); */
-    }
-    .tb-btn { width: 32px; height: 32px; }
-    .tb-btn svg { width: 15px; height: 15px; }
-
-    #main-row { flex-direction: row; }
-    #center-area { flex: 1; min-width: 0; min-height: 0; }
-
-    /* Smaller panel widths for landscape */
-    #left-panel.open { width: 200px; }
-    #left-panel .panel-header { display: flex !important; }
-    #conf-tiles {
-        flex-direction: column; height: auto; overflow-y: auto; overflow-x: hidden;
+        flex-wrap: wrap;
+        height: var(--toolbar-h);
+        min-height: var(--toolbar-h);
+        padding-bottom: 0;
     }
 
     #right-panel.open { width: 280px; }
@@ -729,7 +686,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 <!-- Landing screen -->
 <div id="landing-screen" class="hidden">
     <div class="panel-box">
-        <img src="" alt="Ze Maria Color" class="screen-logo">
+        <img src="" alt="" class="screen-logo">
         <div class="landing-title">Welcome</div>
         <div class="landing-sub">It appears you forgot the room link for your project. Please enter your room link below or ask your host for the correct URL.</div>
         <div class="form-row">
@@ -743,7 +700,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 <!-- Join screen -->
 <div id="join-screen" class="screen hidden">
     <div class="join-box">
-        <img src="" alt="Ze Maria Color" class="screen-logo">
+        <img src="" alt="" class="screen-logo">
         <div class="join-room-name" id="join-room-name">Loading...</div>
         <form id="join-form">
             <div class="form-row">
@@ -847,7 +804,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
     <!-- Top bar -->
     <div id="top-bar">
         <div id="top-left">
-            <img src="" alt="Ze Maria Color" class="brand-logo">
+            <img src="" alt="" class="brand-logo">
         </div>
         <div id="top-center">
             <div id="ws-status"><div id="ws-dot"></div><span id="ws-label">Connecting</span></div>
@@ -864,52 +821,52 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         </div>
     </div>
 
-    <!-- Main row: panels + video -->
+    <!-- Main row: stage + chat -->
     <div id="main-row">
 
-        <!-- Conference panel (left) -->
-        <div id="left-panel" class="side-panel">
-            <div class="panel-header">
-                <div class="panel-label">Participants</div>
-                <button class="panel-close" id="conf-close" title="Close">
-                    <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-            </div>
-            <div id="conf-tiles">
-                <div class="conf-tile" id="self-tile" style="display:none">
-                    <video id="self-preview" autoplay muted playsinline></video>
-                    <div class="mic-only-icon" id="self-mic-icon" style="display:none">
-                        <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="1" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-                    </div>
-                    <div class="conf-name">You</div>
+        <!-- Unified stage: every video source (OvenPlayer broadcast,
+             screenshare, participant cameras) is a tile in the same grid.
+             #stage-rail holds non-focused tiles when focus sub-layout is
+             active; in grid view it is empty and hidden. -->
+        <div id="stage">
+            <div class="tile hidden" id="tile-stream">
+                <div class="tile-inner">
+                    <div id="player"></div>
                 </div>
-                <div class="conf-empty" id="conf-empty">No active participants.</div>
+                <div id="pointer-overlay"></div>
+                <div id="offline-screen">
+                    <div class="offline-dot"></div>
+                    <div class="offline-label" id="offline-msg">Waiting for livestream source...</div>
+                </div>
+                <div class="tile-actions">
+                    <button class="tile-btn tile-pin-btn" data-action="toggle-focus" title="Pin to stage" aria-label="Pin to stage">
+                        <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76a2 2 0 0 0 .54 1.37l1.96 2.1H6.5l1.96-2.1A2 2 0 0 0 9 10.76z"/></svg>
+                    </button>
+                </div>
+                <div class="tile-name">Stream</div>
             </div>
-        </div>
-
-        <!-- Video area (center) -->
-        <div id="center-area">
-            <div id="player-wrap">
-                <div id="player"></div>
+            <div class="tile hidden" id="tile-share">
+                <div class="tile-inner">
+                    <video id="screenshare-video" autoplay playsinline></video>
+                </div>
+                <div class="tile-actions">
+                    <button class="tile-btn tile-pin-btn" data-action="toggle-focus" title="Pin to stage" aria-label="Pin to stage">
+                        <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76a2 2 0 0 0 .54 1.37l1.96 2.1H6.5l1.96-2.1A2 2 0 0 0 9 10.76z"/></svg>
+                    </button>
+                </div>
+                <div class="tile-name" id="tile-share-name">Screen</div>
             </div>
-            <div id="call-grid"></div>
-            <div id="screenshare-wrap">
-                <video id="screenshare-video" autoplay playsinline></video>
-                <div id="screenshare-label"></div>
+            <div class="tile" id="self-tile" style="display:none">
+                <div class="tile-inner">
+                    <video id="self-preview" autoplay muted playsinline></video>
+                </div>
+                <div class="mic-only-icon" id="self-mic-icon" style="display:none">
+                    <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="1" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                </div>
+                <div class="tile-name">You</div>
             </div>
-            <div id="pointer-overlay"></div>
-            <div id="offline-screen">
-                <div class="offline-dot"></div>
-                <div class="offline-label" id="offline-msg">Waiting for livestream source...</div>
-            </div>
-            <div id="stream-assigned-banner">
-                <span>The session has started — please refresh the page.</span>
-                <button type="button" id="stream-assigned-refresh">Refresh</button>
-            </div>
-            <div id="stream-removed-overlay">
-                <div class="offline-dot"></div>
-                <div class="offline-label">This session has ended but the room can still be used for call purposes, please exit and rejoin the room.</div>
-            </div>
+            <div id="stage-empty">Waiting for participants…</div>
+            <div id="stage-rail"></div>
         </div>
 
         <!-- Chat panel (right) -->
@@ -966,19 +923,19 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
             <button class="tb-btn" id="screen-btn" title="Share Screen">
                 <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
             </button>
-            <button class="tb-btn" id="device-btn" title="Devices">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            </button>
         </div>
         <div class="tb-sep"></div>
         <div class="toolbar-group">
             <button class="tb-btn" id="pointer-btn" title="Pointer">
                 <svg viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6" stroke-linecap="round"/></svg>
             </button>
-            <button class="tb-btn" id="layout-btn" title="Switch layout">
-                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <button class="tb-btn" id="focus-btn" title="Toggle focus view">
+                <!-- Shown in grid view (click to enter focus): rail-and-main icon. -->
+                <svg class="fb-icon-focus" viewBox="0 0 24 24"><rect x="3" y="4" width="3" height="5" rx="0.5"/><rect x="3" y="10.5" width="3" height="5" rx="0.5"/><rect x="3" y="17" width="3" height="3" rx="0.5"/><rect x="8" y="4" width="13" height="16" rx="1"/></svg>
+                <!-- Shown in focus view (click to return to grid): 2x2 grid icon. -->
+                <svg class="fb-icon-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
             </button>
-            <button class="tb-btn" id="conf-toggle" title="Participants">
+            <button class="tb-btn" id="conf-toggle" title="Show/hide rail">
                 <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </button>
             <button class="tb-btn" id="chat-toggle" title="Chat">
@@ -1000,6 +957,9 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
         </div>
         <div class="tb-sep"></div>
         <div class="toolbar-group" id="utility-controls">
+            <button class="tb-btn" id="device-btn" title="Devices">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
             <button class="tb-btn" id="resync-btn" title="Resync">
                 <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             </button>
@@ -1011,1704 +971,7 @@ body.mode-broadcast #stream-removed-overlay.visible { display: flex; }
 
 </div><!-- /app -->
 
-<script>
-(function () {
-    const API = '/api/public/rooms';
 
-    const pathParts = location.pathname.replace(/^\//, '').split('/').filter(Boolean);
-    const slug = pathParts[pathParts.length - 1];
-
-    // Enforce canonical /watch/{slug} URL — redirect anything else
-    if (slug && !location.pathname.startsWith('/watch/')) {
-        location.replace('/watch/' + slug + location.search);
-        return;
-    }
-
-    const params        = new URLSearchParams(location.search);
-    const autoPassword  = params.get('p') || '';
-    const autoName      = params.get('n') || '';
-    const presenterKey  = params.get('pk') || '';
-    const isPresenter   = params.get('role') === 'presenter' && presenterKey.length > 0;
-
-    let roomInfo      = null;
-    let participantId = null;
-    let myToken       = null;
-    let deliveryMode  = 'webrtc';
-    let streamKey     = null;
-    let player        = null;
-    let statusInterval = null;
-
-    // 'broadcast' (OvenPlayer stage) or 'call' (LiveKit-only grid).
-    let roomMode      = 'broadcast';
-    // Call-mode sub-layout: 'grid' (tiles fill stage) or 'presenter'
-    // (screen share fills stage, tiles filmstrip).
-    let callLayout    = 'grid';
-    // True once the user manually toggles the layout. Prevents auto-switch
-    // from fighting the user mid-screen-share. Cleared when the share ends.
-    let layoutOverride = false;
-
-    let myRole = isPresenter ? 'presenter' : 'viewer';
-
-    // Conference state
-    let ws                     = null;
-    let wsReconnect            = true;
-    let livekitRoom            = null;
-    let cameraOn               = false;
-    let micOn                  = false;
-    let screenOn               = false;
-    let activeScreenShareId    = null; // participant.identity or 'local'
-    let activeScreenShareTrack = null;
-    let retryTimer  = null;
-    let offlineTimer = null;
-    let roomStatus  = 'pending';
-
-    // Roster from participants:update WS messages. Drives the conference tile
-    // list so watch-only participants (who never join LiveKit) still render.
-    let lastRoster = [];
-
-    // Panel state
-    let chatOpen = false;
-    let confOpen = false;
-
-    // Pointer overlay state
-    let pointerMode = false;
-    const pointerCursors = new Map(); // participantId -> { el, fadeTimer }
-    const POINTER_COLORS = [
-        '#FF3030', // red
-        '#00C853', // green
-        '#2979FF', // blue
-        '#FFD600', // yellow
-        '#D500F9', // magenta
-        '#FF6D00', // orange
-        '#00E5FF', // cyan
-        '#FF4081', // pink
-        '#76FF03', // lime
-        '#651FFF', // purple
-    ];
-    let pointerThrottleTimer = null;
-
-    function getPointerColor(pid) {
-        let h = 0;
-        for (let i = 0; i < pid.length; i++) {
-            h = Math.imul(h ^ pid.charCodeAt(i), 2654435761);
-        }
-        return POINTER_COLORS[((h >>> 0) % POINTER_COLORS.length)];
-    }
-
-    function esc(s) {
-        return String(s)
-            .replace(/&/g,'&amp;')
-            .replace(/</g,'&lt;')
-            .replace(/>/g,'&gt;')
-            .replace(/"/g,'&quot;')
-            .replace(/'/g,'&#39;');
-    }
-
-    // SVG icon markup (reusable)
-    const SVG_PAPERCLIP = '<svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
-    const SVG_MIC = '<svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="1" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
-    const SVG_MIC_OFF = '<svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
-    const SVG_USER = '<svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>';
-
-    // ---- LiveKit conference ----
-
-    function showScreenShare(track, label) {
-        if (activeScreenShareTrack) activeScreenShareTrack.detach(document.getElementById('screenshare-video'));
-        activeScreenShareTrack = track;
-        track.attach(document.getElementById('screenshare-video'));
-        document.getElementById('screenshare-label').textContent = label;
-        document.getElementById('screenshare-wrap').classList.add('active');
-        document.body.classList.add('sharing-screen');
-        // Auto-switch call-mode to Presenter unless the user has manually
-        // picked a layout for this share session.
-        if (roomMode === 'call' && !layoutOverride) setCallLayout('presenter');
-    }
-
-    function hideScreenShare() {
-        if (activeScreenShareTrack) {
-            activeScreenShareTrack.detach(document.getElementById('screenshare-video'));
-            activeScreenShareTrack = null;
-        }
-        document.getElementById('screenshare-wrap').classList.remove('active');
-        document.body.classList.remove('sharing-screen');
-        activeScreenShareId = null;
-        // Share ended → return to Grid and drop the manual-override flag so
-        // the next share can auto-switch again.
-        if (roomMode === 'call') {
-            layoutOverride = false;
-            setCallLayout('grid');
-        }
-    }
-
-    function setCallLayout(layout) {
-        callLayout = layout;
-        document.body.classList.toggle('call-layout-grid', layout === 'grid');
-        document.body.classList.toggle('call-layout-presenter', layout === 'presenter');
-        const btn = document.getElementById('layout-btn');
-        if (btn) btn.classList.toggle('panel-open', layout === 'presenter');
-        requestAnimationFrame(sizeCallGrid);
-    }
-
-    document.getElementById('layout-btn').addEventListener('click', () => {
-        if (roomMode !== 'call') return;
-        setCallLayout(callLayout === 'grid' ? 'presenter' : 'grid');
-        // If a share is active, remember the user's choice so auto-switch
-        // doesn't clobber it until the share ends.
-        if (activeScreenShareTrack) layoutOverride = true;
-    });
-
-    async function initLiveKit() {
-        if (livekitRoom) { await livekitRoom.disconnect(); livekitRoom = null; }
-
-        const res = await fetch(
-            `/api/public/rooms/${encodeURIComponent(slug)}/livekit-token`
-            + `?participantId=${encodeURIComponent(participantId)}&token=${encodeURIComponent(myToken)}`
-        );
-        if (!res.ok) throw new Error('Could not get LiveKit token');
-        const { token: lkToken, url: lkUrl } = await res.json();
-
-        livekitRoom = new LivekitClient.Room();
-
-        livekitRoom.on(LivekitClient.RoomEvent.ParticipantConnected,    () => syncConferenceTiles());
-        livekitRoom.on(LivekitClient.RoomEvent.ParticipantDisconnected, () => syncConferenceTiles());
-        livekitRoom.on(LivekitClient.RoomEvent.TrackPublished,          () => syncConferenceTiles());
-        livekitRoom.on(LivekitClient.RoomEvent.TrackUnpublished,        () => syncConferenceTiles());
-        livekitRoom.on(LivekitClient.RoomEvent.TrackMuted,              (pub, participant) => { syncConferenceTiles(); syncLocalMuteState(pub, participant); });
-        livekitRoom.on(LivekitClient.RoomEvent.TrackUnmuted,            (pub, participant) => { syncConferenceTiles(); syncLocalMuteState(pub, participant); });
-        livekitRoom.on(LivekitClient.RoomEvent.TrackSubscribed,   (track, _pub, participant) => attachTrack(track, participant));
-        livekitRoom.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
-            if (track.source === LivekitClient.Track.Source.ScreenShare) {
-                if (activeScreenShareId === participant.identity) hideScreenShare();
-                return;
-            }
-            track.detach();
-            syncConferenceTiles();
-        });
-        livekitRoom.on(LivekitClient.RoomEvent.LocalTrackUnpublished, (pub) => {
-            if (pub.source === LivekitClient.Track.Source.ScreenShare && activeScreenShareId === 'local') {
-                hideScreenShare();
-                screenOn = false;
-                document.getElementById('screen-btn').classList.remove('active');
-            }
-        });
-
-        await livekitRoom.connect(lkUrl, lkToken);
-
-        // Attach any tracks already subscribed (participants present before we joined)
-        syncConferenceTiles();
-        for (const p of livekitRoom.remoteParticipants.values()) {
-            for (const pub of p.trackPublications.values()) {
-                if (pub.track) attachTrack(pub.track, p);
-            }
-        }
-
-        if (cameraOn) await livekitRoom.localParticipant.setCameraEnabled(true);
-        if (micOn)    await livekitRoom.localParticipant.setMicrophoneEnabled(true);
-
-        updateSelfTile();
-    }
-
-    let selfMuteInFlight = false;
-    function startMicBreathe() {
-        const btn = document.getElementById('mic-btn');
-        if (btn) btn.classList.add('force-muted');
-    }
-    function stopMicBreathe() {
-        const btn = document.getElementById('mic-btn');
-        if (btn) btn.classList.remove('force-muted');
-    }
-
-    function syncLocalMuteState(pub, participant) {
-        if (!livekitRoom || participant !== livekitRoom.localParticipant) return;
-        if (pub.source === LivekitClient.Track.Source.Microphone) {
-            // Forced mute detection: muted event arrived while we still thought mic was on
-            // and no local toggle is in flight → host/presenter muted us.
-            if (pub.isMuted && micOn && !selfMuteInFlight) startMicBreathe();
-            // Any unmute (self or otherwise) clears the breathe alert.
-            if (!pub.isMuted) stopMicBreathe();
-            micOn = !pub.isMuted;
-            refreshConfButtons();
-            updateSelfTile();
-        }
-        if (pub.source === LivekitClient.Track.Source.Camera) {
-            cameraOn = !pub.isMuted;
-            refreshConfButtons();
-            updateSelfTile();
-        }
-    }
-
-    function updateSelfTile() {
-        const v        = document.getElementById('self-preview');
-        const selfTile = document.getElementById('self-tile');
-        const micIcon  = document.getElementById('self-mic-icon');
-
-        if (!cameraOn && !micOn) {
-            selfTile.style.display = 'none';
-            selfTile.classList.remove('mic-only');
-            micIcon.style.display = 'none';
-            return;
-        }
-        if (cameraOn && livekitRoom) {
-            const camPub = livekitRoom.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera);
-            if (camPub?.track) v.srcObject = new MediaStream([camPub.track.mediaStreamTrack]);
-            selfTile.classList.remove('mic-only');
-            micIcon.style.display = 'none';
-            selfTile.style.display = 'block';
-        } else {
-            v.srcObject = null;
-            selfTile.classList.add('mic-only');
-            micIcon.style.display = '';
-            selfTile.style.display = 'flex';
-        }
-    }
-
-    function syncConferenceTiles() {
-        // In call mode the tiles live in the center-stage grid; otherwise in
-        // the left sidebar. Move #self-tile + #conf-empty into the active
-        // container so existing code (and CSS) keeps working unchanged.
-        const tilesEl = document.getElementById(roomMode === 'call' ? 'call-grid' : 'conf-tiles');
-        const emptyEl = document.getElementById('conf-empty');
-        const selfTile = document.getElementById('self-tile');
-        if (selfTile && selfTile.parentElement !== tilesEl) tilesEl.appendChild(selfTile);
-        if (emptyEl && emptyEl.parentElement !== tilesEl) tilesEl.appendChild(emptyEl);
-
-        // LiveKit peers keyed by identity (== participantId on the server side).
-        const lkMap = livekitRoom
-            ? new Map(Array.from(livekitRoom.remoteParticipants.values()).map(p => [p.identity, p]))
-            : new Map();
-
-        // Every remote participant from the roster gets a tile. Watch-only
-        // users (not in LiveKit) render as a placeholder; LK peers attach
-        // their cam/mic to the same tile.
-        const byId = new Map();
-        for (const p of lastRoster) {
-            if (p.id !== participantId) byId.set(p.id, p);
-        }
-        // Race safety: a LK peer might briefly be missing from the roster
-        // (e.g. participants:update lagging). Synthesize a minimal entry.
-        for (const [id, lkp] of lkMap) {
-            if (!byId.has(id)) {
-                const meta = (() => { try { return JSON.parse(lkp.metadata || '{}'); } catch { return {}; } })();
-                byId.set(id, { id, name: lkp.name || id, role: meta.role || 'viewer' });
-            }
-        }
-
-        // Remove tiles for participants no longer present
-        for (const tile of [...tilesEl.querySelectorAll('.conf-tile[id^="conf-tile-"]')]) {
-            const id = tile.id.slice('conf-tile-'.length);
-            if (!byId.has(id)) tile.remove();
-        }
-
-        for (const [pid, rp] of byId) {
-            const lkp = lkMap.get(pid);
-            const camPub = lkp?.getTrackPublication(LivekitClient.Track.Source.Camera);
-            const micPub = lkp?.getTrackPublication(LivekitClient.Track.Source.Microphone);
-            const hasCam = !!(camPub && !camPub.isMuted);
-            const hasMic = !!(micPub && !micPub.isMuted);
-
-            let tile = document.getElementById(`conf-tile-${pid}`);
-            if (!tile) {
-                tile = document.createElement('div');
-                tile.id = `conf-tile-${pid}`;
-                tile.className = 'conf-tile';
-
-                const isTargetPresenter = rp.role === 'presenter';
-                const micSid    = micPub?.trackSid || '';
-                const micMuted  = micPub?.isMuted ?? true;
-
-                tile.innerHTML =
-                    `<div id="conf-player-${pid}" class="conf-player-inner">` +
-                    `<video autoplay playsinline style="width:100%;height:100%;object-fit:cover"></video></div>` +
-                    `<div class="conf-user-icon">${SVG_USER}</div>` +
-                    `<div class="conf-mic-icon" style="display:none">${SVG_MIC}</div>` +
-                    `<div class="conf-name">${esc(rp.name || pid)}</div>` +
-                    (myRole === 'presenter' && !isTargetPresenter ? (
-                        `<div class="tile-actions">` +
-                        `<button class="tile-btn${micMuted ? ' muted-indicator' : ''}" title="${micMuted ? 'Unmute' : 'Mute'}" ` +
-                        `data-action="mute" data-identity="${esc(pid)}" data-sid="${esc(micSid)}">${micMuted ? SVG_MIC_OFF : SVG_MIC}</button>` +
-                        `<button class="tile-btn danger" title="Remove from conference" ` +
-                        `data-action="kick" data-identity="${esc(pid)}">` +
-                        `<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>` +
-                        `</div>`
-                    ) : '');
-                tilesEl.insertBefore(tile, emptyEl);
-            }
-
-            // Keep the display name in sync with roster updates
-            const nameEl = tile.querySelector('.conf-name');
-            const nextName = rp.name || pid;
-            if (nameEl && nameEl.textContent !== nextName) nameEl.textContent = nextName;
-
-            // Update mute button state if tile already exists
-            if (myRole === 'presenter') {
-                const muteBtn = tile.querySelector('[data-action="mute"]');
-                if (muteBtn) {
-                    const micSid = micPub?.trackSid || '';
-                    const micMuted = micPub?.isMuted ?? true;
-                    muteBtn.className = `tile-btn${micMuted ? ' muted-indicator' : ''}`;
-                    muteBtn.title = micMuted ? 'Unmute' : 'Mute';
-                    muteBtn.dataset.sid = micSid;
-                    muteBtn.innerHTML = micMuted ? SVG_MIC_OFF : SVG_MIC;
-                }
-            }
-
-            tile.classList.toggle('cam-off', !hasCam);
-            tile.querySelector('.conf-mic-icon').style.display = (hasMic && !hasCam) ? 'flex' : 'none';
-            tile.querySelector('.conf-user-icon').style.display = (!hasMic && !hasCam) ? 'flex' : 'none';
-        }
-
-        const hasRemoteTiles = byId.size > 0;
-        emptyEl.style.display = (hasRemoteTiles || cameraOn || micOn) ? 'none' : '';
-        sizeCallGrid();
-    }
-
-    function attachTrack(track, participant) {
-        // Audio (mic or screen share audio) — auto-attach to a new <audio> element
-        if (track.kind === LivekitClient.Track.Kind.Audio) {
-            track.attach();
-            return;
-        }
-
-        // Screen share — route to center overlay
-        if (track.source === LivekitClient.Track.Source.ScreenShare) {
-            activeScreenShareId = participant.identity;
-            activeScreenShareTrack = track;
-            showScreenShare(track, (participant.name || participant.identity) + ' — Screen');
-            return;
-        }
-
-        // Camera — attach to the participant's conf tile
-        const inner = document.getElementById(`conf-player-${participant.identity}`);
-        if (!inner) {
-            // Tile not created yet — create it first, then re-attach
-            syncConferenceTiles();
-            const innerRetry = document.getElementById(`conf-player-${participant.identity}`);
-            if (innerRetry) track.attach(innerRetry.querySelector('video'));
-            return;
-        }
-        const video = inner.querySelector('video');
-        if (video) track.attach(video);
-        syncConferenceTiles();
-    }
-
-    // ---- Landing page ----
-
-    function showLanding() {
-        document.getElementById('join-screen').classList.add('hidden');
-        document.getElementById('landing-screen').classList.remove('hidden');
-    }
-
-    function goToRoom() {
-        const raw = document.getElementById('landing-input').value.trim();
-        const errEl = document.getElementById('landing-error');
-        errEl.textContent = '';
-        if (!raw) { errEl.textContent = 'Please enter a room URL.'; return; }
-        let dest;
-        try {
-            const url = raw.startsWith('http') ? new URL(raw) : new URL('https://x/' + raw.replace(/^\/+/, ''));
-            const parts = url.pathname.replace(/^\//, '').split('/').filter(Boolean);
-            dest = parts[parts.length - 1];
-        } catch (e) {
-            dest = raw.replace(/^\/+|\/+$/g, '').split('/').pop();
-        }
-        if (!dest) { errEl.textContent = 'Could not parse a room from that URL.'; return; }
-        location.href = '/watch/' + dest + location.search;
-    }
-
-    document.getElementById('landing-btn').addEventListener('click', goToRoom);
-    document.getElementById('landing-input').addEventListener('keydown', e => { if (e.key === 'Enter') goToRoom(); });
-
-    // ---- Init ----
-
-    if (!slug) {
-        showLanding();
-        return;
-    }
-
-    const savedName = localStorage.getItem(`viewer_name_${slug}`) || '';
-    const savedPass = localStorage.getItem(`viewer_pass_${slug}`) || '';
-    if (savedName) document.getElementById('name-input').value = savedName;
-    if (savedPass) document.getElementById('password-input').value = savedPass;
-
-    // Admin "Enter Room" — consume one-time presenter session handed off via localStorage
-    (function consumePresession() {
-        try {
-            const raw = localStorage.getItem(`_presession_${slug}`);
-            if (!raw) return;
-            localStorage.removeItem(`_presession_${slug}`);
-            const ps = JSON.parse(raw);
-            if (!ps.participantId || !ps.token) return;
-            sessionStorage.setItem(`viewer_session_${slug}`, JSON.stringify({
-                participantId: ps.participantId,
-                token:         ps.token,
-                deliveryMode:  ps.deliveryMode || 'webrtc',
-                streamKey:     ps.streamKey || null,
-                role:          ps.role || 'presenter',
-            }));
-        } catch {}
-    })();
-
-    loadRoomInfo();
-
-    async function loadRoomInfo() {
-        try {
-            const res = await fetch(`${API}/${slug}/info`);
-            if (res.status === 429) { setTimeout(loadRoomInfo, 2000); return; }
-            if (!res.ok) {
-                showLanding();
-                document.getElementById('landing-error').textContent = 'Room not found. Please check your link.';
-                return;
-            }
-            roomInfo = await res.json();
-            document.title = roomInfo.name + ' — Ze Maria';
-            const nameEl = document.getElementById('join-room-name');
-            nameEl.textContent = roomInfo.name;
-            if (!roomInfo.has_stream_key) {
-                const badge = document.createElement('span');
-                badge.className = 'call-room-badge';
-                badge.textContent = 'Call room';
-                nameEl.appendChild(badge);
-            }
-            if (roomInfo.has_password) document.getElementById('password-row').style.display = '';
-            // If this tab was kicked, stay on kicked screen but poll so we
-            // automatically rejoin when the admin clears the kick.
-            if (sessionStorage.getItem(`viewer_kicked_${slug}`)) {
-                document.getElementById('kicked-screen').classList.remove('hidden');
-                startKickedPoller();
-                return;
-            }
-            const savedSession = JSON.parse(sessionStorage.getItem(`viewer_session_${slug}`) || 'null');
-            // If the room's broadcast mode flipped since we joined (admin
-            // attached or cleared a stream key), the saved session is stale:
-            // its streamKey would lock the page into the old mode. Drop it,
-            // then fall through to the auto-rejoin path so the user is put
-            // back into the room without having to re-enter their name.
-            const savedHasKey = !!(savedSession && savedSession.streamKey);
-            const serverHasKey = !!roomInfo.has_stream_key;
-            const modeFlipped = savedSession && (savedHasKey !== serverHasKey);
-            if (modeFlipped) sessionStorage.removeItem(`viewer_session_${slug}`);
-
-            if (savedSession && !modeFlipped && roomInfo.status !== 'ended') {
-                participantId = savedSession.participantId;
-                myToken       = savedSession.token;
-                myRole        = isPresenter ? 'presenter' : (savedSession.role || 'viewer');
-                deliveryMode  = roomInfo.delivery_mode || savedSession.deliveryMode || 'webrtc';
-                streamKey     = savedSession.streamKey;
-                // Re-check admission on resume. A participant who refreshed
-                // while in the waiting room must land back on waiting-screen,
-                // not sneak into the app shell (which would then fail to
-                // connect WS / LiveKit since the backend still sees
-                // is_admitted=0). Presenters skip the check — the role
-                // guarantees admission server-side.
-                if (myRole === 'presenter') {
-                    showApp(roomInfo.status);
-                } else {
-                    try {
-                        const sres = await fetch(`${API}/${slug}/status/${participantId}?token=${encodeURIComponent(myToken)}`);
-                        if (sres.status === 404 || sres.status === 401) {
-                            sessionStorage.removeItem(`viewer_session_${slug}`);
-                            document.getElementById('join-screen').classList.remove('hidden');
-                            return;
-                        }
-                        const sdata = await sres.json();
-                        if (sdata.kicked) {
-                            sessionStorage.setItem(`viewer_kicked_${slug}`, '1');
-                            document.getElementById('kicked-screen').classList.remove('hidden');
-                            startKickedPoller();
-                            return;
-                        }
-                        if (sdata.admitted) {
-                            showApp(roomInfo.status);
-                        } else {
-                            document.getElementById('waiting-screen').classList.remove('hidden');
-                            document.getElementById('waiting-name').textContent = savedName || '';
-                            pollAdmission();
-                        }
-                    } catch {
-                        document.getElementById('join-screen').classList.remove('hidden');
-                    }
-                }
-            } else if (savedSession && !modeFlipped && roomInfo.status === 'ended') {
-                sessionStorage.removeItem(`viewer_session_${slug}`);
-                document.getElementById('join-screen').classList.remove('hidden');
-            } else if (autoName || (modeFlipped && savedName)) {
-                // ?n= from admin one-shot links OR a known returning user
-                // whose session we just invalidated — skip the join form.
-                // URL params (role, pk) survive location.reload(), so host
-                // privilege is preserved automatically.
-                document.getElementById('name-input').value = autoName || savedName;
-                const pw = autoPassword || savedPass;
-                if (pw) document.getElementById('password-input').value = pw;
-                doJoin();
-            } else {
-                document.getElementById('join-screen').classList.remove('hidden');
-            }
-        } catch {
-            document.getElementById('join-room-name').textContent = 'Connection error';
-            document.getElementById('join-screen').classList.remove('hidden');
-        }
-    }
-
-    // ---- Join ----
-
-    document.getElementById('join-form').addEventListener('submit', e => { e.preventDefault(); doJoin(); });
-
-    async function doJoin() {
-        const errEl = document.getElementById('join-error');
-        errEl.textContent = '';
-        const name     = document.getElementById('name-input').value.trim();
-        const password = document.getElementById('password-input').value;
-        if (!name) { errEl.textContent = 'Please enter your name'; return; }
-
-        document.getElementById('join-btn').textContent = 'Joining...';
-        document.getElementById('join-btn').disabled = true;
-
-        try {
-            const res  = await fetch(`${API}/${slug}/join`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, password, role: isPresenter ? 'presenter' : 'viewer', presenter_key: presenterKey }),
-            });
-            const data = await res.json();
-
-            if (!res.ok) {
-                errEl.textContent = data.error || 'Could not join';
-                document.getElementById('join-btn').textContent = 'Join Session';
-                document.getElementById('join-btn').disabled = false;
-                return;
-            }
-
-            participantId = data.participant_id;
-            myToken       = data.token;
-            myRole        = data.role || 'viewer';
-            deliveryMode  = data.delivery_mode;
-            streamKey     = data.stream_key;
-
-            sessionStorage.setItem(`viewer_session_${slug}`, JSON.stringify({
-                participantId, token: myToken, deliveryMode, streamKey, role: myRole,
-            }));
-            localStorage.setItem(`viewer_name_${slug}`, name);
-            if (password) localStorage.setItem(`viewer_pass_${slug}`, password);
-            else localStorage.removeItem(`viewer_pass_${slug}`);
-
-            if (data.waiting_room && !data.admitted) {
-                document.getElementById('join-screen').classList.add('hidden');
-                document.getElementById('waiting-screen').classList.remove('hidden');
-                document.getElementById('waiting-name').textContent = name;
-                pollAdmission();
-            } else {
-                showApp(data.status);
-            }
-        } catch {
-            errEl.textContent = 'Connection error';
-            document.getElementById('join-btn').textContent = 'Join Session';
-            document.getElementById('join-btn').disabled = false;
-        }
-    }
-
-    // ---- Waiting room ----
-
-    function clearAdmissionPoll() {
-        if (statusInterval) { clearInterval(statusInterval); statusInterval = null; }
-    }
-
-    function pollAdmission() {
-        const sse = new EventSource(`${API}/${slug}/waiting/events/${participantId}?token=${encodeURIComponent(myToken)}`);
-        sse.addEventListener('admitted', () => { sse.close(); showApp(); });
-        sse.addEventListener('error', () => {
-            sse.close();
-            clearAdmissionPoll();
-            statusInterval = setInterval(async () => {
-                const res = await fetch(`${API}/${slug}/status/${participantId}?token=${encodeURIComponent(myToken)}`);
-                if (!res.ok) return;
-                let data;
-                try { data = await res.json(); } catch { return; }
-                if (data.admitted) { clearAdmissionPoll(); showApp(); }
-            }, 3000);
-        });
-    }
-
-    // ---- Player sizing (16:9) ----
-
-    function sizePlayer() {
-        const area = document.getElementById('center-area');
-        const wrap = document.getElementById('player-wrap');
-        if (!area || !wrap) return;
-        const aw = area.clientWidth;
-        const ah = area.clientHeight;
-        let w = aw;
-        let h = Math.round(aw * 9 / 16);
-        if (h > ah) { h = ah; w = Math.round(ah * 16 / 9); }
-        wrap.style.width  = w + 'px';
-        wrap.style.height = h + 'px';
-    }
-
-    // Compute the optimal column count for the call grid so 3:2 tiles fill the
-    // container as efficiently as possible without overflowing.
-    function sizeCallGrid() {
-        const grid = document.getElementById('call-grid');
-        if (!grid || !document.body.classList.contains('mode-call')) return;
-        if (document.body.classList.contains('call-layout-presenter')) { grid.style.gridTemplateColumns = ''; return; }
-        const tiles = grid.querySelectorAll('.conf-tile');
-        const n = tiles.length;
-        if (n === 0) { grid.style.gridTemplateColumns = ''; return; }
-        const gap = 8;
-        const pad = 16;
-        const cw = grid.clientWidth  - pad;
-        const ch = grid.clientHeight - pad;
-        const RATIO = 3 / 2;
-        let bestCols = 1, bestArea = 0, bestTileW = cw;
-        for (let cols = 1; cols <= n; cols++) {
-            const rows = Math.ceil(n / cols);
-            const tw = (cw - gap * (cols - 1)) / cols;
-            const th = (ch - gap * (rows - 1)) / rows;
-            const tileH = Math.min(th, tw / RATIO);
-            const tileW = tileH * RATIO;
-            const area  = tileW * tileH;
-            if (area > bestArea) { bestArea = area; bestCols = cols; bestTileW = tileW; }
-        }
-        // When height is the binding constraint the tiles must be narrower than
-        // a full 1fr column — set explicit pixel widths so aspect-ratio doesn't
-        // push them past the row height and cause overlap.
-        const colW = (cw - gap * (bestCols - 1)) / bestCols;
-        if (bestTileW < colW - 1) {
-            grid.style.gridTemplateColumns = `repeat(${bestCols}, ${Math.floor(bestTileW)}px)`;
-        } else {
-            grid.style.gridTemplateColumns = `repeat(${bestCols}, 1fr)`;
-        }
-    }
-
-    window.addEventListener('resize', () => { sizePlayer(); sizeCallGrid(); });
-    screen.orientation?.addEventListener('change', () => {
-        sizePlayer(); sizeCallGrid();
-        // iOS rotation animation takes ~300ms; re-measure throughout
-        for (const ms of [50, 150, 300, 500]) setTimeout(sizePlayer, ms);
-    });
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', sizePlayer);
-    }
-
-    // ---- Panel toggles ----
-
-    function toggleChat() {
-        chatOpen = !chatOpen;
-        document.getElementById('right-panel').classList.toggle('open', chatOpen);
-        document.getElementById('chat-toggle').classList.toggle('panel-open', chatOpen);
-        if (chatOpen) document.getElementById('chat-toggle').classList.remove('has-notification');
-        if (chatOpen && confOpen) toggleConf();
-        sizePlayerDuringTransition();
-    }
-
-    function toggleConf() {
-        confOpen = !confOpen;
-        document.getElementById('left-panel').classList.toggle('open', confOpen);
-        document.getElementById('conf-toggle').classList.toggle('panel-open', confOpen);
-        if (confOpen && chatOpen) toggleChat();
-        sizePlayerDuringTransition();
-    }
-
-    // Continuously resize the player during CSS transition so it stays in sync
-    function sizePlayerDuringTransition() {
-        let start = null;
-        function step(ts) {
-            if (!start) start = ts;
-            sizePlayer();
-            if (ts - start < 300) requestAnimationFrame(step);
-        }
-        requestAnimationFrame(step);
-    }
-
-    document.getElementById('chat-toggle').addEventListener('click', toggleChat);
-    document.getElementById('chat-close').addEventListener('click', () => {
-        if (chatOpen) toggleChat();
-    });
-    document.getElementById('conf-toggle').addEventListener('click', toggleConf);
-    document.getElementById('conf-close').addEventListener('click', () => {
-        if (confOpen) toggleConf();
-    });
-
-    // ---- Fullscreen ----
-
-    document.getElementById('resync-btn').addEventListener('click', () => {
-        clearTimeout(retryTimer);
-        clearTimeout(offlineTimer);
-        if (player) { try { player.remove(); } catch {} player = null; }
-        initPlayer();
-    });
-
-    document.getElementById('fullscreen-btn').addEventListener('click', () => {
-        const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-        if (fsEl) {
-            (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-            return;
-        }
-        // Try fullscreening the player area first
-        const target = document.getElementById('center-area');
-        if (target.requestFullscreen) {
-            target.requestFullscreen();
-        } else if (target.webkitRequestFullscreen) {
-            target.webkitRequestFullscreen();
-        } else {
-            // iPhone: only video element supports fullscreen
-            const video = document.querySelector('#player video');
-            if (video && video.webkitEnterFullscreen) {
-                video.webkitEnterFullscreen();
-            }
-        }
-    });
-    document.addEventListener('fullscreenchange', () => {
-        document.getElementById('fullscreen-btn').classList.toggle('active', !!(document.fullscreenElement || document.webkitFullscreenElement));
-    });
-    document.addEventListener('webkitfullscreenchange', () => {
-        document.getElementById('fullscreen-btn').classList.toggle('active', !!(document.fullscreenElement || document.webkitFullscreenElement));
-    });
-
-    // ---- Show app ----
-
-    function showApp(initialStatus) {
-        clearAdmissionPoll();
-        document.getElementById('join-screen').classList.add('hidden');
-        document.getElementById('waiting-screen').classList.add('hidden');
-        document.getElementById('app').classList.add('visible');
-
-        document.getElementById('room-name-label').textContent = roomInfo?.name || slug;
-
-        // Room mode: 'broadcast' (OvenPlayer stage) or 'call' (LiveKit-only grid).
-        // Driven by presence of a stream key — no separate flag in the DB.
-        roomMode = streamKey ? 'broadcast' : 'call';
-        document.body.classList.remove('mode-broadcast', 'mode-call');
-        document.body.classList.add(`mode-${roomMode}`);
-        if (roomMode === 'call') setCallLayout('grid');
-
-        setRoomStatus(initialStatus || 'pending');
-
-        requestAnimationFrame(() => { sizePlayer(); initPlayer(); });
-        connectWS();
-        showConfPrompt();
-    }
-
-    // ---- Conference permission prompt ----
-
-    const PREF_KEY = `conf_pref_${slug}`;
-
-    function showConfPrompt() {
-        const saved = localStorage.getItem(PREF_KEY);
-        if (saved) {
-            applyConfPref(saved, false);
-            return;
-        }
-        document.getElementById('prompt-mic').classList.add('pref-saved');
-        const overlay = document.getElementById('conf-prompt-overlay');
-        overlay.classList.remove('hidden');
-        if (overlay._dismissHandler) {
-            overlay.removeEventListener('click', overlay._dismissHandler);
-        }
-        const dismiss = (e) => {
-            if (e.target !== overlay) return;
-            overlay.removeEventListener('click', dismiss);
-            overlay._dismissHandler = null;
-            applyConfPref('mic');
-        };
-        overlay._dismissHandler = dismiss;
-        overlay.addEventListener('click', dismiss);
-    }
-
-    async function applyConfPref(pref, save = true) {
-        const overlay = document.getElementById('conf-prompt-overlay');
-        if (overlay._dismissHandler) {
-            overlay.removeEventListener('click', overlay._dismissHandler);
-            overlay._dismissHandler = null;
-        }
-        overlay.classList.add('hidden');
-        if (save) localStorage.setItem(PREF_KEY, pref);
-
-        if      (pref === 'both') { cameraOn = true;  micOn = true;  }
-        else if (pref === 'cam')  { cameraOn = true;  micOn = false; }
-        else if (pref === 'mic')  { cameraOn = false; micOn = true;  }
-        else                      { cameraOn = false; micOn = false; }
-
-        // Auto-open conference panel when camera or mic is enabled
-        if ((cameraOn || micOn) && !confOpen) toggleConf();
-
-        refreshConfButtons();
-        setConfBtns({ disabled: true }, { disabled: true });
-        try {
-            await initLiveKit();
-        } catch (err) {
-            console.error('[conf prompt]', err);
-            cameraOn = false; micOn = false;
-        }
-        refreshConfButtons();
-    }
-
-    document.getElementById('prompt-both').addEventListener('click', () => applyConfPref('both'));
-    document.getElementById('prompt-mic').addEventListener('click',  () => applyConfPref('mic'));
-    document.getElementById('prompt-skip').addEventListener('click', () => applyConfPref('none'));
-
-    // ---- Room status ----
-
-    function setRoomStatus(status, playerPlaying) {
-        roomStatus = status;
-        const offline = document.getElementById('offline-screen');
-        const badge   = document.getElementById('live-badge');
-        const msg     = document.getElementById('offline-msg');
-
-        const isPlaying = playerPlaying || player?.getState() === 'playing';
-        if (status === 'live' && isPlaying) {
-            offline.classList.remove('visible');
-            badge.classList.add('visible');
-        } else if (status === 'live' && !isPlaying) {
-            // Room is live but player not playing yet — don't show overlay,
-            // let the player stateChanged handler clear it when it reaches 'playing'
-            badge.classList.remove('visible');
-        } else if (status === 'ended') {
-            clearTimeout(retryTimer);
-            msg.textContent = 'Session has ended.';
-            offline.classList.add('visible');
-            badge.classList.remove('visible');
-        } else {
-            msg.textContent = 'Waiting for livestream source...';
-            offline.classList.add('visible');
-            badge.classList.remove('visible');
-        }
-    }
-
-    // ---- Stream-key transitions ----
-    //
-    // Both handlers update the saved session in place so that a refresh
-    // (or a leave+rejoin) drops the user into the right mode without a
-    // re-auth. Re-auth would fail to preserve presenter privilege for
-    // hosts handed off via admin pre-session (no presenter_key in URL).
-
-    function updateSavedStreamKey(newKey) {
-        streamKey = newKey || null;
-        const raw = sessionStorage.getItem(`viewer_session_${slug}`);
-        if (!raw) return;
-        try {
-            const s = JSON.parse(raw);
-            s.streamKey = streamKey;
-            sessionStorage.setItem(`viewer_session_${slug}`, JSON.stringify(s));
-        } catch {}
-    }
-
-    function handleStreamAssigned(newKey) {
-        updateSavedStreamKey(newKey);
-        // A stream was attached while this client was sitting on the
-        // "stream ended" overlay — reload the player and dismiss it
-        // instead of keeping them stuck.
-        const overlay = document.getElementById('stream-removed-overlay');
-        if (overlay.classList.contains('visible')) {
-            overlay.classList.remove('visible');
-            reloadPlayer();
-            return;
-        }
-        // Call-mode client: prompt refresh so the page boots into
-        // broadcast mode with OvenPlayer.
-        if (roomMode === 'call') {
-            document.getElementById('stream-assigned-banner').classList.add('visible');
-        }
-    }
-
-    function handleStreamRemoved() {
-        updateSavedStreamKey(null);
-        // Broadcast-mode client: freeze the player and show the overlay.
-        if (roomMode !== 'broadcast') return;
-        if (player) {
-            try { player.remove(); } catch {}
-            player = null;
-        }
-        document.getElementById('stream-removed-overlay').classList.add('visible');
-    }
-
-    document.getElementById('stream-assigned-refresh')
-        .addEventListener('click', () => location.reload());
-
-    // ---- Main player ----
-
-    function reloadPlayer() {
-        clearTimeout(retryTimer);
-        clearTimeout(offlineTimer);
-        if (!player) { initPlayer(); return; }
-        try {
-            if (player.getState() === 'playing') return;
-            player.load();
-        } catch {
-            try { player.remove(); } catch {}
-            player = null;
-            initPlayer();
-        }
-    }
-
-    function initPlayer() {
-        if (player) return;
-        // Call-only rooms never instantiate OvenPlayer — the conference grid
-        // is the stage. The offline-screen is a broadcast-mode concept and
-        // stays hidden.
-        if (roomMode === 'call') return;
-
-        const host    = location.host;
-        const proto   = location.protocol === 'https:' ? 'https' : 'http';
-        const wsproto = location.protocol === 'https:' ? 'wss' : 'ws';
-        const sources = deliveryMode === 'llhls'
-            ? [{ type: 'll-hls', file: `${proto}://${host}/live/${streamKey}/llhls.m3u8` }]
-            : [{ type: 'webrtc', file: `${wsproto}://${host}/live/${streamKey}` }];
-
-        player = OvenPlayer.create('player', {
-            autoStart: true, autoFallback: false, mute: true, sources,
-            parseStream: { enabled: true },
-            webrtcConfig: { timeoutMaxRetry: 3, connectionTimeout: 8000 },
-            hlsConfig: { liveSyncDuration: 1, liveMaxLatencyDuration: 2, maxLiveSyncPlaybackRate: 1 },
-        });
-
-        enablePlayerControls(true);
-        syncPlayerControls();
-
-        player.on('stateChanged', e => {
-            syncPlayerControls();
-            if (e.newstate === 'playing') {
-                clearTimeout(offlineTimer);
-                setRoomStatus('live', true);
-            } else if (e.newstate === 'error') {
-                clearTimeout(offlineTimer);
-                if (roomStatus === 'ended') {
-                    setRoomStatus('ended');
-                } else if (roomStatus !== 'live') {
-                    setRoomStatus(roomStatus);
-                } else {
-                    // Room is live but player errored — show waiting overlay
-                    // after 3s if it doesn't recover (covers stream-stop case)
-                    offlineTimer = setTimeout(() => {
-                        if (player?.getState() !== 'playing') {
-                            const offline = document.getElementById('offline-screen');
-                            document.getElementById('offline-msg').textContent = 'Waiting for livestream source...';
-                            offline.classList.add('visible');
-                        }
-                    }, 3000);
-                }
-                if (roomStatus !== 'ended') {
-                    retryTimer = setTimeout(reloadPlayer, 8000);
-                }
-            }
-        });
-
-        player.on('mute', () => syncPlayerControls());
-        player.on('volumeChanged', () => syncPlayerControls());
-    }
-
-    // ---- Player controls ----
-
-    const playBtn      = document.getElementById('play-btn');
-    const muteBtn      = document.getElementById('mute-btn');
-    const volumeSlider = document.getElementById('volume-slider');
-    const iconPlay     = document.getElementById('icon-play');
-    const iconPause    = document.getElementById('icon-pause');
-    const iconVol      = document.getElementById('icon-vol');
-    const iconMuted    = document.getElementById('icon-muted');
-
-    function enablePlayerControls(on) {
-        playBtn.disabled = !on;
-        muteBtn.disabled = !on;
-        volumeSlider.disabled = !on;
-    }
-
-    function syncPlayerControls() {
-        if (!player) return;
-        // Play/Pause
-        const playing = player.getState() === 'playing';
-        iconPlay.style.display  = playing ? 'none' : '';
-        iconPause.style.display = playing ? '' : 'none';
-        // Mute
-        const muted = player.getMute();
-        iconVol.style.display   = muted ? 'none' : '';
-        iconMuted.style.display = muted ? '' : 'none';
-        muteBtn.classList.toggle('muted', muted);
-        muteBtn.title = muted ? 'Unmute' : 'Mute';
-        // Volume
-        volumeSlider.value = player.getVolume();
-    }
-
-    playBtn.addEventListener('click', () => {
-        if (!player) return;
-        if (player.getState() === 'playing') player.pause();
-        else player.play();
-    });
-
-    muteBtn.addEventListener('click', () => {
-        if (!player) return;
-        player.setMute(!player.getMute());
-    });
-
-    volumeSlider.addEventListener('input', () => {
-        if (!player) return;
-        const vol = parseInt(volumeSlider.value);
-        if (player.getMute() && vol > 0) player.setMute(false);
-        player.setVolume(vol);
-        syncPlayerControls();
-    });
-
-    // ---- WebSocket ----
-
-    function setWsStatus(state, label) {
-        const dot = document.getElementById('ws-dot');
-        const lbl = document.getElementById('ws-label');
-        if (dot) { dot.className = state; }
-        if (lbl) { lbl.textContent = label; }
-    }
-
-    // Poll the server while the kicked screen is showing. As soon as the
-    // admin clears is_kicked, reload so the saved-session resume path puts
-    // the user back into the room from the same tab.
-    let kickedPollTimer = null;
-    function startKickedPoller() {
-        if (kickedPollTimer) return;
-        const tick = async () => {
-            const sess = JSON.parse(sessionStorage.getItem(`viewer_session_${slug}`) || 'null');
-            if (!sess || !sess.participantId || !sess.token) {
-                stopKickedPoller();
-                return;
-            }
-            try {
-                const res = await fetch(`${API}/${slug}/status/${sess.participantId}?token=${encodeURIComponent(sess.token)}`);
-                if (res.status === 404 || res.status === 401) {
-                    stopKickedPoller();
-                    sessionStorage.removeItem(`viewer_session_${slug}`);
-                    sessionStorage.removeItem(`viewer_kicked_${slug}`);
-                    location.reload();
-                    return;
-                }
-                if (!res.ok) return;
-                const data = await res.json();
-                if (!data.kicked || data.room_status === 'ended') {
-                    stopKickedPoller();
-                    sessionStorage.removeItem(`viewer_kicked_${slug}`);
-                    location.reload();
-                }
-            } catch {
-                // Network blip — try again on the next tick.
-            }
-        };
-        kickedPollTimer = setInterval(tick, 5000);
-        tick();
-    }
-    function stopKickedPoller() {
-        if (kickedPollTimer) { clearInterval(kickedPollTimer); kickedPollTimer = null; }
-    }
-
-    function connectWS() {
-        setWsStatus('', 'Connecting');
-        ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/room/${slug}`);
-        ws.onopen = () => {
-            ws.send(JSON.stringify({ type: 'auth', participantId, token: myToken }));
-        };
-        ws.onmessage = e => {
-            let msg; try { msg = JSON.parse(e.data); } catch { return; }
-            if (msg.type === 'auth:ok') {
-                setWsStatus('connected', 'Connected');
-                setChatEnabled(true);
-                loadSessionFiles();
-                // LiveKit handles track state automatically — no manual sync needed
-            }
-            if (msg.type === 'kicked') {
-                clearAdmissionPoll();
-                clearAllPointers();
-                if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
-                // Keep viewer_session_${slug} so we can poll status with the
-                // existing token and auto-rejoin once the admin unkicks.
-                sessionStorage.setItem(`viewer_kicked_${slug}`, '1');
-                document.getElementById('app').classList.remove('visible');
-                document.getElementById('kicked-screen').classList.remove('hidden');
-                wsReconnect = false;
-                startKickedPoller();
-                return;
-            }
-            if (msg.type === 'room:live')    { clearTimeout(offlineTimer); setRoomStatus('live'); reloadPlayer(); }
-            if (msg.type === 'room:pending') { setRoomStatus('pending'); }
-            if (msg.type === 'room:ended') {
-                clearAdmissionPoll();
-                clearAllPointers();
-                if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
-                sessionStorage.removeItem(`viewer_session_${slug}`);
-                localStorage.removeItem(PREF_KEY);
-                document.getElementById('app').classList.remove('visible');
-                document.getElementById('session-ended-screen').classList.remove('hidden');
-                wsReconnect = false;
-                return;
-            }
-            if (msg.type === 'stream:assigned') handleStreamAssigned(msg.streamKey);
-            if (msg.type === 'stream:removed')  handleStreamRemoved();
-            if (msg.type === 'participants:update') updateRoster(msg.participants);
-            if (msg.type === 'chat:history') {
-                msg.messages.forEach(m => {
-                    if (m.type === 'file:shared') {
-                        appendFileMessage(m, false);
-                        addFileToSection(m);
-                    } else {
-                        const list = document.getElementById('chat-messages');
-                        const d = document.createElement('div');
-                        d.className = 'chat-msg';
-                        const t = new Date(m.ts);
-                        const hhmm = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
-                        d.innerHTML = `<div class="chat-meta"><span class="chat-who ${esc(m.role)}">${esc(m.name)}</span><span class="chat-time">${hhmm}</span></div><div class="chat-text">${esc(m.text)}</div>`;
-                        list.appendChild(d);
-                    }
-                });
-                const list = document.getElementById('chat-messages');
-                list.scrollTop = list.scrollHeight;
-            }
-            if (msg.type === 'chat:message') appendChatMessage(msg);
-            if (msg.type === 'file:shared')  { appendFileMessage(msg); addFileToSection(msg); }
-            if (msg.type === 'pointer:move' && msg.participantId !== participantId) {
-                renderPointer(msg.participantId, msg.name, msg.x, msg.y);
-            }
-            if (msg.type === 'pointer:hide') hidePointer(msg.participantId);
-        };
-        ws.onclose = (e) => {
-            clearAllPointers();
-            // Room ended/deleted — stop reconnecting
-            if (e.code === 1001) {
-                if (livekitRoom) { try { livekitRoom.disconnect(); } catch {} livekitRoom = null; }
-                sessionStorage.removeItem(`viewer_session_${slug}`);
-                localStorage.removeItem(PREF_KEY);
-                wsReconnect = false;
-                if (document.getElementById('session-ended-screen').classList.contains('hidden')) {
-                    document.getElementById('app').classList.remove('visible');
-                    document.getElementById('session-ended-screen').classList.remove('hidden');
-                }
-                return;
-            }
-            if (e.code === 1008) {
-                // If kicked message already showed the kicked screen, the
-                // poller is already running — just keep the sentinel.
-                if (!document.getElementById('kicked-screen').classList.contains('hidden')) {
-                    sessionStorage.setItem(`viewer_kicked_${slug}`, '1');
-                    return;
-                }
-                // If hub sent kicked flag (reconnect after kick), show kicked
-                // screen and start polling for unkick.
-                if (sessionStorage.getItem(`viewer_kicked_${slug}`)) {
-                    document.getElementById('kicked-screen').classList.remove('hidden');
-                    startKickedPoller();
-                    return;
-                }
-                // Auth rejected — session is stale; return to join form
-                sessionStorage.removeItem(`viewer_session_${slug}`);
-                document.getElementById('app').classList.remove('visible');
-                document.getElementById('join-screen').classList.remove('hidden');
-                document.getElementById('join-error').textContent = 'Session expired. Please re-enter your name.';
-                return;
-            }
-            setWsStatus('error', 'Reconnecting');
-            setChatEnabled(false);
-            if (wsReconnect) setTimeout(connectWS, 3000);
-        };
-        ws.onerror = () => { setWsStatus('error', 'Error'); };
-    }
-
-    // ---- Leave room ----
-
-    document.getElementById('leave-btn').addEventListener('click', () => {
-        clearAdmissionPoll();
-        wsReconnect = false;
-        if (ws) { try { ws.close(); } catch {} ws = null; }
-        if (livekitRoom) { livekitRoom.disconnect(); livekitRoom = null; }
-        document.getElementById('app').classList.remove('visible');
-        document.getElementById('left-room-name').textContent = roomInfo?.name || slug;
-        document.getElementById('left-screen').classList.remove('hidden');
-    });
-    document.getElementById('left-rejoin-btn').addEventListener('click', () => location.reload());
-
-    // ---- Branding ----
-
-    (async function loadBranding() {
-        try {
-            const res = await fetch('/api/branding');
-            if (!res.ok) return;
-            const { hasLogo, hasBg, colors } = await res.json();
-            // Apply custom color palette
-            if (colors) {
-                const map = { color_accent: '--accent', color_bg: '--bg', color_surface: '--surface', color_text: '--text', color_danger: '--danger', color_green: '--green' };
-                for (const [key, cssVar] of Object.entries(map)) {
-                    if (colors[key]) document.documentElement.style.setProperty(cssVar, colors[key]);
-                }
-            }
-            if (hasLogo) {
-                document.querySelectorAll('.screen-logo, .brand-logo').forEach(img => {
-                    img.src = '/api/branding/logo';
-                });
-            }
-            if (hasBg) {
-                const html = document.documentElement;
-                html.style.backgroundColor    = '#000';
-                html.style.backgroundImage    = 'url(/api/branding/bg)';
-                html.style.backgroundSize     = 'cover';
-                html.style.backgroundPosition = 'center';
-                html.style.backgroundRepeat   = 'no-repeat';
-                document.body.style.background = 'transparent';
-            }
-        } catch {}
-    })();
-
-    // ---- Chat ----
-
-    function setChatEnabled(enabled) {
-        document.getElementById('chat-input').disabled  = !enabled;
-        document.getElementById('chat-send').disabled   = !enabled;
-        document.getElementById('chat-attach').disabled = !enabled;
-    }
-
-    function notifyChat() {
-        if (!chatOpen) document.getElementById('chat-toggle').classList.add('has-notification');
-    }
-
-    function appendChatMessage(msg) {
-        const list = document.getElementById('chat-messages');
-        const d = document.createElement('div');
-        d.className = 'chat-msg';
-        const t = new Date(msg.ts);
-        const hhmm = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
-        d.innerHTML = `<div class="chat-meta"><span class="chat-who ${esc(msg.role)}">${esc(msg.name)}</span><span class="chat-time">${hhmm}</span></div><div class="chat-text">${esc(msg.text)}</div>`;
-        list.appendChild(d);
-        list.scrollTop = list.scrollHeight;
-        notifyChat();
-    }
-
-    function sendChat() {
-        const input = document.getElementById('chat-input');
-        const text = input.value.trim();
-        if (!text || ws?.readyState !== 1) return;
-        ws.send(JSON.stringify({ type: 'chat:message', text }));
-        input.value = '';
-    }
-
-    document.getElementById('chat-send').addEventListener('click', sendChat);
-    document.getElementById('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
-
-    // ---- File sharing ----
-
-    function formatBytes(n) {
-        if (n < 1024) return n + ' B';
-        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-        return (n / (1024 * 1024)).toFixed(1) + ' MB';
-    }
-
-    function appendFileMessage(msg, notify = true) {
-        const list = document.getElementById('chat-messages');
-        const t = new Date(msg.ts);
-        const hhmm = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
-        const dlUrl = `/api/public/rooms/${encodeURIComponent(slug)}/files/${encodeURIComponent(msg.id)}/download`
-            + `?participantId=${encodeURIComponent(participantId)}&token=${encodeURIComponent(myToken)}`;
-        const d = document.createElement('div');
-        d.className = 'chat-msg';
-        d.innerHTML =
-            `<div class="chat-meta"><span class="chat-who ${esc(msg.role)}">${esc(msg.uploaderName)}</span><span class="chat-time">${hhmm}</span></div>` +
-            `<div class="chat-file">` +
-            `<span class="chat-file-icon"><svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>` +
-            `<div class="chat-file-info"><div class="chat-file-name" title="${esc(msg.name)}">${esc(msg.name)}</div><div class="chat-file-size">${formatBytes(msg.size)}</div></div>` +
-            `<a class="chat-file-dl" href="${dlUrl}" download="${esc(msg.name)}">Get</a>` +
-            `</div>`;
-        list.appendChild(d);
-        list.scrollTop = list.scrollHeight;
-        if (notify) notifyChat();
-    }
-
-    function addFileToSection(f) {
-        // f: { id, name, size, uploaderName?, role? }
-        const list = document.getElementById('files-list');
-        if (document.getElementById('files-empty')) {
-            document.getElementById('files-empty').remove();
-        }
-        // Avoid duplicates on reload
-        if (list.querySelector(`[data-fid="${CSS.escape(f.id)}"]`)) return;
-        const dlUrl = `/api/public/rooms/${encodeURIComponent(slug)}/files/${encodeURIComponent(f.id)}/download`
-            + `?participantId=${encodeURIComponent(participantId)}&token=${encodeURIComponent(myToken)}`;
-        const row = document.createElement('div');
-        row.className = 'file-row';
-        row.dataset.fid = f.id;
-        row.innerHTML =
-            `<div class="file-row-name" title="${esc(f.name)}">${esc(f.name)}</div>` +
-            `<span class="file-row-size">${formatBytes(f.size)}</span>` +
-            `<a class="file-row-dl" href="${dlUrl}" download="${esc(f.name)}">Get</a>`;
-        list.appendChild(row);
-        document.getElementById('files-count').textContent = list.querySelectorAll('.file-row').length;
-    }
-
-    async function loadSessionFiles() {
-        try {
-            const res = await fetch(
-                `/api/public/rooms/${encodeURIComponent(slug)}/files`
-                + `?participantId=${encodeURIComponent(participantId)}&token=${encodeURIComponent(myToken)}`
-            );
-            if (!res.ok) return;
-            const files = await res.json();
-            files.forEach(f => addFileToSection(f));
-        } catch {}
-    }
-
-    let currentUploadXhr = null;
-
-    function uploadFile(file) {
-        const attachBtn    = document.getElementById('chat-attach');
-        const progressBar  = document.getElementById('upload-progress-bar');
-        const progressFill = document.getElementById('upload-progress-fill');
-        const progressRow  = document.getElementById('upload-progress-row');
-        const progressName = document.getElementById('upload-progress-name');
-        const progressPct  = document.getElementById('upload-progress-pct');
-        const cancelBtn    = document.getElementById('upload-progress-cancel');
-
-        attachBtn.disabled = true;
-        progressBar.style.display = '';
-        progressRow.style.display = 'flex';
-        progressFill.style.width  = '0%';
-        progressName.textContent  = file.name;
-        progressName.title        = file.name;
-        progressPct.textContent   = '0%';
-
-        const xhr = new XMLHttpRequest();
-        currentUploadXhr = xhr;
-        xhr.open('POST',
-            `/api/public/rooms/${encodeURIComponent(slug)}/files`
-            + `?participantId=${encodeURIComponent(participantId)}&token=${encodeURIComponent(myToken)}`
-        );
-        xhr.upload.addEventListener('progress', e => {
-            if (e.lengthComputable) {
-                const pct = Math.round((e.loaded / e.total) * 100);
-                progressFill.style.width = pct + '%';
-                progressPct.textContent  = pct + '%';
-            }
-        });
-        const done = () => {
-            currentUploadXhr = null;
-            attachBtn.disabled = false;
-            progressBar.style.display = 'none';
-            progressRow.style.display = 'none';
-            progressFill.style.width  = '0%';
-        };
-        xhr.onload  = done;
-        xhr.onerror = done;
-        xhr.onabort = done;
-
-        cancelBtn.onclick = () => { if (currentUploadXhr) currentUploadXhr.abort(); };
-
-        const fd = new FormData();
-        fd.append('file', file);
-        xhr.send(fd);
-    }
-
-    document.getElementById('chat-attach').addEventListener('click', () => {
-        document.getElementById('file-input').click();
-    });
-    document.getElementById('file-input').addEventListener('change', e => {
-        const file = e.target.files[0];
-        if (file) uploadFile(file);
-        e.target.value = '';
-    });
-
-    // ---- Conference buttons ----
-
-    function setConfBtns(camState, micState) {
-        const camBtn = document.getElementById('cam-btn');
-        const micBtn = document.getElementById('mic-btn');
-        camBtn.classList.toggle('active', !!camState.active);
-        camBtn.classList.toggle('muted', !!camState.muted);
-        camBtn.disabled = !!camState.disabled;
-        micBtn.classList.toggle('active', !!micState.active);
-        micBtn.classList.toggle('muted', !!micState.muted);
-        micBtn.disabled = !!micState.disabled;
-    }
-
-    function refreshConfButtons() {
-        setConfBtns(
-            { active: cameraOn, muted: !cameraOn },
-            { active: micOn,    muted: !micOn }
-        );
-    }
-
-    function updateRoster(participants) {
-        lastRoster = Array.isArray(participants) ? participants : [];
-
-        const numEl = document.getElementById('participant-num');
-        if (numEl) numEl.textContent = lastRoster.length;
-
-        // Clean up pointers for participants who left
-        const currentPids = new Set(lastRoster.map(p => p.id));
-        for (const pid of pointerCursors.keys()) {
-            if (!currentPids.has(pid)) hidePointer(pid);
-        }
-
-        // Every participant (including watch-only) now gets a conference tile.
-        syncConferenceTiles();
-    }
-
-    // ---- Pointer overlay ----
-
-    const pOverlay = document.getElementById('pointer-overlay');
-
-    function renderPointer(pid, name, x, y) {
-        let entry = pointerCursors.get(pid);
-        if (!entry) {
-            const el = document.createElement('div');
-            el.className = 'remote-pointer';
-            const color = getPointerColor(pid);
-            el.innerHTML =
-                `<div class="remote-pointer-dot"><svg viewBox="0 0 24 24" fill="${color}"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6" stroke-linecap="round"/></svg></div>` +
-                `<div class="remote-pointer-label" style="background:${color}">${esc(name)}</div>`;
-            pOverlay.appendChild(el);
-            entry = { el, fadeTimer: null };
-            pointerCursors.set(pid, entry);
-        }
-        const rect = pOverlay.getBoundingClientRect();
-        entry.el.style.left = (x * rect.width) + 'px';
-        entry.el.style.top  = (y * rect.height) + 'px';
-        entry.el.classList.remove('faded');
-        clearTimeout(entry.fadeTimer);
-        entry.fadeTimer = setTimeout(() => entry.el.classList.add('faded'), 3000);
-    }
-
-    function hidePointer(pid) {
-        const entry = pointerCursors.get(pid);
-        if (!entry) return;
-        clearTimeout(entry.fadeTimer);
-        entry.el.remove();
-        pointerCursors.delete(pid);
-    }
-
-    function clearAllPointers() {
-        for (const pid of pointerCursors.keys()) hidePointer(pid);
-    }
-
-    function pointerCursorUrl() {
-        const color = getPointerColor(participantId || 'me');
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="${color}" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6" stroke-linecap="round"/></svg>`;
-        return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}") 2 2, crosshair`;
-    }
-
-    document.getElementById('pointer-btn').addEventListener('click', () => {
-        pointerMode = !pointerMode;
-        document.getElementById('pointer-btn').classList.toggle('active', pointerMode);
-        pOverlay.classList.toggle('active', pointerMode);
-        pOverlay.style.cursor = pointerMode ? pointerCursorUrl() : '';
-        if (!pointerMode && ws?.readyState === 1) {
-            ws.send(JSON.stringify({ type: 'pointer:hide' }));
-        }
-    });
-
-    function sendPointerMove(cx, cy) {
-        if (!pointerMode || !ws || ws.readyState !== 1) return;
-        if (pointerThrottleTimer) return;
-        pointerThrottleTimer = setTimeout(() => { pointerThrottleTimer = null; }, 33);
-        const rect = pOverlay.getBoundingClientRect();
-        const x = (cx - rect.left) / rect.width;
-        const y = (cy - rect.top) / rect.height;
-        ws.send(JSON.stringify({ type: 'pointer:move', x, y }));
-    }
-
-    function sendPointerHide() {
-        if (!ws || ws.readyState !== 1) return;
-        ws.send(JSON.stringify({ type: 'pointer:hide' }));
-    }
-
-    pOverlay.addEventListener('mousemove', (e) => sendPointerMove(e.clientX, e.clientY));
-    pOverlay.addEventListener('mouseleave', () => { if (pointerMode) sendPointerHide(); });
-
-    pOverlay.addEventListener('touchmove', (e) => {
-        if (!pointerMode) return;
-        e.preventDefault();
-        const t = e.touches[0];
-        sendPointerMove(t.clientX, t.clientY);
-    }, { passive: false });
-
-    pOverlay.addEventListener('touchend', () => { if (pointerMode) sendPointerHide(); });
-
-    // ---- Camera toggle ----
-
-    document.getElementById('cam-btn').addEventListener('click', toggleCamera);
-
-    async function toggleCamera() {
-        localStorage.setItem(PREF_KEY, !cameraOn ? (micOn ? 'both' : 'cam') : (micOn ? 'mic' : 'none'));
-        const prev = cameraOn;
-        cameraOn = !cameraOn;
-        setConfBtns({ disabled: true }, { active: micOn, disabled: true });
-        try {
-            if (livekitRoom) {
-                await livekitRoom.localParticipant.setCameraEnabled(cameraOn);
-                updateSelfTile();
-            } else {
-                await initLiveKit();
-            }
-        } catch (err) {
-            console.error('[conf cam]', err);
-            cameraOn = prev;
-        }
-        refreshConfButtons();
-    }
-
-    // ---- Mic toggle ----
-
-    document.getElementById('mic-btn').addEventListener('click', toggleMic);
-
-    async function toggleMic() {
-        stopMicBreathe(); // user acknowledged — clear any force-mute alert immediately
-        localStorage.setItem(PREF_KEY, cameraOn ? (!micOn ? 'both' : 'cam') : (!micOn ? 'mic' : 'none'));
-        const prev = micOn;
-        micOn = !micOn;
-        selfMuteInFlight = true;
-        setConfBtns({ active: cameraOn, disabled: true }, { disabled: true });
-        try {
-            if (livekitRoom) {
-                await livekitRoom.localParticipant.setMicrophoneEnabled(micOn);
-                updateSelfTile();
-            } else if (micOn) {
-                await initLiveKit();
-            }
-        } catch (err) {
-            console.error('[conf mic]', err);
-            micOn = prev;
-        } finally {
-            selfMuteInFlight = false;
-        }
-        refreshConfButtons();
-    }
-
-    // ---- Device picker ----
-
-    document.getElementById('device-btn').addEventListener('click', openDevicePicker);
-    document.getElementById('device-picker-close').addEventListener('click', () => {
-        document.getElementById('device-picker-overlay').classList.add('hidden');
-    });
-    document.getElementById('device-picker-overlay').addEventListener('click', (e) => {
-        if (e.target === document.getElementById('device-picker-overlay'))
-            document.getElementById('device-picker-overlay').classList.add('hidden');
-    });
-
-    async function openDevicePicker() {
-        const overlay = document.getElementById('device-picker-overlay');
-        overlay.classList.remove('hidden');
-        try {
-            // Request permission first to get labeled devices
-            await navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(s => s.getTracks().forEach(t => t.stop()));
-        } catch {}
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        populateDeviceSelect('device-camera', devices.filter(d => d.kind === 'videoinput'));
-        populateDeviceSelect('device-mic', devices.filter(d => d.kind === 'audioinput'));
-        populateDeviceSelect('device-speaker', devices.filter(d => d.kind === 'audiooutput'));
-
-        // Pre-select current devices
-        if (livekitRoom) {
-            const camTrack = livekitRoom.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera)?.track;
-            const micTrack = livekitRoom.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone)?.track;
-            if (camTrack?.mediaStreamTrack) document.getElementById('device-camera').value = camTrack.mediaStreamTrack.getSettings().deviceId || '';
-            if (micTrack?.mediaStreamTrack) document.getElementById('device-mic').value = micTrack.mediaStreamTrack.getSettings().deviceId || '';
-        }
-    }
-
-    function populateDeviceSelect(selectId, devices) {
-        const sel = document.getElementById(selectId);
-        sel.innerHTML = '';
-        if (!devices.length) {
-            sel.innerHTML = '<option>No devices found</option>';
-            return;
-        }
-        devices.forEach((d, i) => {
-            const opt = document.createElement('option');
-            opt.value = d.deviceId;
-            opt.textContent = d.label || `Device ${i + 1}`;
-            sel.appendChild(opt);
-        });
-    }
-
-    document.getElementById('device-camera').addEventListener('change', async (e) => {
-        if (!livekitRoom) return;
-        try {
-            await livekitRoom.switchActiveDevice('videoinput', e.target.value);
-            updateSelfTile();
-        } catch (err) { console.error('[device switch cam]', err); }
-    });
-    document.getElementById('device-mic').addEventListener('change', async (e) => {
-        if (!livekitRoom) return;
-        try {
-            await livekitRoom.switchActiveDevice('audioinput', e.target.value);
-            updateSelfTile();
-        } catch (err) { console.error('[device switch mic]', err); }
-    });
-    document.getElementById('device-speaker').addEventListener('change', async (e) => {
-        if (!livekitRoom) return;
-        try {
-            await livekitRoom.switchActiveDevice('audiooutput', e.target.value);
-        } catch (err) { console.error('[device switch speaker]', err); }
-    });
-
-    // ---- Presenter moderation (kick / mute) ----
-
-    // Delegated at the app level because tiles live in #left-panel in
-    // broadcast mode and #call-grid in call mode. One listener handles both.
-    document.getElementById('app').addEventListener('click', async (e) => {
-        const btn = e.target.closest('[data-action]');
-        if (!btn || myRole !== 'presenter') return;
-        e.stopPropagation();
-
-        const action   = btn.dataset.action;
-        const identity = btn.dataset.identity;
-
-        if (action === 'kick') {
-            try {
-                await fetch(`${API}/${slug}/conference/kick`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ participantId, token: myToken, targetId: identity }),
-                });
-            } catch (err) { console.error('[kick]', err); }
-        }
-
-        if (action === 'mute') {
-            const micPub = livekitRoom?.remoteParticipants.get(identity)
-                ?.getTrackPublication(LivekitClient.Track.Source.Microphone);
-            if (!micPub) return;
-            const nowMuted = !micPub.isMuted;
-            try {
-                await fetch(`${API}/${slug}/conference/mute`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        participantId, token: myToken,
-                        targetId: identity, trackSid: micPub.trackSid, muted: nowMuted,
-                    }),
-                });
-            } catch (err) { console.error('[mute]', err); }
-        }
-    });
-
-    // ---- Screen sharing ----
-
-    document.getElementById('screen-btn').addEventListener('click', toggleScreenShare);
-
-    async function toggleScreenShare() {
-        screenOn = !screenOn;
-        document.getElementById('screen-btn').classList.toggle('active', screenOn);
-        try {
-            if (!livekitRoom) {
-                if (screenOn) await initLiveKit();
-                else return;
-            }
-            await livekitRoom.localParticipant.setScreenShareEnabled(screenOn);
-            if (screenOn) {
-                const pub = livekitRoom.localParticipant.getTrackPublication(LivekitClient.Track.Source.ScreenShare);
-                if (pub?.track) {
-                    activeScreenShareId = 'local';
-                    activeScreenShareTrack = pub.track;
-                    showScreenShare(pub.track, 'You — Screen');
-                }
-            } else {
-                hideScreenShare();
-            }
-        } catch (err) {
-            console.error('[screen share]', err);
-            screenOn = false;
-            document.getElementById('screen-btn').classList.remove('active');
-            hideScreenShare();
-        }
-    }
-
-}());
-</script>
+<script type="module" src="/dist/viewer/main.js"></script>
 </body>
 </html>

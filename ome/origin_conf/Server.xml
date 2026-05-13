@@ -48,7 +48,7 @@
                 <IceCandidates>
                     <IceCandidate>*:10000-10009/udp</IceCandidate>
                     <TcpRelay>*:3478</TcpRelay>
-                    <TcpForce>false</TcpForce>
+                    <TcpForce>true</TcpForce>
                     <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
                 </IceCandidates>
             </WebRTC>
@@ -60,24 +60,24 @@
                 <!-- Caddy proxies /live/* → stream-ome:3333 to handle both protocols -->
                 <Port>3333</Port>
                 <TLSPort>3334</TLSPort>
-                <WorkerCount>4</WorkerCount>
+                <WorkerCount>2</WorkerCount>
             </LLHLS>
             <WebRTC>
                 <Signalling>
                     <Port>3333</Port>
                     <TLSPort>3334</TLSPort>
-                    <WorkerCount>1</WorkerCount>
+                    <WorkerCount>2</WorkerCount>
                 </Signalling>
                 <IceCandidates>
                     <IceCandidate>*:10000-10009/udp</IceCandidate>
                     <TcpRelay>*:3478</TcpRelay>
-                    <TcpForce>false</TcpForce>
-                    <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
+                    <TcpForce>true</TcpForce>
+                    <TcpRelayWorkerCount>2</TcpRelayWorkerCount>
                 </IceCandidates>
             </WebRTC>
             <SRT>
                 <Port>9998</Port>
-                <WorkerCount>1</WorkerCount>
+                <WorkerCount>2</WorkerCount>
             </SRT>
         </Publishers>
     </Bind>
@@ -121,7 +121,7 @@
             <AdmissionWebhooks>
                 <ControlServerUrl>http://stream-backend:4001/api/webhook/admission</ControlServerUrl>
                 <SecretKey>${env:OME_WEBHOOK_SECRET:webhook-default-secret}</SecretKey>
-                <Timeout>3000</Timeout>
+                <Timeout>5000</Timeout>
                 <Enables>
                     <!-- Validate all ingest connections (stream key auth) -->
                     <Providers>rtmp,srt,webrtc</Providers>
@@ -212,7 +212,7 @@
 
                     <Publishers>
                         <AppWorkerCount>1</AppWorkerCount>
-                        <StreamWorkerCount>4</StreamWorkerCount>
+                        <StreamWorkerCount>2</StreamWorkerCount>
 
                         <WebRTC>
                             <Timeout>30000</Timeout>
