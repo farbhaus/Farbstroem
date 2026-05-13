@@ -104,7 +104,6 @@ export function setFocus(tileId: TileId | null, opts: { override?: boolean } = {
     }
   }
 
-  document.getElementById('focus-btn')?.classList.toggle('panel-open', tileId !== null);
   requestAnimationFrame(sizeStage);
 }
 
