@@ -201,13 +201,9 @@ html, body { overflow: hidden; }
     border: 1px solid var(--border);
     overflow: hidden;
     border-radius: var(--r-lg);
-    cursor: pointer;
-    transition: border-color var(--dur-fast) var(--ease-out),
-                box-shadow var(--dur-fast) var(--ease-out);
     animation: tile-in 0.2s ease;
 }
 .tile.hidden { display: none !important; }
-.tile:hover { border-color: var(--dim); box-shadow: 0 2px 10px rgba(0,0,0,0.35); }
 @keyframes tile-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
 .tile-inner { position: absolute; inset: 0; }
@@ -315,9 +311,11 @@ html, body { overflow: hidden; }
 .tile-actions {
     position: absolute; top: 6px; right: 6px;
     display: none; gap: 4px;
-    z-index: 2;
+    z-index: 8;
 }
 .tile:hover .tile-actions { display: flex; }
+/* Pointer mode owns the stream tile — suppress hover actions while active. */
+#pointer-overlay.active ~ .tile-actions { display: none !important; }
 .tile-btn {
     width: 28px; height: 28px;
     background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.12);
@@ -331,10 +329,11 @@ html, body { overflow: hidden; }
 .tile-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .tile-btn.muted-indicator { border-color: var(--danger); color: var(--danger); }
 
-/* Only the stream and screenshare tiles are pinnable — drop the clickable
-   affordance from everything else so the cursor matches behavior. */
-.tile { cursor: default; }
-#tile-stream, #tile-share { cursor: pointer; }
+/* Pin button is "active" while its tile is the focus target. */
+.tile[data-focused] .tile-pin-btn {
+    border-color: var(--accent);
+    color: var(--accent);
+}
 
 /* Mic-only self tile (camera off, mic on) */
 #self-tile.mic-only .tile-inner { display: none; }
@@ -664,7 +663,16 @@ body.has-focus.rail-hidden #stage-rail {
 /* Mobile landscape — maximize stage area */
 @media (max-height: 440px) and (orientation: landscape) {
     #top-bar { height: 36px; }
-    #bottom-toolbar { flex-wrap: wrap; }
+    /* iOS reserves a bottom safe-area for the home indicator; the toolbar's
+       base rule pads that into its content box, which pushes buttons up
+       and breaks vertical centering. In landscape the indicator overlay
+       sits *under* the toolbar surface, so we can safely drop the inset. */
+    #bottom-toolbar {
+        flex-wrap: wrap;
+        height: var(--toolbar-h);
+        min-height: var(--toolbar-h);
+        padding-bottom: 0;
+    }
 
     #right-panel.open { width: 280px; }
 
@@ -830,11 +838,21 @@ body.has-focus.rail-hidden #stage-rail {
                     <div class="offline-dot"></div>
                     <div class="offline-label" id="offline-msg">Waiting for livestream source...</div>
                 </div>
+                <div class="tile-actions">
+                    <button class="tile-btn tile-pin-btn" data-action="toggle-focus" title="Pin to stage" aria-label="Pin to stage">
+                        <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76a2 2 0 0 0 .54 1.37l1.96 2.1H6.5l1.96-2.1A2 2 0 0 0 9 10.76z"/></svg>
+                    </button>
+                </div>
                 <div class="tile-name">Stream</div>
             </div>
             <div class="tile hidden" id="tile-share">
                 <div class="tile-inner">
                     <video id="screenshare-video" autoplay playsinline></video>
+                </div>
+                <div class="tile-actions">
+                    <button class="tile-btn tile-pin-btn" data-action="toggle-focus" title="Pin to stage" aria-label="Pin to stage">
+                        <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76a2 2 0 0 0 .54 1.37l1.96 2.1H6.5l1.96-2.1A2 2 0 0 0 9 10.76z"/></svg>
+                    </button>
                 </div>
                 <div class="tile-name" id="tile-share-name">Screen</div>
             </div>
