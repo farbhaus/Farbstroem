@@ -13,8 +13,9 @@ export function configureChat(opts: { send: (msg: WsClientMessage) => void }): v
 
 export function setChatEnabled(enabled: boolean): void {
   (document.getElementById('chat-input') as HTMLInputElement).disabled = !enabled;
-  (document.getElementById('chat-send') as HTMLButtonElement).disabled = !enabled;
   (document.getElementById('chat-attach') as HTMLButtonElement).disabled = !enabled;
+  // chat-send tracks input+draft state; let syncSendButton make the call.
+  syncSendButton();
 }
 
 function notifyChat(): void {
@@ -143,8 +144,15 @@ export async function loadSessionFiles(): Promise<void> {
 }
 
 let currentUploadXhr: XMLHttpRequest | null = null;
+// A file that has been uploaded (defer=true) and is waiting to be sent
+// alongside a chat message. Cleared when the user sends or removes the chip.
+let currentDraft: { id: string; name: string; size: number } | null = null;
 
 function uploadFile(file: File): void {
+  if (currentDraft) {
+    // Only one draft attached at a time. Remove the existing one first.
+    void clearDraft({ deleteRemote: true });
+  }
   const attachBtn = document.getElementById('chat-attach') as HTMLButtonElement;
   const progressBar = document.getElementById('upload-progress-bar') as HTMLElement;
   const progressFill = document.getElementById('upload-progress-fill') as HTMLElement;
@@ -166,7 +174,8 @@ function uploadFile(file: File): void {
   xhr.open(
     'POST',
     `/api/public/rooms/${encodeURIComponent(slug)}/files` +
-      `?participantId=${encodeURIComponent(getParticipantId())}&token=${encodeURIComponent(getToken())}`,
+      `?participantId=${encodeURIComponent(getParticipantId())}` +
+      `&token=${encodeURIComponent(getToken())}&defer=true`,
   );
   xhr.upload.addEventListener('progress', (e) => {
     if (e.lengthComputable) {
@@ -175,16 +184,28 @@ function uploadFile(file: File): void {
       progressPct.textContent = pct + '%';
     }
   });
-  const done = (): void => {
+  const hideProgress = (): void => {
     currentUploadXhr = null;
     attachBtn.disabled = false;
     progressBar.style.display = 'none';
     progressRow.style.display = 'none';
     progressFill.style.width = '0%';
   };
-  xhr.onload = done;
-  xhr.onerror = done;
-  xhr.onabort = done;
+  xhr.onload = () => {
+    hideProgress();
+    if (xhr.status >= 200 && xhr.status < 300) {
+      try {
+        const body = JSON.parse(xhr.responseText) as { id: string; name: string; size: number };
+        currentDraft = { id: body.id, name: body.name, size: body.size };
+        renderDraftChip(currentDraft);
+        syncSendButton();
+      } catch {
+        /* ignore malformed response */
+      }
+    }
+  };
+  xhr.onerror = hideProgress;
+  xhr.onabort = hideProgress;
   cancelBtn.onclick = () => {
     if (currentUploadXhr) currentUploadXhr.abort();
   };
@@ -194,19 +215,84 @@ function uploadFile(file: File): void {
   xhr.send(fd);
 }
 
+function renderDraftChip(draft: { id: string; name: string; size: number }): void {
+  // The chip sits between the chat messages list and the input row so it
+  // visually reads as "attached to the message you're about to send."
+  let chip = document.getElementById('chat-draft-chip');
+  if (!chip) {
+    chip = document.createElement('div');
+    chip.id = 'chat-draft-chip';
+    chip.className = 'chat-file chat-draft-chip';
+    const inputRow = document.getElementById('chat-input-row');
+    inputRow?.parentElement?.insertBefore(chip, inputRow);
+  }
+  chip.innerHTML =
+    `<span class="chat-file-icon"><svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>` +
+    `<div class="chat-file-info"><div class="chat-file-name" title="${esc(draft.name)}">${esc(draft.name)}</div><div class="chat-file-size">${fmtBytes(draft.size)}</div></div>` +
+    `<button class="chat-draft-remove" title="Remove" aria-label="Remove attachment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
+  chip.querySelector('.chat-draft-remove')?.addEventListener('click', () => {
+    void clearDraft({ deleteRemote: true });
+  });
+}
+
+async function clearDraft(opts: { deleteRemote: boolean }): Promise<void> {
+  const draft = currentDraft;
+  currentDraft = null;
+  document.getElementById('chat-draft-chip')?.remove();
+  syncSendButton();
+  if (opts.deleteRemote && draft) {
+    try {
+      await fetch(
+        `/api/public/rooms/${encodeURIComponent(slug)}/files/${encodeURIComponent(draft.id)}` +
+          `?participantId=${encodeURIComponent(getParticipantId())}&token=${encodeURIComponent(getToken())}`,
+        { method: 'DELETE' },
+      );
+    } catch {
+      /* best-effort cleanup */
+    }
+  }
+}
+
+// The send button + chat-send only need to be lit when the chat is enabled
+// AND there's something to send (text or a draft).
+function syncSendButton(): void {
+  const input = document.getElementById('chat-input') as HTMLInputElement | null;
+  const sendBtn = document.getElementById('chat-send') as HTMLButtonElement | null;
+  if (!input || !sendBtn) return;
+  // If the input itself is disabled (chat not connected), leave the send
+  // button disabled too.
+  if (input.disabled) {
+    sendBtn.disabled = true;
+    return;
+  }
+  const hasText = input.value.trim().length > 0;
+  sendBtn.disabled = !(hasText || currentDraft !== null);
+}
+
 function sendChat(): void {
   const input = document.getElementById('chat-input') as HTMLInputElement;
   const text = input.value.trim();
-  if (!text || !sendFn) return;
-  sendFn({ type: 'chat:message', text });
+  const draft = currentDraft;
+  if (!text && !draft) return;
+  if (!sendFn) return;
+  if (text) sendFn({ type: 'chat:message', text });
+  if (draft) {
+    sendFn({ type: 'file:share', fileId: draft.id });
+    currentDraft = null;
+    document.getElementById('chat-draft-chip')?.remove();
+  }
   input.value = '';
+  syncSendButton();
 }
 
 export function initChat(): void {
   document.getElementById('chat-send')?.addEventListener('click', sendChat);
-  document.getElementById('chat-input')?.addEventListener('keydown', (e) => {
+  const input = document.getElementById('chat-input') as HTMLInputElement | null;
+  input?.addEventListener('keydown', (e) => {
     if ((e as KeyboardEvent).key === 'Enter') sendChat();
   });
+  // Keep the send button's enabled state in sync with input + draft state.
+  input?.addEventListener('input', syncSendButton);
   document.getElementById('chat-attach')?.addEventListener('click', () => {
     (document.getElementById('file-input') as HTMLInputElement).click();
   });
@@ -216,4 +302,5 @@ export function initChat(): void {
     if (file) uploadFile(file);
     target.value = '';
   });
+  syncSendButton();
 }

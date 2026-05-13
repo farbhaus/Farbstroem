@@ -3,15 +3,16 @@
 import { applyBranding } from '../shared/branding.js';
 import { configureChat, initChat } from './chat.js';
 import {
+  configureConference,
   initConference,
   refreshConfButtons,
-  setCallLayout,
+  requestAutoFocus,
   showConfPrompt,
   syncConferenceTiles,
   disconnectLiveKit,
 } from './conference.js';
-import { initLayout, sizePlayer } from './layout.js';
-import { destroyPlayer, initPlayer, initPlayerControls, configurePlayer, reloadPlayer } from './player.js';
+import { initLayout, sizeStage } from './layout.js';
+import { destroyPlayer, initPlayer, initPlayerControls, configurePlayer } from './player.js';
 import { configurePointer, initPointer } from './pointer.js';
 import {
   configureJoinOutcome,
@@ -71,31 +72,27 @@ function setRoomStatus(status: RoomStatus, playerPlaying = false): void {
 
 // ---- Stream-key transitions ----
 
+// Toggle the stream tile's presence and (re)mount OvenPlayer accordingly.
+// Auto-focus is delegated to conference.ts which knows about the share state.
 function handleStreamAssigned(newKey: string): void {
   updateSavedStreamKey(newKey);
   setState({ streamKey: newKey });
-  // A stream was attached while this client was sitting on the
-  // "stream ended" overlay — reload the player and dismiss it instead of
-  // keeping them stuck.
-  const overlay = document.getElementById('stream-removed-overlay');
-  if (overlay?.classList.contains('visible')) {
-    overlay.classList.remove('visible');
-    reloadPlayer();
-    return;
-  }
-  // Call-mode client: prompt refresh so the page boots into broadcast mode
-  // with OvenPlayer.
-  if (getState().mode === 'call') {
-    document.getElementById('stream-assigned-banner')?.classList.add('visible');
-  }
+  document.getElementById('tile-stream')?.classList.remove('hidden');
+  initPlayer();
+  setRoomStatus(getState().status);
+  syncConferenceTiles();
+  requestAutoFocus('stream');
 }
 
 function handleStreamRemoved(): void {
   updateSavedStreamKey(null);
   setState({ streamKey: null });
-  if (getState().mode !== 'broadcast') return;
   destroyPlayer();
-  document.getElementById('stream-removed-overlay')?.classList.add('visible');
+  document.getElementById('tile-stream')?.classList.add('hidden');
+  // If the viewer had pinned the stream tile, that target no longer exists.
+  if (getState().focusedTile === 'stream') setState({ focusOverride: false });
+  syncConferenceTiles();
+  requestAutoFocus();
 }
 
 // ---- App show / leave ----
@@ -110,20 +107,21 @@ function showApp(initialStatus?: RoomStatus): void {
   const label = document.getElementById('room-name-label');
   if (label) label.textContent = roomInfo?.name || slug;
 
-  // Room mode: 'broadcast' (OvenPlayer stage) or 'call' (LiveKit-only grid).
-  // Driven by presence of a stream key — no separate flag in the DB.
-  const mode = getState().streamKey ? 'broadcast' : 'call';
-  setState({ mode });
-  document.body.classList.remove('mode-broadcast', 'mode-call');
-  document.body.classList.add(`mode-${mode}`);
-  if (mode === 'call') setCallLayout('grid');
-
   setRoomStatus(initialStatus || 'pending');
 
-  requestAnimationFrame(() => {
-    sizePlayer();
+  // Set up the stream tile presence based on whether a stream key exists,
+  // mount OvenPlayer (or not), seed the participant tiles, then let
+  // auto-focus pick the natural target (share > stream > grid).
+  if (getState().streamKey) {
+    document.getElementById('tile-stream')?.classList.remove('hidden');
     initPlayer();
-  });
+  } else {
+    document.getElementById('tile-stream')?.classList.add('hidden');
+  }
+  syncConferenceTiles();
+  sizeStage();
+  requestAutoFocus();
+
   connectWs();
   showConfPrompt();
 }
@@ -184,6 +182,7 @@ function init(): void {
   // Wire all subsystems.
   configureChat({ send: wsSend });
   configurePointer({ send: wsSend });
+  configureConference({ send: wsSend });
   configurePlayer({
     onPlayingChange: () => setRoomStatus('live', true),
   });
@@ -215,7 +214,6 @@ function init(): void {
 
   document.getElementById('leave-btn')?.addEventListener('click', leaveRoom);
   document.getElementById('left-rejoin-btn')?.addEventListener('click', () => location.reload());
-  document.getElementById('stream-assigned-refresh')?.addEventListener('click', () => location.reload());
 
   // Subscribe: keep `participant-num` and tile sync responsive to roster changes.
   // (ws.ts already triggers syncConferenceTiles on roster updates; subscribing
@@ -235,9 +233,6 @@ function init(): void {
   void loadRoomInfo().then(dispatchOutcome);
 }
 
-// Avoid unused-import warning while we keep the syncConferenceTiles export
-// available to other modules. (ws.ts uses it directly via import.)
-void syncConferenceTiles;
 void isPresenter;
 void stopKickedPoller;
 

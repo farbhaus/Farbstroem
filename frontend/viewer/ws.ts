@@ -2,7 +2,7 @@
 // the kicked-poller. Other modules call `wsSend()` to push client messages.
 
 import { addFileToSection, appendChatHistory, appendChatMessage, appendFileMessage, loadSessionFiles, setChatEnabled } from './chat.js';
-import { disconnectLiveKit, syncConferenceTiles } from './conference.js';
+import { disconnectLiveKit, setFocus, syncConferenceTiles } from './conference.js';
 import { destroyPlayer, reloadPlayer } from './player.js';
 import { clearAllPointers, hidePointer, pruneCursorsToRoster, renderPointer } from './pointer.js';
 import {
@@ -140,6 +140,11 @@ function handleMessage(msg: WsMessage): void {
       return;
     case 'pointer:hide':
       hidePointer(msg.participantId);
+      return;
+    case 'focus:set':
+      // Host has driven a pin (or unpin). Apply with override=false so
+      // viewers can still click locally to override.
+      setFocus(msg.tileId, { override: false });
       return;
   }
 }

@@ -49,6 +49,11 @@ CREATE TABLE IF NOT EXISTS session_files (
     mime_type     TEXT NOT NULL,
     size_bytes    INTEGER NOT NULL,
     content_hash  TEXT,
+    -- is_shared = 0 means the file is a draft attached to a participant's
+    -- chat input but not yet posted to the room. Drafts are hidden from
+    -- chat history, the Files side panel, and the admin library. Flips to
+    -- 1 once the participant sends the chat message.
+    is_shared     INTEGER NOT NULL DEFAULT 1,
     created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -3,8 +3,6 @@
 // the player.
 
 import { viewerStore } from './state.js';
-import { sizePlayer } from './layout.js';
-
 let player: OvenPlayerInstance | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let offlineTimer: ReturnType<typeof setTimeout> | null = null;
@@ -50,10 +48,8 @@ export function reloadPlayer(): void {
 
 export function initPlayer(): void {
   if (player) return;
-  const { mode, deliveryMode, streamKey } = viewerStore.get();
-  // Call-only rooms never instantiate OvenPlayer — the conference grid is
-  // the stage. The offline-screen is a broadcast-mode concept and stays hidden.
-  if (mode === 'call') return;
+  const { deliveryMode, streamKey } = viewerStore.get();
+  // No stream key → there's nothing to play. OvenPlayer stays unmounted.
   if (!streamKey) return;
 
   const host = location.host;
@@ -154,7 +150,6 @@ export function initPlayerControls(): void {
   });
   document.getElementById('resync-btn')?.addEventListener('click', () => {
     destroyPlayer();
-    sizePlayer();
     initPlayer();
   });
 }
