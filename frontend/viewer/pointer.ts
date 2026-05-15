@@ -46,6 +46,55 @@ function pOverlay(): HTMLElement {
   return document.getElementById('pointer-overlay')!;
 }
 
+// The video is rendered object-fit:contain, so it's letterboxed/pillarboxed
+// differently per device. Coordinates must be relative to the visible video
+// IMAGE, not the tile box, otherwise the same image point maps to different
+// normalized values across devices.
+//
+// The reference is a fixed-aspect rectangle letterboxed inside the overlay
+// box. Using the stream's real aspect ratio once it's known, otherwise a
+// 16:9 default — NEVER the raw tile box, whose aspect varies per device and
+// when offline (no <video> at all). Every client computes the same
+// proportional sub-rectangle, so a normalized (x, y) lands on the same
+// logical point everywhere, stream live or not.
+const DEFAULT_ASPECT = 16 / 9;
+let cachedAspect = 0; // videoWidth / videoHeight of the live stream, when seen
+
+function streamAspect(): number {
+  const vids = document.querySelectorAll<HTMLVideoElement>('#player video');
+  for (const v of Array.from(vids)) {
+    if (v.videoWidth > 0 && v.videoHeight > 0) {
+      cachedAspect = v.videoWidth / v.videoHeight;
+    }
+  }
+  return cachedAspect || DEFAULT_ASPECT;
+}
+
+// Returns the reference image rect in overlay-local coordinates.
+function videoContentRect(overlay: HTMLElement): {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+} {
+  const R = overlay.getBoundingClientRect();
+  if (R.width === 0 || R.height === 0) {
+    return { left: 0, top: 0, width: R.width, height: R.height };
+  }
+  const a = streamAspect();
+  const boxAspect = R.width / R.height;
+  let cw: number;
+  let ch: number;
+  if (boxAspect > a) {
+    ch = R.height;
+    cw = ch * a;
+  } else {
+    cw = R.width;
+    ch = cw / a;
+  }
+  return { left: (R.width - cw) / 2, top: (R.height - ch) / 2, width: cw, height: ch };
+}
+
 export function renderPointer(pid: string, name: string, x: number, y: number): void {
   const overlay = pOverlay();
   let entry = cursors.get(pid);
@@ -60,9 +109,9 @@ export function renderPointer(pid: string, name: string, x: number, y: number): 
     entry = { el, fadeTimer: null };
     cursors.set(pid, entry);
   }
-  const rect = overlay.getBoundingClientRect();
-  entry.el.style.left = x * rect.width + 'px';
-  entry.el.style.top = y * rect.height + 'px';
+  const c = videoContentRect(overlay);
+  entry.el.style.left = c.left + x * c.width + 'px';
+  entry.el.style.top = c.top + y * c.height + 'px';
   entry.el.classList.remove('faded');
   if (entry.fadeTimer) clearTimeout(entry.fadeTimer);
   entry.fadeTimer = setTimeout(() => entry!.el.classList.add('faded'), 3000);
@@ -94,14 +143,29 @@ function pointerCursorUrl(): string {
   return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}") 2 2, crosshair`;
 }
 
-function togglePointer(): void {
-  const next = !viewerStore.get().pointerMode;
-  viewerStore.set({ pointerMode: next });
-  document.getElementById('pointer-btn')?.classList.toggle('active', next);
+// Turn pointer mode off. Idempotent — safe to call when already off.
+// Called on layout change (the overlay only lives on the stream tile, so
+// any non-stream-focused layout makes it stale) and from togglePointer.
+export function disablePointerMode(): void {
+  if (!viewerStore.get().pointerMode) return;
+  viewerStore.set({ pointerMode: false });
+  document.getElementById('pointer-btn')?.classList.remove('active');
   const overlay = pOverlay();
-  overlay.classList.toggle('active', next);
-  overlay.style.cursor = next ? pointerCursorUrl() : '';
-  if (!next) sendFn?.({ type: 'pointer:hide' });
+  overlay.classList.remove('active');
+  overlay.style.cursor = '';
+  sendFn?.({ type: 'pointer:hide' });
+}
+
+function togglePointer(): void {
+  if (viewerStore.get().pointerMode) {
+    disablePointerMode();
+    return;
+  }
+  viewerStore.set({ pointerMode: true });
+  document.getElementById('pointer-btn')?.classList.add('active');
+  const overlay = pOverlay();
+  overlay.classList.add('active');
+  overlay.style.cursor = pointerCursorUrl();
 }
 
 function sendMove(cx: number, cy: number): void {
@@ -113,8 +177,11 @@ function sendMove(cx: number, cy: number): void {
   }, 33);
   const overlay = pOverlay();
   const rect = overlay.getBoundingClientRect();
-  const x = (cx - rect.left) / rect.width;
-  const y = (cy - rect.top) / rect.height;
+  const c = videoContentRect(overlay);
+  const x = (cx - rect.left - c.left) / c.width;
+  const y = (cy - rect.top - c.top) / c.height;
+  // Cursor is over a letterbox bar (outside the image) — don't send.
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
   sendFn({ type: 'pointer:move', x, y });
 }
 

@@ -5,6 +5,7 @@
 
 import { toast } from '../shared/utils.js';
 import { sizeStage } from './layout.js';
+import { disablePointerMode } from './pointer.js';
 import { getParticipantId, getToken, PREF_KEY, slug } from './session.js';
 import { viewerStore } from './state.js';
 import type { LivekitTokenResponse, RosterEntry, TileId, WsClientMessage } from './types.js';
@@ -65,6 +66,11 @@ export function setFocus(tileId: TileId | null, opts: { override?: boolean } = {
   };
   if (opts.override !== undefined) patch.focusOverride = opts.override;
   viewerStore.set(patch);
+
+  // The pointer overlay only lives on the stream tile. Any layout where the
+  // stream isn't the focused tile makes leftover pointers stale and the
+  // active overlay blocks the pin buttons, so disable it on the change.
+  if (tileId !== 'stream') disablePointerMode();
 
   const stage = document.getElementById('stage');
   const rail = document.getElementById('stage-rail');
@@ -236,6 +242,15 @@ export async function disconnectLiveKit(): Promise<void> {
     } catch {}
     livekitRoom = null;
   }
+  // No longer in the conference — hide the self tile. (The both-off path in
+  // updateSelfTile now keeps it visible while connected, so hiding has to
+  // happen explicitly here.)
+  const selfTile = document.getElementById('self-tile');
+  if (selfTile) {
+    selfTile.classList.remove('mic-only', 'cam-off');
+    selfTile.style.display = 'none';
+  }
+  requestAnimationFrame(sizeStage);
 }
 
 // ---- Mute state sync (forced-mute detection) ----
@@ -272,13 +287,27 @@ function updateSelfTile(): void {
   const v = document.getElementById('self-preview') as HTMLVideoElement;
   const selfTile = document.getElementById('self-tile') as HTMLElement;
   const micIcon = document.getElementById('self-mic-icon') as HTMLElement;
+  const userIcon = document.getElementById('self-user-icon') as HTMLElement;
   const { cameraOn, micOn } = viewerStore.get();
 
   if (!cameraOn && !micOn) {
-    selfTile.style.display = 'none';
-    selfTile.classList.remove('mic-only');
-    micIcon.style.display = 'none';
+    if (livekitRoom) {
+      // In the conference but fully muted: keep the tile visible with a
+      // placeholder so everyone still knows who's in the room.
+      v.srcObject = null;
+      selfTile.classList.add('mic-only');
+      micIcon.style.display = 'none';
+      userIcon.style.display = 'flex';
+      selfTile.style.display = 'flex';
+    } else {
+      // Not in the conference — tile stays hidden.
+      selfTile.style.display = 'none';
+      selfTile.classList.remove('mic-only');
+      micIcon.style.display = 'none';
+      userIcon.style.display = 'none';
+    }
   } else if (cameraOn && livekitRoom) {
+    userIcon.style.display = 'none';
     const camPub = livekitRoom.localParticipant.getTrackPublication(
       LivekitClient.Track.Source.Camera,
     );
@@ -292,6 +321,7 @@ function updateSelfTile(): void {
     v.srcObject = null;
     selfTile.classList.add('mic-only');
     micIcon.style.display = '';
+    userIcon.style.display = 'none';
     selfTile.style.display = 'flex';
   }
   // Visibility just changed — re-run the grid sizer so the column count
