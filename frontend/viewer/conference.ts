@@ -110,6 +110,46 @@ export function setFocus(tileId: TileId | null, opts: { override?: boolean } = {
     }
   }
 
+  updateFocusAspect();
+  requestAnimationFrame(sizeStage);
+}
+
+// Feed the real stream/screenshare aspect ratio to the focus-mode CSS so
+// the pinned tile is sized to the content (no black object-fit bars). Falls
+// back to the CSS `16 / 9` default when the dimensions aren't known yet.
+let focusAspectVid: { el: HTMLVideoElement; fn: () => void } | null = null;
+
+export function updateFocusAspect(): void {
+  const { focusedTile } = viewerStore.get();
+  let tile: HTMLElement | null = null;
+  let video: HTMLVideoElement | null = null;
+  if (focusedTile === 'stream') {
+    tile = document.getElementById('tile-stream');
+    video = document.querySelector<HTMLVideoElement>('#player video');
+  } else if (focusedTile === 'share') {
+    tile = document.getElementById('tile-share');
+    video = document.getElementById('screenshare-video') as HTMLVideoElement | null;
+  }
+  // Keep one `resize` listener on the current video so a mid-stream
+  // resolution change re-fits the tile.
+  if (focusAspectVid && focusAspectVid.el !== video) {
+    focusAspectVid.el.removeEventListener('resize', focusAspectVid.fn);
+    focusAspectVid = null;
+  }
+  if (video && !focusAspectVid) {
+    const fn = (): void => updateFocusAspect();
+    video.addEventListener('resize', fn);
+    focusAspectVid = { el: video, fn };
+  }
+  if (!tile) return;
+  const w = video?.videoWidth ?? 0;
+  const h = video?.videoHeight ?? 0;
+  if (w > 0 && h > 0) {
+    tile.style.setProperty('--focus-aspect', `${w} / ${h}`);
+  } else {
+    tile.style.removeProperty('--focus-aspect');
+  }
+  // Re-pick the limiting axis for the new ratio (sizeStage handles focus).
   requestAnimationFrame(sizeStage);
 }
 
@@ -146,6 +186,7 @@ function showScreenShare(track: LkTrack, label: string): void {
   document.getElementById('tile-share')?.classList.remove('hidden');
   document.body.classList.add('sharing-screen');
   requestAutoFocus('share');
+  updateFocusAspect();
 }
 
 function hideScreenShare(): void {
