@@ -1,6 +1,7 @@
 // Panel toggles, stage grid sizing, fullscreen.
 // Mobile-Safari resize listeners (visualViewport) live here too.
 
+import { getPlayer } from './player.js';
 import { viewerStore } from './state.js';
 
 // Compute the optimal column count for the stage grid so 16:9 tiles fill
@@ -88,13 +89,22 @@ export function sizeStage(): void {
   }
 }
 
+// The chat panel / focus rail animate their width over ~0.25s. sizeStage()
+// (and its fitFocusedTile axis pick) must be re-run through that window or
+// the focused tile keeps the size it had before the cell finished
+// resizing — which shows up as a stale letterbox/pillarbox.
+function reflowDuringPanelTransition(): void {
+  requestAnimationFrame(sizeStage);
+  for (const ms of [60, 150, 280, 420]) setTimeout(sizeStage, ms);
+}
+
 export function toggleChat(): void {
   const next = !viewerStore.get().chatOpen;
   viewerStore.set({ chatOpen: next });
   document.getElementById('right-panel')?.classList.toggle('open', next);
   document.getElementById('chat-toggle')?.classList.toggle('panel-open', next);
   if (next) document.getElementById('chat-toggle')?.classList.remove('has-notification');
-  requestAnimationFrame(sizeStage);
+  reflowDuringPanelTransition();
 }
 
 export function toggleConf(): void {
@@ -105,11 +115,24 @@ export function toggleConf(): void {
   viewerStore.set({ confOpen: next });
   document.body.classList.toggle('rail-hidden', !next);
   document.getElementById('conf-toggle')?.classList.toggle('panel-open', next);
-  requestAnimationFrame(sizeStage);
+  reflowDuringPanelTransition();
 }
 
 function setupFullscreen(): void {
   const btn = document.getElementById('fullscreen-btn');
+  // iOS pauses the underlying media element when leaving fullscreen. Resume
+  // the live player so the stream doesn't sit frozen on a still frame.
+  const resumePlayback = (): void => {
+    const p = getPlayer();
+    if (!p) return;
+    const kick = (): void => {
+      try {
+        if (p.getState() !== 'playing') p.play();
+      } catch {}
+    };
+    kick();
+    setTimeout(kick, 300);
+  };
   btn?.addEventListener('click', () => {
     const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
     if (fsEl) {
@@ -125,15 +148,21 @@ function setupFullscreen(): void {
     } else if (target.webkitRequestFullscreen) {
       target.webkitRequestFullscreen();
     } else {
+      // iPhone: only the <video> can go fullscreen, and exiting it doesn't
+      // fire document fullscreenchange — resume on its own end event.
       const video = document.querySelector<HTMLVideoElement>('#player video');
-      if (video?.webkitEnterFullscreen) video.webkitEnterFullscreen();
+      if (video?.webkitEnterFullscreen) {
+        video.addEventListener('webkitendfullscreen', resumePlayback, { once: true });
+        video.webkitEnterFullscreen();
+      }
     }
   });
   const onFsChange = (): void => {
-    btn?.classList.toggle(
-      'active',
-      !!(document.fullscreenElement || document.webkitFullscreenElement),
-    );
+    const inFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    btn?.classList.toggle('active', inFs);
+    if (!inFs) resumePlayback();
+    // Layout/aspect can change coming out of fullscreen — re-fit the tile.
+    requestAnimationFrame(sizeStage);
   };
   document.addEventListener('fullscreenchange', onFsChange);
   document.addEventListener('webkitfullscreenchange', onFsChange);

@@ -651,8 +651,12 @@ body.has-focus.rail-hidden #stage-rail {
         z-index: 30;
     }
 
-    /* Tile action buttons stay visible on touch */
+    /* Tile action buttons stay visible on touch (no hover to reveal them) */
     .tile .tile-actions { display: flex; }
+    /* ...but the focused tile is already pinned, so its Pin button is
+       redundant and distracting on touch. Unpin via the toolbar focus
+       button. Rail tiles keep their pin button so another can be chosen. */
+    body.has-focus #stage > .tile[data-focused] .tile-pin-btn { display: none; }
 
     /* Focus mode on mobile: rail on top as a horizontal carousel, focused
        tile underneath. */
