@@ -383,6 +383,35 @@ body.has-focus #stage > .tile[data-focused] {
     width: 100%; height: 100%;
     cursor: default;
 }
+/* The only pinnable tiles are the stream + screenshare. Constrain them to
+   the content aspect ratio (real stream ratio via --focus-aspect, else
+   16:9) and centre them so the room grey shows around them instead of
+   black object-fit bars — the tile "floats" like the rail card. */
+body.has-focus #stage > #tile-stream[data-focused],
+body.has-focus #stage > #tile-share[data-focused] {
+    aspect-ratio: var(--focus-aspect, 16 / 9);
+    /* Default: height-limited (no horizontal collapse). sizeStage() flips
+       to .focus-fit-w when the cell is narrower than the content. */
+    height: 100%; width: auto;
+    min-width: 0; min-height: 0;
+    max-width: 100%; max-height: 100%;
+    place-self: center;
+    background: var(--bg);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+body.has-focus #stage > #tile-stream[data-focused].focus-fit-w,
+body.has-focus #stage > #tile-share[data-focused].focus-fit-w {
+    width: 100%; height: auto;
+}
+body.has-focus #stage > #tile-stream[data-focused].focus-fit-h,
+body.has-focus #stage > #tile-share[data-focused].focus-fit-h {
+    height: 100%; width: auto;
+}
+body.has-focus #stage > #tile-stream[data-focused] .tile-inner > video,
+body.has-focus #stage > #tile-share[data-focused] .tile-inner > video,
+body.has-focus #stage > #tile-stream[data-focused] #player video {
+    background: transparent;
+}
 body.has-focus #stage-rail .tile {
     width: 100%; flex: 0 0 auto;
 }
@@ -622,8 +651,12 @@ body.has-focus.rail-hidden #stage-rail {
         z-index: 30;
     }
 
-    /* Tile action buttons stay visible on touch */
+    /* Tile action buttons stay visible on touch (no hover to reveal them) */
     .tile .tile-actions { display: flex; }
+    /* ...but the focused tile is already pinned, so its Pin button is
+       redundant and distracting on touch. Unpin via the toolbar focus
+       button. Rail tiles keep their pin button so another can be chosen. */
+    body.has-focus #stage > .tile[data-focused] .tile-pin-btn { display: none; }
 
     /* Focus mode on mobile: rail on top as a horizontal carousel, focused
        tile underneath. */
@@ -862,6 +895,9 @@ body.has-focus.rail-hidden #stage-rail {
                 </div>
                 <div class="mic-only-icon" id="self-mic-icon" style="display:none">
                     <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="1" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                </div>
+                <div class="conf-user-icon" id="self-user-icon" style="display:none">
+                    <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
                 </div>
                 <div class="tile-name">You</div>
             </div>

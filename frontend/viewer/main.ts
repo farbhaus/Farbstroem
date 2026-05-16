@@ -10,6 +10,7 @@ import {
   showConfPrompt,
   syncConferenceTiles,
   disconnectLiveKit,
+  updateFocusAspect,
 } from './conference.js';
 import { initLayout, sizeStage } from './layout.js';
 import { destroyPlayer, initPlayer, initPlayerControls, configurePlayer } from './player.js';
@@ -184,7 +185,10 @@ function init(): void {
   configurePointer({ send: wsSend });
   configureConference({ send: wsSend });
   configurePlayer({
-    onPlayingChange: () => setRoomStatus('live', true),
+    onPlayingChange: () => {
+      setRoomStatus('live', true);
+      updateFocusAspect();
+    },
   });
   configureWs({
     onAuthOk: () => {},

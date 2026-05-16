@@ -1,16 +1,54 @@
 // Panel toggles, stage grid sizing, fullscreen.
 // Mobile-Safari resize listeners (visualViewport) live here too.
 
+import { getPlayer } from './player.js';
 import { viewerStore } from './state.js';
 
 // Compute the optimal column count for the stage grid so 16:9 tiles fill
 // the container as efficiently as possible without overflowing. Skipped
 // when the stage is in focus sub-layout (CSS handles that case).
+// In focus mode the pinned stream/share tile is constrained to the content
+// aspect ratio (--focus-aspect, set by conference.updateFocusAspect). CSS
+// can't know whether the grid cell is wider or taller than that ratio, so
+// pick the limiting axis here: choose which dimension is 100% and let the
+// other follow aspect-ratio. Without this the tile letterboxes (or
+// pillarboxes) inside its own cell instead of hugging the image.
+function fitFocusedTile(stage: HTMLElement): void {
+  const tile = stage.querySelector<HTMLElement>(
+    '#tile-stream[data-focused], #tile-share[data-focused]',
+  );
+  if (!tile) return;
+  const cs = getComputedStyle(stage);
+  const px = (s: string): number[] =>
+    s
+      .split(' ')
+      .map((v) => parseFloat(v))
+      .filter((v) => !Number.isNaN(v));
+  const cols = px(cs.gridTemplateColumns);
+  const rows = px(cs.gridTemplateRows);
+  // The focused tile sits in the last column (desktop: rail | tile) and
+  // last row (mobile: rail row, then tile row).
+  const cellW = cols.length ? cols[cols.length - 1]! : stage.clientWidth;
+  const cellH = rows.length ? rows[rows.length - 1]! : stage.clientHeight;
+  if (!(cellW > 0) || !(cellH > 0)) return;
+
+  let contentAspect = 16 / 9;
+  const raw = getComputedStyle(tile).getPropertyValue('--focus-aspect').trim();
+  if (raw) {
+    const [a, b] = raw.split('/').map((v) => parseFloat(v));
+    if (a && b && a > 0 && b > 0) contentAspect = a / b;
+  }
+  const widthLimited = cellW / cellH < contentAspect;
+  tile.classList.toggle('focus-fit-w', widthLimited);
+  tile.classList.toggle('focus-fit-h', !widthLimited);
+}
+
 export function sizeStage(): void {
   const stage = document.getElementById('stage');
   if (!stage) return;
   if (document.body.classList.contains('has-focus')) {
     stage.style.gridTemplateColumns = '';
+    fitFocusedTile(stage);
     return;
   }
   // Visible tiles only — hidden #tile-stream / #tile-share don't take grid cells.
@@ -51,13 +89,22 @@ export function sizeStage(): void {
   }
 }
 
+// The chat panel / focus rail animate their width over ~0.25s. sizeStage()
+// (and its fitFocusedTile axis pick) must be re-run through that window or
+// the focused tile keeps the size it had before the cell finished
+// resizing — which shows up as a stale letterbox/pillarbox.
+function reflowDuringPanelTransition(): void {
+  requestAnimationFrame(sizeStage);
+  for (const ms of [60, 150, 280, 420]) setTimeout(sizeStage, ms);
+}
+
 export function toggleChat(): void {
   const next = !viewerStore.get().chatOpen;
   viewerStore.set({ chatOpen: next });
   document.getElementById('right-panel')?.classList.toggle('open', next);
   document.getElementById('chat-toggle')?.classList.toggle('panel-open', next);
   if (next) document.getElementById('chat-toggle')?.classList.remove('has-notification');
-  requestAnimationFrame(sizeStage);
+  reflowDuringPanelTransition();
 }
 
 export function toggleConf(): void {
@@ -68,11 +115,24 @@ export function toggleConf(): void {
   viewerStore.set({ confOpen: next });
   document.body.classList.toggle('rail-hidden', !next);
   document.getElementById('conf-toggle')?.classList.toggle('panel-open', next);
-  requestAnimationFrame(sizeStage);
+  reflowDuringPanelTransition();
 }
 
 function setupFullscreen(): void {
   const btn = document.getElementById('fullscreen-btn');
+  // iOS pauses the underlying media element when leaving fullscreen. Resume
+  // the live player so the stream doesn't sit frozen on a still frame.
+  const resumePlayback = (): void => {
+    const p = getPlayer();
+    if (!p) return;
+    const kick = (): void => {
+      try {
+        if (p.getState() !== 'playing') p.play();
+      } catch {}
+    };
+    kick();
+    setTimeout(kick, 300);
+  };
   btn?.addEventListener('click', () => {
     const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
     if (fsEl) {
@@ -88,15 +148,21 @@ function setupFullscreen(): void {
     } else if (target.webkitRequestFullscreen) {
       target.webkitRequestFullscreen();
     } else {
+      // iPhone: only the <video> can go fullscreen, and exiting it doesn't
+      // fire document fullscreenchange — resume on its own end event.
       const video = document.querySelector<HTMLVideoElement>('#player video');
-      if (video?.webkitEnterFullscreen) video.webkitEnterFullscreen();
+      if (video?.webkitEnterFullscreen) {
+        video.addEventListener('webkitendfullscreen', resumePlayback, { once: true });
+        video.webkitEnterFullscreen();
+      }
     }
   });
   const onFsChange = (): void => {
-    btn?.classList.toggle(
-      'active',
-      !!(document.fullscreenElement || document.webkitFullscreenElement),
-    );
+    const inFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    btn?.classList.toggle('active', inFs);
+    if (!inFs) resumePlayback();
+    // Layout/aspect can change coming out of fullscreen — re-fit the tile.
+    requestAnimationFrame(sizeStage);
   };
   document.addEventListener('fullscreenchange', onFsChange);
   document.addEventListener('webkitfullscreenchange', onFsChange);
