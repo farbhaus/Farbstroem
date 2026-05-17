@@ -112,4 +112,22 @@ export interface EnterRoomResponse {
   streamKey?: string | null;
 }
 
-export type TabId = 'rooms' | 'keys' | 'files' | 'ome' | 'branding';
+export type TabId = 'rooms' | 'keys' | 'files' | 'ome' | 'branding' | 'settings';
+
+export interface PasskeyInfo {
+  id: string;
+  label: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface SettingsStatus {
+  passwordIsCustom: boolean;
+  totpEnabled: boolean;
+  passkeys: PasskeyInfo[];
+}
+
+export interface AuthMethods {
+  totpEnabled: boolean;
+  passkeyEnabled: boolean;
+}

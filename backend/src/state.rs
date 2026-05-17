@@ -1,9 +1,21 @@
 use crate::config::AppConfig;
 use crate::db::DbPool;
 use crate::events::EventChannels;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
+use uuid::Uuid;
+use webauthn_rs::prelude::{PasskeyAuthentication, PasskeyRegistration};
+use webauthn_rs::Webauthn;
+
+/// In-flight WebAuthn ceremony state, keyed by an opaque id handed to the
+/// browser. Entries older than this TTL are swept lazily on the next access;
+/// a lost entry (e.g. across a restart) just means the user retries.
+pub const CEREMONY_TTL_SECS: u64 = 300;
+
+pub type RegStates = Mutex<HashMap<Uuid, (Instant, PasskeyRegistration)>>;
+pub type AuthStates = Mutex<HashMap<Uuid, (Instant, PasskeyAuthentication)>>;
 
 pub type SharedState = Arc<AppState>;
 
@@ -22,6 +34,11 @@ pub struct AppState {
     pub events: EventChannels,
     pub config: AppConfig,
     pub http_client: reqwest::Client,
+    /// Env-derived bootstrap bcrypt hash. Used only when no custom password
+    /// has been set via the Settings tab (see `credentials::current_password_hash`).
     pub admin_password_hash: String,
     pub metrics_samples: Mutex<MetricsSamples>,
+    pub webauthn: Arc<Webauthn>,
+    pub passkey_reg: RegStates,
+    pub passkey_auth: AuthStates,
 }

@@ -25,6 +25,7 @@ pub fn test_config() -> AppConfig {
         port: 0,
         db_path,
         data_path: "/tmp/zstream-test".into(),
+        public_origin: "http://localhost:4001".into(),
     }
 }
 
@@ -33,6 +34,9 @@ pub fn test_state() -> Arc<AppState> {
     let pool = db::init_pool(&config.db_path, &config.data_path);
     let events = EventChannels::new();
     let admin_password_hash = bcrypt::hash("test-admin-password", 4).unwrap();
+    let webauthn = std::sync::Arc::new(stream_backend::credentials::build_webauthn(
+        &config.public_origin,
+    ));
 
     Arc::new(AppState {
         db: pool,
@@ -41,6 +45,9 @@ pub fn test_state() -> Arc<AppState> {
         http_client: reqwest::Client::new(),
         admin_password_hash,
         metrics_samples: tokio::sync::Mutex::new(stream_backend::state::MetricsSamples::default()),
+        webauthn,
+        passkey_reg: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+        passkey_auth: tokio::sync::Mutex::new(std::collections::HashMap::new()),
     })
 }
 
