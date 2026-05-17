@@ -3,7 +3,7 @@
 
 import { apiFetch } from './auth.js';
 import { toast, esc, fmtDateTime } from '../shared/utils.js';
-import { closeModal, openModal } from '../shared/components.js';
+import { closeModal, confirmModal, openModal, promptModal } from '../shared/components.js';
 import { doRegister, webauthnSupported } from './webauthn.js';
 import type { SettingsStatus } from './types.js';
 
@@ -138,7 +138,13 @@ async function confirmTotp(): Promise<void> {
 }
 
 async function disableTotp(): Promise<void> {
-  const password = prompt('Confirm your password to disable 2FA:');
+  const password = await promptModal({
+    title: 'Disable Two-Factor',
+    message: 'Confirm your password to turn off TOTP 2FA.',
+    label: 'Password',
+    inputType: 'password',
+    confirmLabel: 'Disable 2FA',
+  });
   if (!password) return;
   const res = await apiFetch('/api/admin/settings/totp/disable', {
     method: 'POST',
@@ -202,7 +208,15 @@ async function addPasskey(): Promise<void> {
 }
 
 async function deletePasskey(id: string): Promise<void> {
-  if (!confirm('Remove this passkey?')) return;
+  if (
+    !(await confirmModal({
+      title: 'Remove Passkey',
+      message: 'This passkey will no longer be able to sign in.',
+      confirmLabel: 'Remove',
+      danger: true,
+    }))
+  )
+    return;
   const res = await apiFetch(`/api/admin/settings/passkeys/${id}`, { method: 'DELETE' });
   if (res && res.ok) {
     toast('Passkey removed');
