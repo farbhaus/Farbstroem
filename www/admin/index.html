@@ -411,8 +411,12 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
             <div class="form-row">
                 <input type="password" id="password-input" placeholder="Password" autocomplete="current-password">
             </div>
+            <div class="form-row" id="totp-row" style="display:none">
+                <input type="text" id="totp-input" placeholder="2FA / recovery code" autocomplete="one-time-code" inputmode="text">
+            </div>
             <button type="submit" class="btn btn-primary btn-block">Sign in</button>
         </form>
+        <button class="btn btn-block" id="passkey-btn" style="display:none;margin-top:8px">Sign in with passkey</button>
         <p class="login-error" id="login-error"></p>
     </div>
 </div>
@@ -428,6 +432,7 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
         <button class="btn btn-tab" data-tab="files">Files</button>
         <button class="btn btn-tab" data-tab="ome">Dashboard</button>
         <button class="btn btn-tab" data-tab="branding">Branding</button>
+        <button class="btn btn-tab" data-tab="settings">Settings</button>
     </div>
     <div class="nav-right">
         <button class="btn btn-sm" id="logout-btn">Sign out</button>
@@ -674,6 +679,66 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
         </div>
     </div>
 
+    <!-- Settings tab -->
+    <div id="tab-settings" class="u-hidden">
+        <div class="section-header">
+            <span class="section-title">Settings</span>
+        </div>
+
+        <div class="room-card">
+            <div class="room-card-header">
+                <div class="room-card-info">
+                    <div class="room-card-name">Admin Password</div>
+                    <div class="room-card-meta" id="set-pw-state">—</div>
+                </div>
+            </div>
+            <div class="room-card-body u-p-card-tight">
+                <div class="form-row"><input type="password" id="set-pw-current" placeholder="Current password" autocomplete="current-password"></div>
+                <div class="form-row"><input type="password" id="set-pw-new" placeholder="New password (min 12 chars)" autocomplete="new-password"></div>
+                <div class="form-row"><input type="password" id="set-pw-confirm" placeholder="Confirm new password" autocomplete="new-password"></div>
+                <button class="btn btn-sm btn-primary" id="set-pw-btn">Change password</button>
+            </div>
+        </div>
+
+        <div class="room-card u-mt-3">
+            <div class="room-card-header">
+                <div class="room-card-info">
+                    <div class="room-card-name">Two-Factor Authentication (TOTP)</div>
+                    <div class="room-card-meta" id="set-totp-state">—</div>
+                </div>
+                <div class="room-card-actions">
+                    <button class="btn btn-sm" id="set-totp-enable-btn" style="display:none">Enable</button>
+                    <button class="btn btn-sm btn-danger" id="set-totp-disable-btn" style="display:none">Disable</button>
+                </div>
+            </div>
+            <div class="room-card-body u-p-card-tight">
+                <div id="set-totp-setup" style="display:none">
+                    <div class="room-card-meta">Scan with an authenticator app, then enter the 6-digit code to confirm.</div>
+                    <img id="set-totp-qr" alt="TOTP QR" style="max-width:180px;margin:8px 0">
+                    <div class="room-card-meta">Secret: <code id="set-totp-secret"></code></div>
+                    <div class="form-row"><input type="text" id="set-totp-code" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code"></div>
+                    <button class="btn btn-sm btn-primary" id="set-totp-confirm-btn">Confirm &amp; enable</button>
+                </div>
+                <div id="set-totp-recovery" style="display:none"></div>
+            </div>
+        </div>
+
+        <div class="room-card u-mt-3">
+            <div class="room-card-header">
+                <div class="room-card-info">
+                    <div class="room-card-name">Passkeys</div>
+                    <div class="room-card-meta">Hardware/biometric login (Touch ID, YubiKey, phone). A passkey signs you in without a password or 2FA code.</div>
+                </div>
+                <div class="room-card-actions">
+                    <button class="btn btn-sm" id="set-pk-add-btn">Add passkey</button>
+                </div>
+            </div>
+            <div class="room-card-body u-p-card-tight">
+                <div id="set-pk-list"><div class="empty">Loading…</div></div>
+            </div>
+        </div>
+    </div>
+
 </div>
 </main>
 
@@ -741,6 +806,24 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
         <div class="modal-footer">
             <button class="btn" id="key-modal-cancel">Cancel</button>
             <button class="btn btn-primary" id="key-modal-save">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Settings: Add Passkey modal -->
+<div class="modal-overlay" id="passkey-modal" style="display:none">
+    <div class="modal" style="width:420px">
+        <div class="modal-header">
+            <span class="modal-title">Add Passkey</span>
+            <button class="btn btn-sm" id="passkey-modal-close">✕</button>
+        </div>
+        <div class="form-row">
+            <label>Name</label>
+            <input type="text" id="passkey-name" placeholder="e.g. MacBook Touch ID, YubiKey">
+        </div>
+        <div class="modal-footer">
+            <button class="btn" id="passkey-modal-cancel">Cancel</button>
+            <button class="btn btn-primary" id="passkey-modal-save">Continue</button>
         </div>
     </div>
 </div>

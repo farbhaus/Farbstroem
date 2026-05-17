@@ -44,3 +44,17 @@ pub fn join_layer() -> GovernorLayer<SmartIpKeyExtractor, ::governor::middleware
         .clone();
     GovernorLayer { config }
 }
+
+/// 30 requests/minute per IP, burst 10. For the WebAuthn passkey login
+/// endpoints — a single passkey login is start+finish (2 requests, with a
+/// human-paced OS prompt between), so the strict `login_layer` budget made
+/// legitimate retries fail. This bucket is separate from `login_layer` and
+/// these endpoints are already gated by a server-issued challenge id.
+pub fn passkey_layer() -> GovernorLayer<SmartIpKeyExtractor, ::governor::middleware::NoOpMiddleware>
+{
+    static CFG: OnceLock<Arc<SmartConfig>> = OnceLock::new();
+    let config = CFG
+        .get_or_init(|| build_config(Duration::from_secs(2), 10))
+        .clone();
+    GovernorLayer { config }
+}

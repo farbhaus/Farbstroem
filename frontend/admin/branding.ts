@@ -1,4 +1,5 @@
 import { apiFetch, getToken } from './auth.js';
+import { confirmModal } from '../shared/components.js';
 import { toast } from '../shared/utils.js';
 import type { BrandingResponse } from './types.js';
 
@@ -94,7 +95,16 @@ async function uploadBrandingAsset(asset: 'logo' | 'bg'): Promise<void> {
 }
 
 async function removeBrandingAsset(asset: 'logo' | 'bg'): Promise<void> {
-  if (!confirm(`Remove custom ${asset === 'logo' ? 'logo' : 'background image'}?`)) return;
+  const what = asset === 'logo' ? 'logo' : 'background image';
+  if (
+    !(await confirmModal({
+      title: `Remove ${what === 'logo' ? 'Logo' : 'Background Image'}`,
+      message: `The custom ${what} will be removed and the default restored.`,
+      confirmLabel: 'Remove',
+      danger: true,
+    }))
+  )
+    return;
   const res = await apiFetch(`/api/admin/branding/${asset}`, { method: 'DELETE' });
   if (res && res.ok) {
     toast('Removed');

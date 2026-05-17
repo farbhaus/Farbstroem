@@ -1,5 +1,7 @@
 FROM rust:1-alpine AS builder
-RUN apk add --no-cache musl-dev
+# perl/make/gcc/linux-headers compile vendored OpenSSL (pulled in by
+# webauthn-rs) statically into the musl binary — no system libssl needed.
+RUN apk add --no-cache musl-dev perl make gcc linux-headers
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs && cargo build --release 2>/dev/null; rm -rf src

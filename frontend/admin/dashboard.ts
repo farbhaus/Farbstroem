@@ -1,4 +1,5 @@
 import { apiFetch } from './auth.js';
+import { confirmModal } from '../shared/components.js';
 import {
   esc,
   fmtBitRate,
@@ -197,7 +198,15 @@ function renderOme(): void {
 }
 
 async function kickStream(name: string): Promise<void> {
-  if (!confirm(`Kick stream "${name}"?\nThis will disconnect the encoder immediately.`)) return;
+  if (
+    !(await confirmModal({
+      title: 'Kick Stream',
+      message: `Kick stream "${name}"?\nThis will disconnect the encoder immediately.`,
+      confirmLabel: 'Kick',
+      danger: true,
+    }))
+  )
+    return;
   const res = await apiFetch(`/api/ome/streams/${encodeURIComponent(name)}`, { method: 'DELETE' });
   if (res && res.ok) {
     toast('Stream kicked');
