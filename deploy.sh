@@ -196,7 +196,10 @@ info "Deployment mode: $MODE"
 # --- .env handling ----------------------------------------------------------
 ADMIN_PASSWORD=""
 if [[ -f .env && $REGENERATE -eq 1 ]]; then
-  read -rp ".env exists — overwrite it and generate fresh secrets? This invalidates existing admin/participant sessions. [y/N] " ans
+  echo "Note: this rotates JWT/secrets (invalidates all sessions). It does NOT"
+  echo "reset DB-stored credentials — a custom admin password, TOTP, and passkeys"
+  echo "live in ./data/stream.db and keep working (and override the env password)."
+  read -rp ".env exists — overwrite it and generate fresh secrets? [y/N] " ans
   [[ "${ans,,}" == "y" ]] || die "aborted by user."
   rm -f .env
 fi
@@ -222,6 +225,10 @@ else
     set_env LK_SITE_ADDRESS  "http://lk.$DOMAIN"
   fi
   set_env LIVEKIT_URL        "wss://lk.$DOMAIN"
+  # WebAuthn relying party: must exactly match the browser's origin or passkey
+  # registration/login fails. Admin UI is always reached at https://<domain>
+  # (in both modes). The .env.example default is a placeholder — override it.
+  set_env PUBLIC_ORIGIN      "https://$DOMAIN"
   set_env LIVEKIT_API_KEY    "API$(gen_token)"
   set_env JWT_SECRET         "$(gen_secret)"
   set_env OME_WEBHOOK_SECRET "$(gen_secret)"
@@ -253,6 +260,13 @@ if [[ -n "$ADMIN_PASSWORD" ]]; then
   echo
   echo "  ADMIN PASSWORD (shown once — save it now):"
   echo "      $ADMIN_PASSWORD"
+  if [[ -f data/stream.db ]]; then
+    echo
+    echo "  NOTE: data/stream.db already exists. If a custom password was set in"
+    echo "  the admin UI, it (and any TOTP/passkey) lives in the DB and OVERRIDES"
+    echo "  this env password — the password above will NOT work until the DB"
+    echo "  override is cleared (break-glass). TOTP/passkeys are unaffected."
+  fi
 fi
 if [[ "$MODE" == "host" ]]; then
   tls_note="TLS for both is handled by the host Caddy, now configured."
