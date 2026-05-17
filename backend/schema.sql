@@ -69,6 +69,17 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+-- Single-admin WebAuthn passkeys. `credential` is the serde_json of a
+-- webauthn-rs Passkey (includes the public key + signature counter, which is
+-- updated in place on every successful authentication).
+CREATE TABLE IF NOT EXISTS admin_passkeys (
+    id            TEXT PRIMARY KEY,
+    label         TEXT NOT NULL,
+    credential    TEXT NOT NULL,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_used_at  DATETIME
+);
+
 CREATE TABLE IF NOT EXISTS chat_messages (
     id         TEXT PRIMARY KEY,
     room_id    TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,

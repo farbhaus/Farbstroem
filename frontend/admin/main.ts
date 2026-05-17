@@ -1,10 +1,13 @@
 import {
   apiFetch,
   clearToken,
+  fetchAuthMethods,
   getToken,
   login,
+  passkeyLogin,
   setLogoutHandler,
 } from './auth.js';
+import { doAuthenticate } from './webauthn.js';
 import {
   applyBrandingColorsOnce,
   initBranding,
@@ -43,6 +46,7 @@ import {
   loadKeys,
   setOnChange as setKeysOnChange,
 } from './stream-keys.js';
+import { initSettings, loadSettings } from './settings.js';
 import { copyToClipboard } from '../shared/utils.js';
 import type { TabId } from './types.js';
 
@@ -88,6 +92,7 @@ function switchTab(tab: TabId): void {
   setEl('tab-ome', tab === 'ome' ? 'block' : 'none');
   setEl('tab-branding', tab === 'branding' ? 'block' : 'none');
   setEl('tab-files', tab === 'files' ? 'block' : 'none');
+  setEl('tab-settings', tab === 'settings' ? 'block' : 'none');
 
   if (tab === 'ome') {
     renderOmeIfReady();
@@ -101,22 +106,53 @@ function switchTab(tab: TabId): void {
     void loadFiles();
     void loadStorageStats();
   }
+  if (tab === 'settings') void loadSettings();
 }
 
 function initLoginForm(): void {
+  const totpRow = document.getElementById('totp-row');
+  const totpInput = document.getElementById('totp-input') as HTMLInputElement | null;
+
   document.getElementById('login-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const errEl = document.getElementById('login-error');
     if (errEl) errEl.textContent = '';
     const passwordInput = document.getElementById('password-input') as HTMLInputElement;
-    const result = await login(passwordInput.value);
+    const result = await login(passwordInput.value, totpInput?.value || undefined);
+    if (result.totpRequired) {
+      if (totpRow) totpRow.style.display = '';
+      totpInput?.focus();
+      if (errEl) errEl.textContent = 'Enter your authenticator or recovery code';
+      return;
+    }
     if (!result.ok) {
       if (errEl) errEl.textContent = result.error || 'Sign in failed';
       return;
     }
     passwordInput.value = '';
+    if (totpInput) totpInput.value = '';
     showApp();
   });
+
+  document.getElementById('passkey-btn')?.addEventListener('click', async () => {
+    const errEl = document.getElementById('login-error');
+    if (errEl) errEl.textContent = '';
+    const result = await passkeyLogin(doAuthenticate);
+    if (!result.ok) {
+      if (errEl) errEl.textContent = result.error || 'Passkey sign in failed';
+      return;
+    }
+    showApp();
+  });
+
+  // Reveal the passkey button only if a passkey is registered.
+  void fetchAuthMethods().then((m) => {
+    if (m.passkeyEnabled) {
+      const btn = document.getElementById('passkey-btn');
+      if (btn) btn.style.display = '';
+    }
+  });
+
   document.getElementById('logout-btn')?.addEventListener('click', doLogout);
 }
 
@@ -193,6 +229,7 @@ function init(): void {
   initBranding();
   initDashboard();
   initFiles();
+  initSettings();
   initDelegatedClicks();
 
   // Auto-restore session if a token is still valid.

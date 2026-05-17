@@ -1,5 +1,5 @@
 import { apiFetch } from './auth.js';
-import { closeModal, openModal } from '../shared/components.js';
+import { closeModal, confirmModal, openModal } from '../shared/components.js';
 import { copyToClipboard, esc, fmtDateTime, toast } from '../shared/utils.js';
 import type { EnterRoomResponse, Participant, Room, StreamKey } from './types.js';
 
@@ -327,7 +327,15 @@ async function doEnterRoom(): Promise<void> {
 // ---- Public action handlers (invoked by main.ts dispatcher) ----
 
 export async function deleteRoom(id: string): Promise<void> {
-  if (!confirm('Delete this room?')) return;
+  if (
+    !(await confirmModal({
+      title: 'Delete Room',
+      message: 'This room and its participants will be permanently removed.',
+      confirmLabel: 'Delete',
+      danger: true,
+    }))
+  )
+    return;
   const res = await apiFetch(`/api/rooms/${id}`, { method: 'DELETE' });
   if (res && res.ok) {
     toast('Room deleted');

@@ -1,4 +1,5 @@
 pub mod admin_files;
+pub mod admin_settings;
 pub mod auth;
 pub mod branding;
 pub mod files;
@@ -28,7 +29,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .nest("/api/admin/branding", branding::admin_router())
         .nest("/api/admin/metrics", metrics::router())
         .nest("/api/admin/files", admin_files::files_router())
-        .nest("/api/admin/rooms", admin_files::room_assign_router());
+        .nest("/api/admin/rooms", admin_files::room_assign_router())
+        .nest("/api/admin/settings", admin_settings::router());
 
     api.with_state(state)
 }
