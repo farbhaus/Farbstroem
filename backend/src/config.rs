@@ -13,6 +13,11 @@ pub struct AppConfig {
     pub port: u16,
     pub db_path: String,
     pub data_path: String,
+    /// Public origin the admin panel is served from, e.g.
+    /// `https://stream.zemariacolor.com`. Used as the WebAuthn relying-party
+    /// origin; the RP ID is the host parsed from it. Set to
+    /// `http://localhost:4001` for local dev so passkeys work.
+    pub public_origin: String,
 }
 
 /// Require an env var to be set, panicking with a clear message if not.
@@ -61,6 +66,8 @@ impl AppConfig {
                 .unwrap_or(4001),
             db_path: env::var("DB_PATH").unwrap_or_else(|_| "/data/stream.db".into()),
             data_path: env::var("DATA_PATH").unwrap_or_else(|_| "/data".into()),
+            public_origin: env::var("PUBLIC_ORIGIN")
+                .unwrap_or_else(|_| "https://stream.zemariacolor.com".into()),
         }
     }
 }

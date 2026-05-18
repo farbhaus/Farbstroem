@@ -1,5 +1,5 @@
 import { apiFetch } from './auth.js';
-import { closeModal, openModal } from '../shared/components.js';
+import { closeModal, confirmModal, openModal } from '../shared/components.js';
 import { esc, toast } from '../shared/utils.js';
 import type { StreamKey } from './types.js';
 
@@ -100,7 +100,15 @@ async function saveKey(): Promise<void> {
 }
 
 async function deleteKey(id: string): Promise<void> {
-  if (!confirm('Delete this stream key?')) return;
+  if (
+    !(await confirmModal({
+      title: 'Delete Stream Key',
+      message: 'Any encoder using this key will stop being able to ingest.',
+      confirmLabel: 'Delete',
+      danger: true,
+    }))
+  )
+    return;
   const res = await apiFetch(`/api/stream-keys/${id}`, { method: 'DELETE' });
   if (res && res.ok) {
     toast('Key deleted');

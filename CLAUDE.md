@@ -79,7 +79,8 @@ Browser (viewer page)
 - `src/livekit.rs` — hand-rolled LiveKit client: AccessToken JWT minting + RoomService HTTP
 - `src/ws.rs` — WebSocket hub, broadcast channels per room
 - `src/tasks.rs` — background pollers: OME stream status, room expiry, file cleanup
-- `src/routes/` — one file per resource: `rooms`, `rooms_public`, `files`, `admin_files`, `stream_keys`, `webhook`, `branding`, `metrics`, `ome`, `auth`, `rate_limit`
+- `src/routes/` — one file per resource: `rooms`, `rooms_public`, `files`, `admin_files`, `stream_keys`, `webhook`, `branding`, `metrics`, `ome`, `auth`, `admin_settings`, `rate_limit`
+- `src/credentials.rs` — single-admin credential helpers: `settings` accessors, DB-or-env password resolver, TOTP, recovery codes, WebAuthn RP builder (see `Streaming.md` security section)
 - `tests/common/mod.rs` — shared test fixtures (in-memory DB, app setup)
 
 ## Frontend structure
@@ -93,7 +94,7 @@ npm run typecheck                 # CI gate
 npm run build                     # production build (CI + prod host)
 ```
 
-- `frontend/admin/` — admin SPA modules (`main`, `auth`, `rooms`, `stream-keys`, `files`, `branding`, `dashboard`, `types`)
+- `frontend/admin/` — admin SPA modules (`main`, `auth`, `rooms`, `stream-keys`, `files`, `branding`, `dashboard`, `settings`, `webauthn`, `types`)
 - `frontend/viewer/` — viewer SPA modules (`main`, `types`, `state`, `session`, `screens`, `ws`, `player`, `livekit`/`conference`, `chat`, `pointer`, `layout`, plus `globals.d.ts` for the CDN-loaded LiveKit/OvenPlayer globals)
 - `frontend/landing/` — landing page
 - `frontend/shared/` — `store.ts` (tiny reactive store), `utils.ts` (typed API wrapper, toast, formatters), `branding.ts` (read-only branding loader), `components.ts` (modal helpers)

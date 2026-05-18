@@ -12,6 +12,7 @@ use axum::routing::get;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
@@ -61,6 +62,9 @@ async fn main() {
     // Create shared state
     let events = events::EventChannels::new();
     let http_client = reqwest::Client::new();
+    let webauthn = Arc::new(stream_backend::credentials::build_webauthn(
+        &config.public_origin,
+    ));
     let state = Arc::new(state::AppState {
         db,
         events,
@@ -68,6 +72,9 @@ async fn main() {
         http_client,
         admin_password_hash,
         metrics_samples: tokio::sync::Mutex::new(state::MetricsSamples::default()),
+        webauthn,
+        passkey_reg: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+        passkey_auth: tokio::sync::Mutex::new(std::collections::HashMap::new()),
     });
 
     // Ensure branding directory exists
@@ -104,6 +111,16 @@ async fn main() {
         .fallback_service(
             ServeDir::new("/www/viewer").fallback(ServeFile::new("/www/viewer/index.html")),
         )
+        // The SPA is served as un-hashed plain ES modules / HTML. Without an
+        // explicit Cache-Control, browsers apply *heuristic* caching from
+        // Last-Modified and can serve a stale bundle for hours after a
+        // deploy (manifesting as "the new tab/feature doesn't work").
+        // `no-cache` forces revalidation; ETag/Last-Modified still yield
+        // cheap 304s, so this isn't a bandwidth regression.
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::CACHE_CONTROL,
+            axum::http::HeaderValue::from_static("no-cache"),
+        ))
         .layer(
             TraceLayer::new_for_http().make_span_with(|req: &Request<Body>| {
                 let uri_display = match req.uri().query() {
