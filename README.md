@@ -62,9 +62,9 @@ All services run on a single Docker bridge network (`stream-net`) and reference 
 
 ## Local development
 
-No deploy script needed for dev — copy the env template, fill the four secrets (the
-backend refuses to start with empty/short ones), then run the stack and the frontend
-watcher:
+No deploy script for dev. Fill the secrets (the backend refuses empty/short ones — the
+rest of the `.env.example` defaults are already correct for localhost), then run the
+stack plus the frontend watcher in a side terminal:
 
 ```bash
 cp .env.example .env
@@ -72,99 +72,75 @@ for k in JWT_SECRET OME_WEBHOOK_SECRET OME_API_TOKEN LIVEKIT_API_SECRET; do
   sed -i "s|^$k=.*|$k=$(openssl rand -hex 32)|" .env
 done
 sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=devpassword123|" .env   # ≥12 chars
-docker compose up -d --build      # full stack on localhost
-cd frontend && npm run watch      # side terminal — rebuilds www/dist/ on every .ts save
+
+docker compose up -d --build                 # full stack on localhost
+cd frontend && npm install && npm run watch  # rebuilds www/dist/ on every .ts save
 ```
 
-The remaining `.env.example` defaults (`localhost`, `devkey`, `ws://localhost:7880`) are
-already correct for local dev.
+The backend bind-mounts `./www`, so a browser refresh picks up `tsc` rebuilds — no Docker
+rebuild for frontend changes. (Production hosts run `npm ci && npm run build` once so
+`www/dist/` exists; `deploy.sh` does this for you.)
 
-Backend (Rust): see [backend/DEVELOPMENT.md](backend/DEVELOPMENT.md) for the dev loop (`cargo check`, `watchexec`, `cargo test`), required tools (mold/clang on Linux, `watchexec-cli`), and environment variables.
-
-Frontend (TypeScript): `tsc` only — no bundler. After installing once, keep the watcher running in a side terminal:
-
-```bash
-cd frontend && npm install        # one-time
-npm run watch                     # rebuilds www/dist/ on every .ts save
-```
-
-The backend container bind-mounts `./www`, so hard-refreshing the browser picks up the new build immediately — no Docker rebuild needed for frontend changes. Production hosts must run `npm ci && npm run build` before `docker compose up -d` so `www/dist/` exists on disk.
+Backend dev loop (`cargo check`, `watchexec`, `cargo test`) and required tools: see
+[backend/DEVELOPMENT.md](backend/DEVELOPMENT.md).
 
 ## Production deployment
 
-### Prerequisites
-
-- Docker and Docker Compose v2
-- A domain name (if running standalone with TLS) or an external reverse proxy
-- Firewall: open the ingest ports plus `50000-50100/udp` and `7881/tcp` for LiveKit media
-- UDP 50000-50100 is deliberately narrow — larger ranges create thousands of iptables rules per port and make `docker compose up/down` take minutes
-
-### One-click deploy (recommended)
-
-From a clean checkout to a running TLS deployment in one command:
+One command on a **fresh VPS where only zStream runs**:
 
 ```bash
-./deploy.sh stream.yourdomain.com
+sudo ./deploy.sh stream.yourdomain.com
 ```
 
-In one command this generates `.env` (all secrets), builds the frontend, and runs `docker compose up -d --build`. It picks a TLS mode automatically:
+That's it. The script installs missing prerequisites (Docker + Compose, Node, openssl), generates `.env` with all secrets, opens the firewall, builds the frontend, brings the stack up, and prints the admin password once. The containerized Caddy provisions Let's Encrypt and serves both `stream.yourdomain.com` (app + `/live/`) and `lk.stream.yourdomain.com` (LiveKit) — no host web server to configure.
 
-- **Standalone (default)** — the containerized Caddy provisions Let's Encrypt for both `stream.yourdomain.com` and `lk.stream.yourdomain.com` itself. Nothing else is needed on a dedicated host.
-- **Behind host Caddy** — auto-selected when a populated `/etc/caddy/Caddyfile` is found (the host already serves other domains, e.g. the project VPS). The script installs Caddy if missing and appends pure TLS-front blocks forwarding both hostnames → `:8880` (idempotent; existing blocks backed up and left untouched; see [caddyfile.example](caddyfile.example)).
+**Before running:**
+- Point DNS at the VPS for **both** `stream.yourdomain.com` and `lk.stream.yourdomain.com` (needed for Let's Encrypt).
+- Run as root / with `sudo` (installs packages, opens the firewall).
+- Prereq auto-install is apt-based; on other distros install Docker/Node/openssl first.
 
-Force a mode with `--standalone` or `--behind-host-caddy`. The generated admin password is printed once at the end — save it. Re-running is safe: an existing `.env` is reused and secrets are **not** rotated (live sessions survive a redeploy); `--regenerate` starts fresh, `--yes` skips confirmation prompts. Point DNS at the host for both `stream.yourdomain.com` and `lk.stream.yourdomain.com` before running.
+**Re-running is safe** — an existing `.env` is reused and secrets are not rotated, so a redeploy keeps sessions alive. Flags:
 
-> Behind-host-caddy mode edits `/etc/caddy/Caddyfile` and may install Caddy — run with `sudo` (or as root). Auto-install supports apt-based distros; on others install [Caddy](https://caddyserver.com/docs/install) first and the script only edits the config.
+| Flag | Effect |
+|---|---|
+| `--regenerate` | Rewrite `.env` from scratch (rotates secrets) |
+| `--yes` | Skip confirmation prompts (unattended) |
+| `--behind-host-caddy` | *Advanced.* Host Caddy fronts the stack; the script edits `/etc/caddy/Caddyfile` |
+| `--reverse-proxy` | *Advanced.* Stack serves HTTP on `:8880`; you point your existing nginx/etc. at it (prints the server blocks; touches nothing) |
 
-### Manual configuration (fallback)
+The script targets a clean box: if something already holds ports 80/443, it stops and points you at the advanced flags rather than failing cryptically.
+
+### Manual / advanced configuration
+
+Skip `deploy.sh` and configure `.env` by hand (`cp .env.example .env`). Required secrets, all enforced at startup (backend panics with a clear `FATAL:` otherwise):
+
+| Var | Min | Generate |
+|---|---|---|
+| `JWT_SECRET`, `OME_WEBHOOK_SECRET`, `OME_API_TOKEN`, `LIVEKIT_API_SECRET` | 32 chars | `openssl rand -hex 32` |
+| `ADMIN_PASSWORD` | 12 chars | (bcrypt-hashed once at startup) |
+| `LIVEKIT_API_KEY` | — | any identifier (the LiveKit JWT `iss`) |
+| `PUBLIC_ORIGIN` | — | exact browser origin, e.g. `https://stream.yourdomain.com` (WebAuthn RP — no path) |
+
+The containerized Caddy ([caddy/Caddyfile](caddy/Caddyfile)) owns **all** routing (app, `/live/*` → OME, LiveKit). The mode only changes *who terminates TLS* — set these in `.env` (this is exactly what the corresponding `deploy.sh` flag writes):
 
 ```bash
-cp .env.example .env
-# Edit .env — all secrets enforced at startup:
-#   JWT_SECRET            ≥ 32 chars  (openssl rand -hex 32)
-#   OME_WEBHOOK_SECRET    ≥ 32 chars  (openssl rand -hex 32)
-#   LIVEKIT_API_SECRET    ≥ 32 chars  (openssl rand -hex 32)
-#   LIVEKIT_API_KEY       required    (becomes the iss claim in LiveKit JWTs)
-#   ADMIN_PASSWORD        ≥ 12 chars  (bcrypt-hashed once at startup)
-```
+# Standalone (default) — container gets its own Let's Encrypt certs
+SITE_ADDRESS=stream.yourdomain.com
+LK_SITE_ADDRESS=lk.stream.yourdomain.com
+LIVEKIT_URL=wss://lk.stream.yourdomain.com
 
-The backend panics with a clear `FATAL:` message at startup if any of these are missing or too short.
-
-The containerized Caddy ([caddy/Caddyfile](caddy/Caddyfile)) owns **all** zStream routing — the app, `/live/*` → OME, and the LiveKit subdomain. The two models below differ only in *who terminates TLS*.
-
-### Standalone — container TLS (default)
-
-The containerized Caddy provisions Let's Encrypt for both the app and the LiveKit subdomain. Set in `.env`:
-
-```bash
-SITE_ADDRESS=stream.yourdomain.com        # app + /live/  (container auto-TLS)
-LK_SITE_ADDRESS=lk.stream.yourdomain.com  # LiveKit SFU   (container auto-TLS)
+# Behind a host Caddy / reverse proxy — stack serves plain HTTP on :8880,
+# the front terminates TLS for both names and forwards them to :8880
+SITE_ADDRESS=:80
+HTTP_PORT=8880
+HTTPS_PORT=8444
+LK_SITE_ADDRESS=http://lk.stream.yourdomain.com
 LIVEKIT_URL=wss://lk.stream.yourdomain.com
 ```
 
-```bash
-docker compose up -d
-```
+For a host Caddy, add the blocks from [caddyfile.example](caddyfile.example) (both hostnames → `localhost:8880`) and `systemctl reload caddy`. Then `docker compose up -d`.
 
-Point DNS for both names at the host (ports 80/443 must be reachable for ACME) before starting. This is what `deploy.sh` does by default — no host Caddy involved.
-
-### Behind a host Caddy (shared host, e.g. the project VPS)
-
-When the host already serves other domains, its system Caddy multiplexes 80/443 and forwards both zStream hostnames to the container, which serves plain HTTP and still does all the routing. Set in `.env`:
-
-```bash
-SITE_ADDRESS=:80                                 # disables container auto-HTTPS
-HTTP_PORT=8880                                   # container HTTP, behind host Caddy
-HTTPS_PORT=8444                                  # moved off 443 so it can't collide
-LK_SITE_ADDRESS=http://lk.stream.yourdomain.com  # HTTP; host Caddy does TLS
-LIVEKIT_URL=wss://lk.stream.yourdomain.com
-```
-
-```bash
-docker compose up -d
-```
-
-Then add the host blocks from [caddyfile.example](caddyfile.example) (both hostnames → `localhost:8880`) to `/etc/caddy/Caddyfile` and `systemctl reload caddy`. `deploy.sh` auto-selects this mode when a populated `/etc/caddy/Caddyfile` is detected and installs/appends for you.
+Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 443 1935 3478 7881`, udp `443 9999 9998 10000-10009 50000-50100`. The 50000-50100/udp LiveKit range is deliberately narrow — wider ranges create thousands of iptables rules and make `docker compose up/down` take minutes.
 
 ## Repository layout
 
