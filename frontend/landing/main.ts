@@ -31,12 +31,13 @@ document.getElementById('landing-input')?.addEventListener('keydown', (e) => {
   if ((e as KeyboardEvent).key === 'Enter') goToRoom();
 });
 
+// Both the logo and the wordmark start hidden so neither flashes before
+// /api/branding resolves; reveal the wordmark only when there's no custom
+// logo (or the fetch fails — applyBranding returns null).
 void applyBranding({
   logoEl: document.getElementById('brand-logo') as HTMLImageElement | null,
 }).then((data) => {
-  // Custom logo replaces the default "Farbström" wordmark.
-  if (data?.hasLogo) {
-    const fallback = document.getElementById('brand-fallback');
-    if (fallback) fallback.style.display = 'none';
+  if (!data?.hasLogo) {
+    document.getElementById('brand-fallback')?.classList.remove('u-hidden');
   }
 });

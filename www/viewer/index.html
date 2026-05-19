@@ -23,7 +23,8 @@ html, body { overflow: hidden; }
 .screen.hidden { display: none; }
 
 .join-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-xl); padding: 48px; width: 380px; }
-.screen-logo { height: 48px; opacity: 0.6; margin: 0 auto 24px; display: block; }
+.screen-logo:not(.u-hidden) { height: 48px; opacity: 0.6; margin: 0 auto 24px; display: block; }
+.brand-wordmark { font-size: 15px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; text-align: center; color: var(--text); margin: 0 auto 24px; }
 .join-room-name { font-size: 20px; font-weight: 600; margin-bottom: 32px; }
 .form-row { margin-bottom: 16px; }
 .form-row label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
@@ -138,8 +139,9 @@ html, body { overflow: hidden; }
     display: flex; align-items: center; padding: 0 16px;
 }
 #top-left { flex: 1; display: flex; align-items: center; }
-.brand-logo { height: 25px; opacity: 0.5; transition: opacity 0.15s; margin: 20px; display: flex }
+.brand-logo:not(.u-hidden) { height: 25px; opacity: 0.5; transition: opacity 0.15s; margin: 20px; display: flex }
 .brand-logo:hover { opacity: 0.8; }
+.brand-wordmark-sm { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text); opacity: 0.5; margin: 20px; }
 #top-center { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--dim); }
 #ws-status { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--dim); }
 #ws-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); transition: background 0.3s; flex-shrink: 0; }
@@ -719,7 +721,8 @@ body.has-focus.rail-hidden #stage-rail {
 <!-- Landing screen -->
 <div id="landing-screen" class="hidden">
     <div class="panel-box">
-        <img src="" alt="" class="screen-logo">
+        <img src="" alt="" class="screen-logo u-hidden">
+        <div class="brand-wordmark brand-fallback u-hidden">Farbström</div>
         <div class="landing-title">Welcome</div>
         <div class="landing-sub">It appears you forgot the room link for your project. Please enter your room link below or ask your host for the correct URL.</div>
         <div class="form-row">
@@ -733,7 +736,8 @@ body.has-focus.rail-hidden #stage-rail {
 <!-- Join screen -->
 <div id="join-screen" class="screen hidden">
     <div class="join-box">
-        <img src="" alt="" class="screen-logo">
+        <img src="" alt="" class="screen-logo u-hidden">
+        <div class="brand-wordmark brand-fallback u-hidden">Farbström</div>
         <div class="join-room-name" id="join-room-name">Loading...</div>
         <form id="join-form">
             <div class="form-row">
@@ -780,7 +784,8 @@ body.has-focus.rail-hidden #stage-rail {
 <!-- Left screen -->
 <div id="left-screen" class="screen hidden">
     <div class="waiting-box">
-        <img src="" alt="Logo" class="screen-logo brand-logo">
+        <img src="" alt="Logo" class="screen-logo brand-logo u-hidden">
+        <div class="brand-wordmark-sm brand-fallback u-hidden">Farbström</div>
         <div class="waiting-name" id="left-room-name"></div>
         <div class="waiting-msg">You left the session.</div>
         <button class="join-btn u-mt-4" id="left-rejoin-btn">Rejoin</button>
@@ -837,7 +842,8 @@ body.has-focus.rail-hidden #stage-rail {
     <!-- Top bar -->
     <div id="top-bar">
         <div id="top-left">
-            <img src="" alt="" class="brand-logo">
+            <img src="" alt="" class="brand-logo u-hidden">
+            <div class="brand-wordmark-sm brand-fallback u-hidden">Farbström</div>
         </div>
         <div id="top-center">
             <div id="ws-status"><div id="ws-dot"></div><span id="ws-label">Connecting</span></div>
