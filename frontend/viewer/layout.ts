@@ -57,7 +57,11 @@ function fitFocusedTile(stage: HTMLElement): void {
 // chat panel so the gap between player and chat is small and roughly
 // constant (issue #125). Resets the inline width whenever the conditions
 // don't apply, so the CSS default (var(--panel-w)) takes over.
-const CHAT_SIDE_GAP = 16; // ~8px gap each side of the player remains
+// Absorb all horizontal leftover into the chat width so the gap between
+// player and chat matches the gap to the rail (both = the 8px stage
+// padding / column gap). Without this the height-limited case shows a
+// wider gap than the width-limited case.
+const CHAT_SIDE_GAP = 0;
 const MOBILE_BP = 640;
 function sizeChatPanel(stage: HTMLElement): void {
   const panel = document.getElementById('right-panel');
