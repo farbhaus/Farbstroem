@@ -64,8 +64,12 @@ impl FromRequestParts<Arc<AppState>> for AdminAuth {
             &DecodingKey::from_secret(state.config.jwt_secret.as_bytes()),
             &validation,
         ) {
-            Ok(data) => Ok(AdminAuth(data.claims)),
-            Err(_) => Err((
+            // Defence-in-depth: the only token type signed with jwt_secret
+            // today is the admin token, but reject anything without the
+            // `admin: true` claim so a future non-admin token signed with
+            // the same secret cannot silently escalate.
+            Ok(data) if data.claims.admin => Ok(AdminAuth(data.claims)),
+            _ => Err((
                 StatusCode::UNAUTHORIZED,
                 Json(json!({ "error": "Invalid or expired token" })),
             )

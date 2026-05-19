@@ -73,7 +73,11 @@ impl From<bcrypt::BcryptError> for AppError {
 
 impl From<jsonwebtoken::errors::Error> for AppError {
     fn from(e: jsonwebtoken::errors::Error) -> Self {
-        AppError::Unauthorized(format!("JWT error: {}", e))
+        // Don't leak parser internals (which key kind, which claim failed,
+        // signature vs expiry) to whoever is poking at the token. Log the
+        // detail; return a generic message.
+        tracing::warn!(error = %e, "jwt decode/encode failed");
+        AppError::Unauthorized("Invalid or expired token".into())
     }
 }
 
