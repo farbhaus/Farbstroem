@@ -53,16 +53,21 @@ function fitFocusedTile(stage: HTMLElement): void {
 }
 
 // In focus mode the player is height-limited and centres in its grid cell,
-// leaving grey leftover space on either side. Absorb most of that into the
-// chat panel so the gap between player and chat is small and roughly
-// constant (issue #125). Resets the inline width whenever the conditions
-// don't apply, so the CSS default (var(--panel-w)) takes over.
-// Absorb all horizontal leftover into the chat width so the gap between
-// player and chat matches the gap to the rail (both = the 8px stage
-// padding / column gap). Without this the height-limited case shows a
-// wider gap than the width-limited case.
-const CHAT_SIDE_GAP = 0;
+// leaving grey leftover space on either side. Absorb that leftover into
+// the chat panel (issue #125) so the gap between player and chat matches
+// the gap to the rail. Resets the inline width whenever the conditions
+// don't apply so the CSS default (var(--panel-w)) takes over.
+//
+// Target chat width is computed from #main-row dimensions plus the
+// discrete --rail-w / .rail-hidden state — NOT from computed grid
+// columns, because those return interpolated values during the rail's
+// CSS transition. Reading interpolated values caused the chat target to
+// chase a moving cellW each tick, restarting chat's own width transition
+// and making the player resize mid-animation.
 const MOBILE_BP = 640;
+const STAGE_PAD = 16; // 8px on each side
+const COL_GAP = 8;
+const CHAT_MARGIN_R = 8;
 function sizeChatPanel(stage: HTMLElement): void {
   const panel = document.getElementById('right-panel');
   if (!panel) return;
@@ -74,29 +79,31 @@ function sizeChatPanel(stage: HTMLElement): void {
     return;
   }
   const tile = focusedTile(stage);
-  if (!tile) {
+  const mainRow = stage.parentElement;
+  if (!tile || !mainRow) {
     panel.style.width = '';
     return;
   }
-  const cs = getComputedStyle(stage);
-  const cols = pxList(cs.gridTemplateColumns);
-  const rows = pxList(cs.gridTemplateRows);
-  const cellW = cols.length ? cols[cols.length - 1]! : stage.clientWidth;
-  const cellH = rows.length ? rows[rows.length - 1]! : stage.clientHeight;
-  if (!(cellW > 0) || !(cellH > 0)) return;
 
   const root = getComputedStyle(document.documentElement);
-  const base = parseFloat(root.getPropertyValue('--panel-w')) || 360;
+  const base = parseFloat(root.getPropertyValue('--panel-w')) || 320;
   const max = parseFloat(root.getPropertyValue('--panel-w-max')) || 560;
+  const railFull = parseFloat(root.getPropertyValue('--rail-w')) || 220;
+  const rail = document.body.classList.contains('rail-hidden') ? 0 : railFull;
 
-  // Compute leftover as if chat were at its base width — stable regardless
-  // of what width we last set, so we don't oscillate when called repeatedly.
-  const currentChatW = panel.getBoundingClientRect().width;
-  const baseCellW = cellW + (currentChatW - base);
+  // Final cell width assuming chat sits at its base — independent of any
+  // in-flight rail or chat-width transitions.
+  const mainW = mainRow.clientWidth;
+  const finalCellW = mainW - base - CHAT_MARGIN_R - STAGE_PAD - rail - COL_GAP;
+  // Stage vertical sizing isn't affected by horizontal transitions, so
+  // clientHeight is stable.
+  const cellH = stage.clientHeight - STAGE_PAD;
+  if (!(finalCellW > 0) || !(cellH > 0)) return;
+
   const aspect = readFocusAspect(tile);
   const playerW = cellH * aspect;
-  const leftover = baseCellW - playerW;
-  const extra = Math.max(0, Math.min(max - base, leftover - CHAT_SIDE_GAP));
+  const leftover = finalCellW - playerW;
+  const extra = Math.max(0, Math.min(max - base, leftover));
   panel.style.width = `${Math.round(base + extra)}px`;
 }
 
