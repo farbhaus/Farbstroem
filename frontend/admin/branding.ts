@@ -207,19 +207,22 @@ export function applyBrandingColorsOnce(): void {
     .catch(() => {});
 }
 
-// On the login screen, show the uploaded custom logo in place of the default
-// "Farbström" wordmark. Called once on load, before sign-in.
+// On the login screen, show the uploaded custom logo, or the default
+// "Farbström" wordmark when none. Both start hidden in the HTML so neither
+// flashes before /api/branding resolves; exactly one is revealed here.
 export function applyLoginLogoOnce(): void {
+  const logo = document.getElementById('login-logo') as HTMLImageElement | null;
+  const title = document.getElementById('login-title');
+  const showTitle = () => title?.classList.remove('u-hidden');
   fetch('/api/branding')
     .then((r) => (r.ok ? r.json() : null))
     .then((data: BrandingResponse | null) => {
-      if (!data?.hasLogo) return;
-      const logo = document.getElementById('login-logo') as HTMLImageElement | null;
-      const title = document.getElementById('login-title');
-      if (!logo) return;
-      logo.src = '/api/branding/logo?' + Date.now();
-      logo.classList.remove('u-hidden');
-      if (title) title.style.display = 'none';
+      if (data?.hasLogo && logo) {
+        logo.src = '/api/branding/logo?' + Date.now();
+        logo.classList.remove('u-hidden');
+      } else {
+        showTitle();
+      }
     })
-    .catch(() => {});
+    .catch(showTitle);
 }
