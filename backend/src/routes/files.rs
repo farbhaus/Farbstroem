@@ -24,8 +24,12 @@ pub const SAFE_MIMES: &[&str] = &[
     "image/png",
     "image/gif",
     "image/webp",
-    "image/svg+xml",
     "image/avif",
+    // image/svg+xml is intentionally NOT here: SVGs served inline execute any
+    // embedded <script> in the browser's document context, which would be a
+    // stored-XSS vector against the admin previewing a participant upload.
+    // `nosniff` doesn't help — the content-type really is image/svg+xml.
+    // SVGs fall through to application/octet-stream + attachment disposition.
     "video/mp4",
     "video/quicktime",
     "video/x-quicktime",
@@ -108,14 +112,23 @@ pub fn sanitize_mime(mime: &str) -> String {
 }
 
 /// Derive a `.ext` suffix (including leading dot) from a filename, or "" if
-/// the filename has no distinguishable extension. Used for the stored blob
-/// filename so downloads can hint at the type.
+/// the filename has no usable extension. Used for the stored blob filename so
+/// downloads can hint at the type.
+///
+/// The result is concatenated straight into an on-disk path, so it MUST stay
+/// path-safe: ASCII alphanumeric only, 1-10 chars, no `/`, `\`, or `.`.
+/// Anything else is dropped — a crafted filename like `x.../../../../tmp/p`
+/// would otherwise escape the files dir and let an uploader write anywhere
+/// the backend user can.
 pub fn extract_extension(name: &str) -> String {
-    name.rsplit('.')
-        .next()
-        .filter(|e| *e != name)
-        .map(|e| format!(".{}", e))
-        .unwrap_or_default()
+    let ext = match name.rsplit('.').next() {
+        Some(e) if e != name => e,
+        _ => return String::new(),
+    };
+    if ext.is_empty() || ext.len() > 10 || !ext.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return String::new();
+    }
+    format!(".{}", ext)
 }
 
 async fn upload_file(
@@ -500,4 +513,52 @@ pub fn router() -> Router<Arc<AppState>> {
             axum::routing::delete(delete_draft_file),
         )
         .layer(DefaultBodyLimit::max(MAX_FILE_SIZE))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_extension_normal_cases() {
+        assert_eq!(extract_extension("photo.jpg"), ".jpg");
+        assert_eq!(extract_extension("doc.pdf"), ".pdf");
+        assert_eq!(extract_extension("archive.tar.gz"), ".gz");
+        assert_eq!(extract_extension("noext"), "");
+        assert_eq!(extract_extension(""), "");
+        // Dotfile: the whole basename after the dot is treated as the ext.
+        // Path-safe so we keep it.
+        assert_eq!(extract_extension(".hidden"), ".hidden");
+    }
+
+    #[test]
+    fn extract_extension_rejects_path_traversal() {
+        // The dangerous cases: anything that would let the on-disk write
+        // escape the files dir or smuggle a separator.
+        assert_eq!(extract_extension("evil.../../../../tmp/p"), "");
+        assert_eq!(extract_extension("x.tar/../etc/passwd"), "");
+        assert_eq!(extract_extension("y.a/b"), "");
+        assert_eq!(extract_extension("z.a\\b"), "");
+        assert_eq!(extract_extension("w..ext"), ".ext"); // single trailing ext OK
+    }
+
+    #[test]
+    fn extract_extension_caps_length_and_charset() {
+        // 10 alnum chars OK, 11 rejected.
+        assert_eq!(extract_extension("a.abcdefghij"), ".abcdefghij");
+        assert_eq!(extract_extension("a.abcdefghijk"), "");
+        // Non-alnum (unicode, punctuation) rejected.
+        assert_eq!(extract_extension("a.exé"), "");
+        assert_eq!(extract_extension("a.ex!"), "");
+    }
+
+    #[test]
+    fn sanitize_mime_drops_svg() {
+        // Regression for the stored-XSS preview path: SVG must not survive
+        // sanitize_mime, so admin preview falls through to octet-stream
+        // and gets attachment disposition.
+        assert_eq!(sanitize_mime("image/svg+xml"), "application/octet-stream");
+        assert_eq!(sanitize_mime("image/png"), "image/png");
+        assert_eq!(sanitize_mime("text/html"), "application/octet-stream");
+    }
 }
