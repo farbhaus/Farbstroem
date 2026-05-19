@@ -166,7 +166,7 @@ export async function loadRoomInfo(): Promise<RoomInfoOutcome> {
       return { kind: 'show-landing' };
     }
     const roomInfo: RoomInfo = await res.json();
-    document.title = roomInfo.name + ' — Ze Maria';
+    document.title = roomInfo.name + ' — Farbström';
     const nameEl = el('join-room-name');
     if (nameEl) nameEl.textContent = roomInfo.name;
     if (!roomInfo.has_stream_key && nameEl) {

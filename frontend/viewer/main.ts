@@ -167,12 +167,20 @@ function init(): void {
   }
 
   // Apply branding (logo + colors + bg). Read-only — same as landing.
+  // Logos and wordmark fallbacks both start hidden in the HTML so neither
+  // flashes before /api/branding resolves; reveal exactly one here (the
+  // wordmark also covers a failed fetch — applyBranding returns null).
   void applyBranding({
     bgTarget: document.documentElement,
   }).then((data) => {
     if (data?.hasLogo) {
       document.querySelectorAll<HTMLImageElement>('.screen-logo, .brand-logo').forEach((img) => {
         img.src = '/api/branding/logo';
+        img.classList.remove('u-hidden');
+      });
+    } else {
+      document.querySelectorAll<HTMLElement>('.brand-fallback').forEach((el) => {
+        el.classList.remove('u-hidden');
       });
     }
     if (data?.hasBg) {
