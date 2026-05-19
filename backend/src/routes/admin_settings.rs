@@ -221,7 +221,7 @@ async fn passkey_register_start(
         .start_passkey_registration(
             admin_user_id(),
             "admin",
-            "Zé Maria Stream Admin",
+            "Farbström Admin",
             Some(exclude),
         )
         .map_err(|e| AppError::Internal(format!("WebAuthn: {e}")))?;

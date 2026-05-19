@@ -14,7 +14,8 @@
     display: flex; align-items: center; justify-content: center; z-index: var(--z-screen);
 }
 .login-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-xl); padding: 52px; width: 400px; }
-.login-box h1 { font-size: 15px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 32px; color: var(--text); }
+.login-box h1 { font-size: 15px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; text-align: center; margin-bottom: 32px; color: var(--text); }
+.login-logo:not(.u-hidden) { max-height: 48px; margin: 0 auto 32px; display: block; }
 .login-box input { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: var(--r-md); padding: 10px 14px; font: inherit; font-size: 14px; width: 100%; outline: none; }
 .login-box input:focus { border-color: var(--dim); }
 .login-box input::placeholder { color: var(--faint); }
@@ -406,7 +407,8 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
 
 <div id="login-screen">
     <div class="login-box">
-        <h1>Zé Maria Stream</h1>
+        <img id="login-logo" class="login-logo u-hidden" alt="">
+        <h1 id="login-title">Farbström</h1>
         <form id="login-form">
             <div class="form-row">
                 <input type="password" id="password-input" placeholder="Password" autocomplete="current-password">

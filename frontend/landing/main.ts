@@ -33,4 +33,10 @@ document.getElementById('landing-input')?.addEventListener('keydown', (e) => {
 
 void applyBranding({
   logoEl: document.getElementById('brand-logo') as HTMLImageElement | null,
+}).then((data) => {
+  // Custom logo replaces the default "Farbström" wordmark.
+  if (data?.hasLogo) {
+    const fallback = document.getElementById('brand-fallback');
+    if (fallback) fallback.style.display = 'none';
+  }
 });

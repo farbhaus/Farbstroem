@@ -1,4 +1,4 @@
-/* zStream design tokens — single source of truth.
+/* Farbstroem design tokens — single source of truth.
    Overridable at runtime by /api/branding via utils.js applyBranding(). */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

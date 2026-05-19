@@ -206,3 +206,20 @@ export function applyBrandingColorsOnce(): void {
     })
     .catch(() => {});
 }
+
+// On the login screen, show the uploaded custom logo in place of the default
+// "Farbström" wordmark. Called once on load, before sign-in.
+export function applyLoginLogoOnce(): void {
+  fetch('/api/branding')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data: BrandingResponse | null) => {
+      if (!data?.hasLogo) return;
+      const logo = document.getElementById('login-logo') as HTMLImageElement | null;
+      const title = document.getElementById('login-title');
+      if (!logo) return;
+      logo.src = '/api/branding/logo?' + Date.now();
+      logo.classList.remove('u-hidden');
+      if (title) title.style.display = 'none';
+    })
+    .catch(() => {});
+}
