@@ -316,6 +316,17 @@ fi
 info "Building frontend (npm ci && npm run build)"
 ( cd frontend && npm ci && npm run build )
 
+# --- prepare bind-mounted data dir ------------------------------------------
+# The backend image runs as non-root `app` (Dockerfile: USER app). The
+# `./data:/data` bind mount masks the image's `chown app /data`, so a
+# fresh root-owned ./data leaves the container unable to create
+# /data/stream.db → the backend panics and crash-loops. World-writable is
+# acceptable here: a single-purpose box, dir holds only the SQLite DB and
+# uploaded session files.
+info "Preparing ./data (writable by the non-root container user)"
+mkdir -p data
+$SUDO chmod -R 777 data
+
 # --- deploy -----------------------------------------------------------------
 info "Starting stack (docker compose up -d --build)"
 $DOCKER compose up -d --build
