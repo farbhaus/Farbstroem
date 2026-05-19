@@ -5,26 +5,24 @@
 # From a clean checkout to a running TLS deployment in one command:
 #   ./deploy.sh stream.yourdomain.com
 #
-# Installs missing prerequisites (Docker + Compose, Node/npm, openssl, Caddy)
-# on apt-based hosts, generates secrets into .env, builds the frontend, and
-# brings the stack up.
-# The containerized Caddy owns ALL routing (app + /live/ + LiveKit subdomain).
+# Designed for a CLEAN VPS where ONLY zStream runs. It installs missing
+# prerequisites (Docker + Compose, Node/npm, openssl) on apt-based hosts,
+# generates secrets into .env, opens the firewall, builds the frontend, and
+# brings the stack up. The containerized Caddy provisions Let's Encrypt and
+# owns ALL routing (app + /live/ + LiveKit subdomain). No host config needed.
 #
-# Modes (auto-detected; override with a flag):
-#   standalone        — the container Caddy provisions Let's Encrypt itself for
-#                        <domain> and lk.<domain>. Default on a dedicated host.
-#   behind host Caddy — the host's system Caddy terminates TLS and forwards both
-#                        hostnames to :8880. Auto-selected when a populated
-#                        /etc/caddy/Caddyfile is found (e.g. the shared project
-#                        VPS). The appended host blocks are pure TLS fronts.
+# If the box already runs other services / a reverse proxy, this is the wrong
+# tool for a true one-click — but two advanced opt-in flags exist:
 #
-# Flags: --standalone | --behind-host-caddy | --reverse-proxy
-#        | --regenerate | --yes
+# Flags: --regenerate  (start a fresh .env, rotating secrets)
+#        --yes          (skip confirmation prompts)
+#        --behind-host-caddy   (advanced) host Caddy fronts it; edits /etc/caddy
+#        --reverse-proxy       (advanced) stack on :8880; you point nginx/etc at
+#                              it — prints the nginx server blocks, touches
+#                              nothing. --standalone forces the default.
 #
-#   --reverse-proxy : the stack serves plain HTTP on :8880; an EXISTING front
-#                     proxy you manage (nginx, Traefik, …) terminates TLS and
-#                     forwards to it. The script does NOT touch that proxy — it
-#                     prints the nginx server blocks to add.
+# Re-running is safe: an existing .env is reused as-is (secrets are NOT rotated,
+# so live sessions survive a redeploy). Use --regenerate to start fresh.
 # Re-running is safe: an existing .env is reused as-is (secrets are NOT rotated,
 # so live sessions survive a redeploy). Use --regenerate to start fresh.
 #
@@ -132,16 +130,6 @@ install_node() {
   $SUDO apt-get install -y nodejs
 }
 
-# host_caddyfile_populated — true if /etc/caddy/Caddyfile exists and already has
-# at least one site block (a non-comment line ending in `{`), i.e. the host
-# already serves other domains and should keep terminating TLS.
-host_caddyfile_populated() {
-  local f="/etc/caddy/Caddyfile"
-  [[ -s "$f" ]] || return 1
-  grep -vE '^[[:space:]]*(#|$)' "$f" 2>/dev/null \
-    | grep -qE '^[[:space:]]*[A-Za-z0-9.:*_-]+[[:space:]]*\{'
-}
-
 # http_ports_busy — true if something is already listening on :80 or :443
 # (an existing web server / reverse proxy). Standalone mode can't work then.
 http_ports_busy() {
@@ -161,6 +149,37 @@ detect_proxy() {
   command -v apache2 >/dev/null 2>&1 && { echo apache;  return; }
   command -v httpd   >/dev/null 2>&1 && { echo apache;  return; }
   echo ""
+}
+
+# Ports the stack needs reachable from the internet. Single source of truth
+# for both open_firewall and the printed summary. (80/443 only matter in
+# standalone mode, where the container Caddy terminates TLS.)
+FW_TCP=(80 443 1935 3478 7881)
+FW_UDP=(443 9999 9998 10000:10009 50000:50100)
+
+# open_firewall — add allow rules to whatever firewall is ALREADY active.
+# Deliberately does NOT enable an inactive firewall (that risks an SSH
+# lockout and is unnecessary — if nothing's filtering, the ports are open).
+open_firewall() {
+  if command -v ufw >/dev/null 2>&1 && $SUDO ufw status 2>/dev/null | grep -q "Status: active"; then
+    info "Opening ports via ufw"
+    $SUDO ufw allow 22/tcp >/dev/null 2>&1 || true   # never lock out SSH
+    local p
+    for p in "${FW_TCP[@]}"; do $SUDO ufw allow "${p/:/-}/tcp" >/dev/null; done
+    for p in "${FW_UDP[@]}"; do $SUDO ufw allow "${p/:/-}/udp" >/dev/null; done
+    $SUDO ufw reload >/dev/null 2>&1 || true
+  elif command -v firewall-cmd >/dev/null 2>&1 && $SUDO firewall-cmd --state >/dev/null 2>&1; then
+    info "Opening ports via firewalld"
+    local p
+    for p in "${FW_TCP[@]}"; do $SUDO firewall-cmd --permanent --add-port="${p/:/-}/tcp" >/dev/null; done
+    for p in "${FW_UDP[@]}"; do $SUDO firewall-cmd --permanent --add-port="${p/:/-}/udp" >/dev/null; done
+    $SUDO firewall-cmd --reload >/dev/null
+  else
+    info "No active host firewall (ufw/firewalld) — skipping."
+    echo "    If your VPS provider has a CLOUD firewall, open these there:"
+    echo "      tcp: ${FW_TCP[*]}"
+    echo "      udp: ${FW_UDP[*]}"
+  fi
 }
 
 # ensure_host_caddy DOMAIN — make sure the host Caddy exists and has pure TLS
@@ -256,33 +275,22 @@ fi
 [[ -n "$DOMAIN" ]] || die "a production domain is required (needed for TLS and the lk.<domain> subdomain)."
 
 # --- resolve mode -----------------------------------------------------------
-if [[ -z "$MODE" ]]; then
-  if host_caddyfile_populated; then
-    echo
-    echo "Detected a populated /etc/caddy/Caddyfile — this host already serves other"
-    echo "domains, so the system Caddy should keep terminating TLS (behind-host-caddy"
-    echo "mode). Otherwise this picks standalone (the container Caddy gets its own certs)."
-    if [[ $ASSUME_YES -eq 1 ]]; then
-      MODE="host"
-    else
-      read -rp "Use behind-host-caddy mode? [Y/n] " ans
-      [[ "${ans,,}" == "n" ]] && MODE="standalone" || MODE="host"
-    fi
-  elif http_ports_busy; then
-    # Something already owns :80/:443 (your nginx case). Standalone would fail
-    # to bind those ports — fall back to behind-a-proxy mode.
-    proxy="$(detect_proxy)"
-    echo
-    echo "Ports 80/443 are already in use${proxy:+ (looks like $proxy)} — the container"
-    echo "Caddy can't bind them. Using reverse-proxy mode: the stack serves plain HTTP"
-    echo "on :8880 and your existing proxy must forward to it (instructions printed at"
-    echo "the end). Pass --behind-host-caddy instead if that proxy is Caddy."
-    MODE="proxy"
-  else
-    MODE="standalone"
-  fi
-fi
+# This script targets a CLEAN VPS where only zStream runs: default is
+# standalone (the container Caddy gets its own Let's Encrypt certs). Shared
+# hosts / existing reverse proxies are advanced, opt-in via explicit flags
+# (--behind-host-caddy, --reverse-proxy) — never auto-selected.
+[[ -z "$MODE" ]] && MODE="standalone"
 info "Deployment mode: $MODE"
+
+# Fail fast (don't emit a cryptic Docker port-bind error) if standalone but
+# something already holds 80/443 — that means the box isn't a clean VPS.
+if [[ "$MODE" == "standalone" ]] && http_ports_busy; then
+  proxy="$(detect_proxy)"
+  die "ports 80/443 are already in use${proxy:+ (looks like $proxy)} — this one-click script expects a fresh VPS where only zStream runs.
+       For a host that already has a reverse proxy / other services (advanced):
+         --reverse-proxy       stack serves HTTP on :8880; you point your proxy at it
+         --behind-host-caddy   if that proxy is Caddy (script manages /etc/caddy)"
+fi
 
 # --- .env handling ----------------------------------------------------------
 ADMIN_PASSWORD=""
@@ -365,6 +373,9 @@ info "Preparing ./data (writable by the non-root container user)"
 mkdir -p data
 $SUDO chmod -R 777 data
 
+# --- firewall ---------------------------------------------------------------
+open_firewall
+
 # --- deploy -----------------------------------------------------------------
 info "Starting stack (docker compose up -d --build)"
 $DOCKER compose up -d --build
@@ -398,10 +409,8 @@ cat <<EOF
        $DOMAIN
        lk.$DOMAIN        (LiveKit signaling — required)
      ($tls_note)
-   - Open firewall ports:
-       80/tcp  443/tcp  443/udp     (HTTP/HTTPS/HTTP3 — needed for TLS/ACME)
-       1935/tcp  9999/udp  9998/udp  3478  7881/tcp
-       10000-10009/udp     50000-50100/udp
+   - Firewall: handled above (or listed there if no host firewall is active —
+     open those on your VPS provider's cloud firewall if you have one).
    - Check health:
        $DOCKER compose ps
        $DOCKER compose logs -f stream-backend
