@@ -57,9 +57,11 @@ SUDO=""
 die()  { echo "FATAL: $*" >&2; exit 1; }
 info() { echo "==> $*"; }
 
-gen_secret()   { openssl rand -hex 32; }                                        # 64 chars, satisfies the >=32 rule in backend/src/config.rs
-gen_password() { LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20; }       # 20 chars, > the 12-char ADMIN_PASSWORD minimum
-gen_token()    { LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 12; }
+# All openssl-based: a `tr </dev/urandom | head` pipeline trips SIGPIPE, which
+# under `set -o pipefail` + `set -e` silently aborts the whole script.
+gen_secret()   { openssl rand -hex 32; }   # 64 chars, satisfies the >=32 rule in backend/src/config.rs
+gen_password() { openssl rand -hex 16; }   # 32 chars, > the 12-char ADMIN_PASSWORD minimum
+gen_token()    { openssl rand -hex 4; }    # 8 chars, LIVEKIT_API_KEY suffix
 
 # set_env KEY VALUE — replace the `KEY=...` line in .env in place, preserving
 # all comments / blank lines / ordering. Portable (no GNU-vs-BSD `sed -i`).
@@ -246,6 +248,22 @@ info "Deployment mode: $MODE"
 
 # --- .env handling ----------------------------------------------------------
 ADMIN_PASSWORD=""
+
+# env_complete — true if .env has all required secrets non-empty. Guards
+# against reusing a half-written .env left by an aborted earlier run.
+env_complete() {
+  local k
+  for k in JWT_SECRET OME_WEBHOOK_SECRET OME_API_TOKEN LIVEKIT_API_SECRET ADMIN_PASSWORD; do
+    grep -qE "^${k}=.+" .env || return 1
+  done
+  return 0
+}
+
+if [[ -f .env ]] && ! env_complete; then
+  info ".env exists but is missing required secrets (previous run likely aborted) — regenerating"
+  rm -f .env
+fi
+
 if [[ -f .env && $REGENERATE -eq 1 ]]; then
   echo "Note: this rotates JWT/secrets (invalidates all sessions). It does NOT"
   echo "reset DB-stored credentials — a custom admin password, TOTP, and passkeys"
