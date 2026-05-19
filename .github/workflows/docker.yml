@@ -25,8 +25,6 @@ jobs:
             echo "push=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: docker/setup-qemu-action@v3
-        if: steps.pub.outputs.push == 'true'
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
@@ -48,8 +46,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: ./backend
-          # Multi-arch only when publishing; build-validate is amd64-only (fast).
-          platforms: ${{ steps.pub.outputs.push == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          platforms: linux/amd64
           push: ${{ steps.pub.outputs.push }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
