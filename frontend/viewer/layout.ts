@@ -13,34 +13,87 @@ import { viewerStore } from './state.js';
 // pick the limiting axis here: choose which dimension is 100% and let the
 // other follow aspect-ratio. Without this the tile letterboxes (or
 // pillarboxes) inside its own cell instead of hugging the image.
-function fitFocusedTile(stage: HTMLElement): void {
-  const tile = stage.querySelector<HTMLElement>(
+function pxList(s: string): number[] {
+  return s
+    .split(' ')
+    .map((v) => parseFloat(v))
+    .filter((v) => !Number.isNaN(v));
+}
+
+function readFocusAspect(tile: HTMLElement): number {
+  const raw = getComputedStyle(tile).getPropertyValue('--focus-aspect').trim();
+  if (raw) {
+    const [a, b] = raw.split('/').map((v) => parseFloat(v));
+    if (a && b && a > 0 && b > 0) return a / b;
+  }
+  return 16 / 9;
+}
+
+function focusedTile(stage: HTMLElement): HTMLElement | null {
+  return stage.querySelector<HTMLElement>(
     '#tile-stream[data-focused], #tile-share[data-focused]',
   );
+}
+
+function fitFocusedTile(stage: HTMLElement): void {
+  const tile = focusedTile(stage);
   if (!tile) return;
   const cs = getComputedStyle(stage);
-  const px = (s: string): number[] =>
-    s
-      .split(' ')
-      .map((v) => parseFloat(v))
-      .filter((v) => !Number.isNaN(v));
-  const cols = px(cs.gridTemplateColumns);
-  const rows = px(cs.gridTemplateRows);
+  const cols = pxList(cs.gridTemplateColumns);
+  const rows = pxList(cs.gridTemplateRows);
   // The focused tile sits in the last column (desktop: rail | tile) and
   // last row (mobile: rail row, then tile row).
   const cellW = cols.length ? cols[cols.length - 1]! : stage.clientWidth;
   const cellH = rows.length ? rows[rows.length - 1]! : stage.clientHeight;
   if (!(cellW > 0) || !(cellH > 0)) return;
-
-  let contentAspect = 16 / 9;
-  const raw = getComputedStyle(tile).getPropertyValue('--focus-aspect').trim();
-  if (raw) {
-    const [a, b] = raw.split('/').map((v) => parseFloat(v));
-    if (a && b && a > 0 && b > 0) contentAspect = a / b;
-  }
+  const contentAspect = readFocusAspect(tile);
   const widthLimited = cellW / cellH < contentAspect;
   tile.classList.toggle('focus-fit-w', widthLimited);
   tile.classList.toggle('focus-fit-h', !widthLimited);
+}
+
+// In focus mode the player is height-limited and centres in its grid cell,
+// leaving grey leftover space on either side. Absorb most of that into the
+// chat panel so the gap between player and chat is small and roughly
+// constant (issue #125). Resets the inline width whenever the conditions
+// don't apply, so the CSS default (var(--panel-w)) takes over.
+const CHAT_SIDE_GAP = 16; // ~8px gap each side of the player remains
+const MOBILE_BP = 640;
+function sizeChatPanel(stage: HTMLElement): void {
+  const panel = document.getElementById('right-panel');
+  if (!panel) return;
+  const open = panel.classList.contains('open');
+  const focus = document.body.classList.contains('has-focus');
+  const desktop = window.innerWidth > MOBILE_BP;
+  if (!open || !focus || !desktop) {
+    panel.style.width = '';
+    return;
+  }
+  const tile = focusedTile(stage);
+  if (!tile) {
+    panel.style.width = '';
+    return;
+  }
+  const cs = getComputedStyle(stage);
+  const cols = pxList(cs.gridTemplateColumns);
+  const rows = pxList(cs.gridTemplateRows);
+  const cellW = cols.length ? cols[cols.length - 1]! : stage.clientWidth;
+  const cellH = rows.length ? rows[rows.length - 1]! : stage.clientHeight;
+  if (!(cellW > 0) || !(cellH > 0)) return;
+
+  const root = getComputedStyle(document.documentElement);
+  const base = parseFloat(root.getPropertyValue('--panel-w')) || 360;
+  const max = parseFloat(root.getPropertyValue('--panel-w-max')) || 560;
+
+  // Compute leftover as if chat were at its base width — stable regardless
+  // of what width we last set, so we don't oscillate when called repeatedly.
+  const currentChatW = panel.getBoundingClientRect().width;
+  const baseCellW = cellW + (currentChatW - base);
+  const aspect = readFocusAspect(tile);
+  const playerW = cellH * aspect;
+  const leftover = baseCellW - playerW;
+  const extra = Math.max(0, Math.min(max - base, leftover - CHAT_SIDE_GAP));
+  panel.style.width = `${Math.round(base + extra)}px`;
 }
 
 export function sizeStage(): void {
@@ -48,9 +101,11 @@ export function sizeStage(): void {
   if (!stage) return;
   if (document.body.classList.contains('has-focus')) {
     stage.style.gridTemplateColumns = '';
+    sizeChatPanel(stage);
     fitFocusedTile(stage);
     return;
   }
+  sizeChatPanel(stage);
   // Visible tiles only — hidden #tile-stream / #tile-share don't take grid cells.
   const tiles = Array.from(stage.querySelectorAll<HTMLElement>(':scope > .tile')).filter(
     (el) => !el.classList.contains('hidden') && el.offsetParent !== null,

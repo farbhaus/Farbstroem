@@ -360,7 +360,7 @@ html, body { overflow: hidden; }
    so #stage's grid arranges the focused tile (col 1) and rail (col 2). */
 body.has-focus #stage {
     display: grid;
-    grid-template-columns: 220px 1fr;
+    grid-template-columns: var(--rail-w) 1fr;
     grid-template-rows: 1fr;
     gap: 8px;
     align-content: stretch;
