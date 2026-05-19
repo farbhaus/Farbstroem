@@ -101,7 +101,7 @@ services:
         condition: service_healthy
 
   stream-backend:
-    build: ./backend
+    image: zcolor/farbstroem-backend:${BACKEND_TAG:-latest}
     container_name: stream-backend
     restart: unless-stopped
     networks: [stream-net]

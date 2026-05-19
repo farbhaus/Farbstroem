@@ -1,0 +1,16 @@
+# Local development override — auto-merged by `docker compose` when present.
+#
+# Builds stream-backend from ./backend instead of pulling the published
+# zcolor/farbstroem-backend image, so local changes take effect with:
+#
+#   docker compose up -d --build stream-backend
+#
+# Deploy hosts must NOT use this file. They pull the published image with:
+#
+#   docker compose -f docker-compose.yml up -d
+#
+# (omitting -f auto-loads this override and would rebuild from source).
+services:
+  stream-backend:
+    image: zcolor/farbstroem-backend:dev-local
+    build: ./backend

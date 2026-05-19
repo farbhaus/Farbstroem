@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Ze Maria Color</title>
+<title>Farbström</title>
 <link rel="stylesheet" href="/shared/tokens.css">
 <link rel="stylesheet" href="/shared/components.css">
 <link rel="stylesheet" href="/shared/utils.css">
@@ -14,7 +14,8 @@ body {
     justify-content: center;
 }
 
-.screen-logo { height: 48px; opacity: 0.6; margin: 0 auto 24px; display: block; }
+.screen-logo:not(.u-hidden) { height: 48px; opacity: 0.6; margin: 0 auto 24px; display: block; }
+.brand-wordmark { font-size: 15px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; text-align: center; color: var(--text); margin: 0 auto 24px; }
 .landing-title { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
 .landing-sub { font-size: 13px; color: var(--dim); margin-bottom: 32px; line-height: 1.5; }
 .landing-error { color: var(--danger); font-size: 12px; margin-top: 10px; min-height: 16px; }
@@ -24,6 +25,7 @@ body {
 
 <div class="panel-box">
     <img src="" alt="" class="screen-logo u-hidden" id="brand-logo">
+    <div class="brand-wordmark u-hidden" id="brand-fallback">Farbström</div>
     <div class="landing-title">Welcome</div>
     <div class="landing-sub">It appears you forgot the room link for your project. Please enter your room link below or ask your host for the correct URL.</div>
     <div class="form-row">

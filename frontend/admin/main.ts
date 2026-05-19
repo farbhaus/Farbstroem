@@ -10,6 +10,7 @@ import {
 import { doAuthenticate } from './webauthn.js';
 import {
   applyBrandingColorsOnce,
+  applyLoginLogoOnce,
   initBranding,
   loadBranding,
 } from './branding.js';
@@ -211,6 +212,7 @@ function initDelegatedClicks(): void {
 
 function init(): void {
   applyBrandingColorsOnce();
+  applyLoginLogoOnce();
 
   setLogoutHandler(doLogout);
   configureDashboard({
