@@ -41,8 +41,8 @@ function fitFocusedTile(stage: HTMLElement): void {
   const cs = getComputedStyle(stage);
   const cols = pxList(cs.gridTemplateColumns);
   const rows = pxList(cs.gridTemplateRows);
-  // The focused tile sits in the last column (desktop: rail | tile) and
-  // last row (mobile: rail row, then tile row).
+  // The focused tile sits in the last column (desktop: strip | tile) and
+  // last row (mobile: strip row, then tile row).
   const cellW = cols.length ? cols[cols.length - 1]! : stage.clientWidth;
   const cellH = rows.length ? rows[rows.length - 1]! : stage.clientHeight;
   if (!(cellW > 0) || !(cellH > 0)) return;
@@ -55,12 +55,12 @@ function fitFocusedTile(stage: HTMLElement): void {
 // In focus mode the player is height-limited and centres in its grid cell,
 // leaving grey leftover space on either side. Absorb that leftover into
 // the chat panel (issue #125) so the gap between player and chat matches
-// the gap to the rail. Resets the inline width whenever the conditions
+// the gap to the strip. Resets the inline width whenever the conditions
 // don't apply so the CSS default (var(--panel-w)) takes over.
 //
 // Target chat width is computed from #main-row dimensions plus the
-// discrete --rail-w / .rail-hidden state — NOT from computed grid
-// columns, because those return interpolated values during the rail's
+// discrete --strip-w / .strip-hidden state — NOT from computed grid
+// columns, because those return interpolated values during the strip's
 // CSS transition. Reading interpolated values caused the chat target to
 // chase a moving cellW each tick, restarting chat's own width transition
 // and making the player resize mid-animation.
@@ -88,13 +88,17 @@ function sizeChatPanel(stage: HTMLElement): void {
   const root = getComputedStyle(document.documentElement);
   const base = parseFloat(root.getPropertyValue('--panel-w')) || 320;
   const max = parseFloat(root.getPropertyValue('--panel-w-max')) || 560;
-  const railFull = parseFloat(root.getPropertyValue('--rail-w')) || 220;
-  const rail = document.body.classList.contains('rail-hidden') ? 0 : railFull;
+  const stripFull = parseFloat(root.getPropertyValue('--strip-w')) || 220;
+  const stripHidden = document.body.classList.contains('strip-hidden');
+  // When the strip is hidden the CSS also collapses the column gap to 0
+  // (see `body.has-focus.strip-hidden #stage`), so drop it here too.
+  const strip = stripHidden ? 0 : stripFull;
+  const colGap = stripHidden ? 0 : COL_GAP;
 
   // Final cell width assuming chat sits at its base — independent of any
-  // in-flight rail or chat-width transitions.
+  // in-flight strip or chat-width transitions.
   const mainW = mainRow.clientWidth;
-  const finalCellW = mainW - base - CHAT_MARGIN_R - STAGE_PAD - rail - COL_GAP;
+  const finalCellW = mainW - base - CHAT_MARGIN_R - STAGE_PAD - strip - colGap;
   // Stage vertical sizing isn't affected by horizontal transitions, so
   // clientHeight is stable.
   const cellH = stage.clientHeight - STAGE_PAD;
@@ -155,7 +159,7 @@ export function sizeStage(): void {
   }
 }
 
-// The chat panel / focus rail animate their width over ~0.25s. sizeStage()
+// The chat panel / focus strip animate their width over ~0.25s. sizeStage()
 // (and its fitFocusedTile axis pick) must be re-run through that window or
 // the focused tile keeps the size it had before the cell finished
 // resizing — which shows up as a stale letterbox/pillarbox.
@@ -174,12 +178,12 @@ export function toggleChat(): void {
 }
 
 export function toggleConf(): void {
-  // In the unified stage model, the "rail" is the focus-mode side strip.
-  // The Participants toggle button now shows/hides that rail; when not in
-  // focus mode it's a no-op (the CSS hides the button via body.no-rail).
+  // In the unified stage model, the "strip" is the focus-mode side strip.
+  // The Participants toggle button now shows/hides that strip; when not in
+  // focus mode it's a no-op (the CSS hides the button via body.no-strip).
   const next = !viewerStore.get().confOpen;
   viewerStore.set({ confOpen: next });
-  document.body.classList.toggle('rail-hidden', !next);
+  document.body.classList.toggle('strip-hidden', !next);
   document.getElementById('conf-toggle')?.classList.toggle('panel-open', next);
   reflowDuringPanelTransition();
 }
