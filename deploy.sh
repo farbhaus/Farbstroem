@@ -5,7 +5,9 @@
 # From a clean checkout to a running TLS deployment in one command:
 #   ./deploy.sh stream.yourdomain.com
 #
-# Generates secrets into .env, builds the frontend, and brings the stack up.
+# Installs missing prerequisites (Docker + Compose, Node/npm, openssl, Caddy)
+# on apt-based hosts, generates secrets into .env, builds the frontend, and
+# brings the stack up.
 # The containerized Caddy owns ALL routing (app + /live/ + LiveKit subdomain).
 #
 # Modes (auto-detected; override with a flag):
@@ -92,6 +94,35 @@ install_host_caddy() {
   $SUDO systemctl enable --now caddy
 }
 
+have_apt() { command -v apt-get >/dev/null 2>&1; }
+
+# install_apt PKG... — install Debian/Ubuntu packages.
+install_apt() {
+  info "Installing $* (apt)"
+  $SUDO apt-get update
+  $SUDO apt-get install -y "$@"
+}
+
+# install_docker — Docker Engine + Compose v2 plugin via the official script.
+install_docker() {
+  have_apt || die "Docker not found and auto-install only supports apt-based distros. Install Docker Engine + the Compose v2 plugin: https://docs.docker.com/engine/install/"
+  info "Installing Docker Engine + Compose plugin (get.docker.com)"
+  curl -fsSL https://get.docker.com | $SUDO sh
+  $SUDO systemctl enable --now docker
+  # Let the invoking user run docker without sudo on future runs (takes effect
+  # after re-login; this run still falls back to sudo via the DOCKER resolver).
+  local u="${SUDO_USER:-$USER}"
+  [[ -n "$SUDO" && -n "$u" ]] && $SUDO usermod -aG docker "$u" || true
+}
+
+# install_node — Node.js LTS (includes npm) via NodeSource.
+install_node() {
+  have_apt || die "Node.js not found and auto-install only supports apt-based distros. Install Node.js 20+: https://nodejs.org"
+  info "Installing Node.js LTS (NodeSource)"
+  curl -fsSL https://deb.nodesource.com/setup_lts.x | $SUDO -E bash -
+  $SUDO apt-get install -y nodejs
+}
+
 # host_caddyfile_populated — true if /etc/caddy/Caddyfile exists and already has
 # at least one site block (a non-comment line ending in `{`), i.e. the host
 # already serves other domains and should keep terminating TLS.
@@ -162,11 +193,31 @@ EOF
 
 # --- verify prerequisites ---------------------------------------------------
 info "Checking prerequisites"
-command -v docker  >/dev/null 2>&1 || die "docker not found — install Docker Engine first."
-docker compose version >/dev/null 2>&1 || die "'docker compose' (v2) not available — install the Compose plugin."
-command -v openssl >/dev/null 2>&1 || die "openssl not found — required to generate secrets."
-command -v node    >/dev/null 2>&1 || die "node not found — required to build the frontend (npm ci && npm run build)."
-command -v npm     >/dev/null 2>&1 || die "npm not found — required to build the frontend."
+command -v curl    >/dev/null 2>&1 || install_apt curl ca-certificates
+command -v openssl >/dev/null 2>&1 || install_apt openssl
+command -v docker  >/dev/null 2>&1 || install_docker
+{ command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; } || install_node
+
+# Docker present but no Compose v2 plugin (e.g. distro docker.io): add it.
+if command -v docker >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1; then
+  have_apt && install_apt docker-compose-plugin
+fi
+
+# Resolve how to call docker: a freshly added docker group doesn't apply to
+# this shell, so fall back to sudo if the daemon isn't reachable unprivileged.
+DOCKER="docker"
+if ! docker info >/dev/null 2>&1; then
+  if [[ -n "$SUDO" ]] && $SUDO docker info >/dev/null 2>&1; then
+    DOCKER="$SUDO docker"
+    info "Using '$DOCKER' (re-login, or 'newgrp docker', to drop sudo for docker)"
+  fi
+fi
+
+# Re-verify; fail clearly if an install didn't take.
+for c in openssl docker node npm; do
+  command -v "$c" >/dev/null 2>&1 || die "$c still missing after install attempt — install it manually and re-run."
+done
+$DOCKER compose version >/dev/null 2>&1 || die "Docker Compose v2 still unavailable — install the Compose plugin and re-run."
 
 # --- domain -----------------------------------------------------------------
 if [[ -z "$DOMAIN" ]]; then
@@ -249,7 +300,7 @@ info "Building frontend (npm ci && npm run build)"
 
 # --- deploy -----------------------------------------------------------------
 info "Starting stack (docker compose up -d --build)"
-docker compose up -d --build
+$DOCKER compose up -d --build
 
 # --- summary ----------------------------------------------------------------
 echo
@@ -285,7 +336,7 @@ cat <<EOF
        1935/tcp  9999/udp  9998/udp  3478  7881/tcp
        10000-10009/udp     50000-50100/udp
    - Check health:
-       docker compose ps
-       docker compose logs -f stream-backend
+       $DOCKER compose ps
+       $DOCKER compose logs -f stream-backend
 
 EOF
