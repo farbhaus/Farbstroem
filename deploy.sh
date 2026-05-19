@@ -3,10 +3,11 @@
 # deploy.sh — one-click production deployment for zStream.
 #
 # From a clean checkout to a running TLS deployment in one command:
-#   ./deploy.sh stream.yourdomain.com
+#   ./deploy.sh stream.yourdomain.com      (run with bash, not sh)
 #
 # Designed for a CLEAN VPS where ONLY zStream runs. It installs missing
-# prerequisites (Docker + Compose, Node/npm, openssl) on apt-based hosts,
+# prerequisites (Docker + Compose, Node/npm, openssl; Caddy too for the
+# advanced --behind-host-caddy mode) on apt-based hosts,
 # generates secrets into .env, opens the firewall, builds the frontend, and
 # brings the stack up. The containerized Caddy provisions Let's Encrypt and
 # owns ALL routing (app + /live/ + LiveKit subdomain). No host config needed.
@@ -23,10 +24,9 @@
 #
 # Re-running is safe: an existing .env is reused as-is (secrets are NOT rotated,
 # so live sessions survive a redeploy). Use --regenerate to start fresh.
-# Re-running is safe: an existing .env is reused as-is (secrets are NOT rotated,
-# so live sessions survive a redeploy). Use --regenerate to start fresh.
 #
 set -euo pipefail
+umask 077          # secrets written to .env must not be world-readable
 
 # --- locate repo root -------------------------------------------------------
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,7 +40,7 @@ fi
 # --- args -------------------------------------------------------------------
 REGENERATE=0
 ASSUME_YES=0
-MODE=""           # "", "standalone", "host", or "proxy" — "" means auto-detect
+MODE=""           # "" → standalone (default); or "standalone"/"host"/"proxy" via flag
 DOMAIN=""
 for arg in "$@"; do
   case "$arg" in
@@ -132,14 +132,24 @@ install_node() {
 
 # http_ports_busy — true if something is already listening on :80 or :443
 # (an existing web server / reverse proxy). Standalone mode can't work then.
+# Uses ss's port filter (no `-H`, which old iproute2 lacks) and keys on the
+# LISTEN state so the header line can't false-match.
 http_ports_busy() {
   if command -v ss >/dev/null 2>&1; then
-    ss -tlnH 2>/dev/null | grep -qE '[:.](80|443)[[:space:]]'
+    ss -tln 'sport = :80 or sport = :443' 2>/dev/null | grep -q LISTEN
   elif command -v netstat >/dev/null 2>&1; then
-    netstat -tln 2>/dev/null | grep -qE '[:.](80|443)[[:space:]]'
+    netstat -tln 2>/dev/null \
+      | grep -qE '[[:space:]][0-9.:*[]+:(80|443)[[:space:]].*LISTEN'
   else
     return 1   # can't tell — don't block
   fi
+}
+
+# stack_running — true if our own compose stack is already up (so :80/:443
+# being held by our stream-caddy is expected, not a foreign-service conflict).
+stack_running() {
+  $DOCKER compose ps --status running --services 2>/dev/null \
+    | grep -qx stream-caddy
 }
 
 # detect_proxy — name of the front proxy already on the box, if recognizable.
@@ -165,15 +175,15 @@ open_firewall() {
     info "Opening ports via ufw"
     $SUDO ufw allow 22/tcp >/dev/null 2>&1 || true   # never lock out SSH
     local p
-    for p in "${FW_TCP[@]}"; do $SUDO ufw allow "${p/:/-}/tcp" >/dev/null; done
-    for p in "${FW_UDP[@]}"; do $SUDO ufw allow "${p/:/-}/udp" >/dev/null; done
+    for p in "${FW_TCP[@]}"; do $SUDO ufw allow "${p/:/-}/tcp" >/dev/null 2>&1 || true; done
+    for p in "${FW_UDP[@]}"; do $SUDO ufw allow "${p/:/-}/udp" >/dev/null 2>&1 || true; done
     $SUDO ufw reload >/dev/null 2>&1 || true
   elif command -v firewall-cmd >/dev/null 2>&1 && $SUDO firewall-cmd --state >/dev/null 2>&1; then
     info "Opening ports via firewalld"
     local p
-    for p in "${FW_TCP[@]}"; do $SUDO firewall-cmd --permanent --add-port="${p/:/-}/tcp" >/dev/null; done
-    for p in "${FW_UDP[@]}"; do $SUDO firewall-cmd --permanent --add-port="${p/:/-}/udp" >/dev/null; done
-    $SUDO firewall-cmd --reload >/dev/null
+    for p in "${FW_TCP[@]}"; do $SUDO firewall-cmd --permanent --add-port="${p/:/-}/tcp" >/dev/null 2>&1 || true; done
+    for p in "${FW_UDP[@]}"; do $SUDO firewall-cmd --permanent --add-port="${p/:/-}/udp" >/dev/null 2>&1 || true; done
+    $SUDO firewall-cmd --reload >/dev/null 2>&1 || true
   else
     info "No active host firewall (ufw/firewalld) — skipping."
     echo "    If your VPS provider has a CLOUD firewall, open these there:"
@@ -273,6 +283,12 @@ if [[ -z "$DOMAIN" ]]; then
   read -rp "Production domain (e.g. stream.example.com): " DOMAIN
 fi
 [[ -n "$DOMAIN" ]] || die "a production domain is required (needed for TLS and the lk.<domain> subdomain)."
+# Must be a bare FQDN (no scheme, path, port, spaces; at least one dot) — it
+# flows into SITE_ADDRESS, PUBLIC_ORIGIN and the Caddy site address; a bad
+# value silently breaks TLS or panics the backend (build_webauthn).
+if [[ ! "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]; then
+  die "'$DOMAIN' is not a bare hostname. Use e.g. stream.example.com — no https://, no path, no port."
+fi
 
 # --- resolve mode -----------------------------------------------------------
 # This script targets a CLEAN VPS where only zStream runs: default is
@@ -283,8 +299,9 @@ fi
 info "Deployment mode: $MODE"
 
 # Fail fast (don't emit a cryptic Docker port-bind error) if standalone but
-# something already holds 80/443 — that means the box isn't a clean VPS.
-if [[ "$MODE" == "standalone" ]] && http_ports_busy; then
+# something already holds 80/443 — UNLESS it's our own already-running stack
+# (a redeploy), which must stay idempotent.
+if [[ "$MODE" == "standalone" ]] && http_ports_busy && ! stack_running; then
   proxy="$(detect_proxy)"
   die "ports 80/443 are already in use${proxy:+ (looks like $proxy)} — this one-click script expects a fresh VPS where only zStream runs.
        For a host that already has a reverse proxy / other services (advanced):
@@ -314,13 +331,27 @@ if [[ -f .env && $REGENERATE -eq 1 ]]; then
   echo "Note: this rotates JWT/secrets (invalidates all sessions). It does NOT"
   echo "reset DB-stored credentials — a custom admin password, TOTP, and passkeys"
   echo "live in ./data/stream.db and keep working (and override the env password)."
-  read -rp ".env exists — overwrite it and generate fresh secrets? [y/N] " ans
-  [[ "${ans,,}" == "y" ]] || die "aborted by user."
+  if [[ $ASSUME_YES -eq 1 ]]; then
+    info "--regenerate --yes: overwriting .env with fresh secrets"
+  else
+    read -rp ".env exists — overwrite it and generate fresh secrets? [y/N] " ans
+    [[ "${ans,,}" == "y" ]] || die "aborted by user."
+  fi
   rm -f .env
 fi
 
 if [[ -f .env ]]; then
-  info "Reusing existing .env (secrets unchanged)"
+  # Guard against a silent no-op: the mode-specific values (SITE_ADDRESS etc.)
+  # are only written when generating fresh, so a mode flag over an existing
+  # .env of a different mode would do nothing. Detect and refuse.
+  if grep -qE '^SITE_ADDRESS=:80$' .env; then env_mode="host/proxy"; else env_mode="standalone"; fi
+  if { [[ "$MODE" == "standalone" ]] && [[ "$env_mode" != "standalone" ]]; } \
+  || { [[ "$MODE" != "standalone" ]] && [[ "$env_mode" != "host/proxy" ]]; }; then
+    die "existing .env is configured for $env_mode but you requested $MODE mode.
+       Re-run with --regenerate to rewrite .env for the new mode (rotates secrets),
+       or remove the flag to keep the current mode."
+  fi
+  info "Reusing existing .env ($env_mode, secrets unchanged)"
 else
   info "Generating .env for $DOMAIN ($MODE mode)"
   cp .env.example .env
@@ -366,12 +397,21 @@ info "Building frontend (npm ci && npm run build)"
 # The backend image runs as non-root `app` (Dockerfile: USER app). The
 # `./data:/data` bind mount masks the image's `chown app /data`, so a
 # fresh root-owned ./data leaves the container unable to create
-# /data/stream.db → the backend panics and crash-loops. World-writable is
-# acceptable here: a single-purpose box, dir holds only the SQLite DB and
-# uploaded session files.
-info "Preparing ./data (writable by the non-root container user)"
+# /data/stream.db → the backend panics and crash-loops. Chown ./data to the
+# image's app uid (mode 0700) rather than world-writable; fall back to 0777
+# only if the uid can't be determined.
+info "Preparing ./data (owned by the non-root container user)"
 mkdir -p data
-$SUDO chmod -R 777 data
+$DOCKER compose build stream-backend
+appuid="$({ $DOCKER compose run --rm --no-deps --entrypoint id stream-backend -u 2>/dev/null || true; } | tr -dc '0-9')"
+if [[ -n "$appuid" ]]; then
+  $SUDO chown -R "$appuid:$appuid" data
+  $SUDO chmod -R u+rwX,go-rwx data
+  info "./data owned by container uid $appuid (mode 0700)"
+else
+  $SUDO chmod -R 777 data
+  info "couldn't detect container uid — ./data left world-writable; review perms"
+fi
 
 # --- firewall ---------------------------------------------------------------
 open_firewall
