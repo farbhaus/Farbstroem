@@ -53,7 +53,7 @@ export const viewerStore = createStore<ViewerState>({
   screenOn: false,
   roster: [],
   chatOpen: false,
-  // Rail is "open" by default — entering focus mode shows it.
+  // Strip is "open" by default — entering focus mode shows it.
   confOpen: true,
   pointerMode: false,
 });
