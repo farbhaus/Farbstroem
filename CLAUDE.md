@@ -43,7 +43,7 @@ docker compose -f docker-compose.yml up -d
 
 The backend image (`zcolor/farbstroem-backend`) is published to Docker Hub
 by `.github/workflows/docker.yml` on every push to `main` (tags `:latest`
-and `:sha-<short>`, multi-arch amd64+arm64). Deploy hosts pin a tag via
+and `:sha-<short>`, linux/amd64). Deploy hosts pin a tag via
 `BACKEND_TAG` in `.env`. Requires repo secrets `DOCKERHUB_USERNAME` and
 `DOCKERHUB_TOKEN`.
 
