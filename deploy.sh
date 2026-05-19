@@ -18,7 +18,13 @@
 #                        /etc/caddy/Caddyfile is found (e.g. the shared project
 #                        VPS). The appended host blocks are pure TLS fronts.
 #
-# Flags: --standalone | --behind-host-caddy | --regenerate | --yes
+# Flags: --standalone | --behind-host-caddy | --reverse-proxy
+#        | --regenerate | --yes
+#
+#   --reverse-proxy : the stack serves plain HTTP on :8880; an EXISTING front
+#                     proxy you manage (nginx, Traefik, …) terminates TLS and
+#                     forwards to it. The script does NOT touch that proxy — it
+#                     prints the nginx server blocks to add.
 # Re-running is safe: an existing .env is reused as-is (secrets are NOT rotated,
 # so live sessions survive a redeploy). Use --regenerate to start fresh.
 #
@@ -36,7 +42,7 @@ fi
 # --- args -------------------------------------------------------------------
 REGENERATE=0
 ASSUME_YES=0
-MODE=""           # "", "standalone", or "host" — "" means auto-detect
+MODE=""           # "", "standalone", "host", or "proxy" — "" means auto-detect
 DOMAIN=""
 for arg in "$@"; do
   case "$arg" in
@@ -44,6 +50,7 @@ for arg in "$@"; do
     --yes|-y) ASSUME_YES=1 ;;
     --standalone) MODE="standalone" ;;
     --behind-host-caddy) MODE="host" ;;
+    --reverse-proxy) MODE="proxy" ;;
     -*) echo "FATAL: unknown option: $arg" >&2; exit 1 ;;
     *) DOMAIN="$arg" ;;
   esac
@@ -133,6 +140,27 @@ host_caddyfile_populated() {
   [[ -s "$f" ]] || return 1
   grep -vE '^[[:space:]]*(#|$)' "$f" 2>/dev/null \
     | grep -qE '^[[:space:]]*[A-Za-z0-9.:*_-]+[[:space:]]*\{'
+}
+
+# http_ports_busy — true if something is already listening on :80 or :443
+# (an existing web server / reverse proxy). Standalone mode can't work then.
+http_ports_busy() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -tlnH 2>/dev/null | grep -qE '[:.](80|443)[[:space:]]'
+  elif command -v netstat >/dev/null 2>&1; then
+    netstat -tln 2>/dev/null | grep -qE '[:.](80|443)[[:space:]]'
+  else
+    return 1   # can't tell — don't block
+  fi
+}
+
+# detect_proxy — name of the front proxy already on the box, if recognizable.
+detect_proxy() {
+  command -v nginx   >/dev/null 2>&1 && { echo nginx;   return; }
+  command -v traefik >/dev/null 2>&1 && { echo traefik; return; }
+  command -v apache2 >/dev/null 2>&1 && { echo apache;  return; }
+  command -v httpd   >/dev/null 2>&1 && { echo apache;  return; }
+  echo ""
 }
 
 # ensure_host_caddy DOMAIN — make sure the host Caddy exists and has pure TLS
@@ -240,6 +268,16 @@ if [[ -z "$MODE" ]]; then
       read -rp "Use behind-host-caddy mode? [Y/n] " ans
       [[ "${ans,,}" == "n" ]] && MODE="standalone" || MODE="host"
     fi
+  elif http_ports_busy; then
+    # Something already owns :80/:443 (your nginx case). Standalone would fail
+    # to bind those ports — fall back to behind-a-proxy mode.
+    proxy="$(detect_proxy)"
+    echo
+    echo "Ports 80/443 are already in use${proxy:+ (looks like $proxy)} — the container"
+    echo "Caddy can't bind them. Using reverse-proxy mode: the stack serves plain HTTP"
+    echo "on :8880 and your existing proxy must forward to it (instructions printed at"
+    echo "the end). Pass --behind-host-caddy instead if that proxy is Caddy."
+    MODE="proxy"
   else
     MODE="standalone"
   fi
@@ -285,9 +323,9 @@ else
     set_env SITE_ADDRESS     "$DOMAIN"
     set_env LK_SITE_ADDRESS  "lk.$DOMAIN"
   else
-    # Host Caddy terminates TLS and forwards to :8880; the container Caddy
-    # serves plain HTTP. HTTPS_PORT is moved off 443 so the published port
-    # mapping can't collide with the host Caddy (which owns 80/443).
+    # host / proxy: an external front (Caddy or nginx/etc.) terminates TLS and
+    # forwards to :8880; the container Caddy serves plain HTTP. HTTPS_PORT is
+    # moved off 443 so the published port mapping can't collide with the front.
     set_env SITE_ADDRESS     ":80"
     set_env HTTP_PORT        "8880"
     set_env HTTPS_PORT       "8444"
@@ -348,11 +386,11 @@ if [[ -n "$ADMIN_PASSWORD" ]]; then
     echo "  override is cleared (break-glass). TOTP/passkeys are unaffected."
   fi
 fi
-if [[ "$MODE" == "host" ]]; then
-  tls_note="TLS for both is handled by the host Caddy, now configured."
-else
-  tls_note="The container Caddy provisions Let's Encrypt for both on first hit."
-fi
+case "$MODE" in
+  host)  tls_note="TLS for both is handled by the host Caddy, now configured." ;;
+  proxy) tls_note="Your existing reverse proxy must terminate TLS for both (see below)." ;;
+  *)     tls_note="The container Caddy provisions Let's Encrypt for both on first hit." ;;
+esac
 cat <<EOF
 
   Next steps:
@@ -369,3 +407,48 @@ cat <<EOF
        $DOCKER compose logs -f stream-backend
 
 EOF
+
+if [[ "$MODE" == "proxy" ]]; then
+  cat <<EOF
+  ── Reverse-proxy setup (REQUIRED — the script did NOT touch your proxy) ──
+  The stack now serves plain HTTP on 127.0.0.1:8880. Add these nginx server
+  blocks (you provide the TLS certs — e.g. certbot for $DOMAIN and
+  lk.$DOMAIN), then \`nginx -t && systemctl reload nginx\`:
+
+    server {
+        listen 443 ssl;
+        server_name $DOMAIN;
+        # ssl_certificate / ssl_certificate_key ... (your certs)
+        location / {
+            proxy_pass http://127.0.0.1:8880;
+            proxy_http_version 1.1;
+            proxy_set_header Host              \$host;
+            proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_set_header Upgrade           \$http_upgrade;       # WebSocket
+            proxy_set_header Connection        "upgrade";
+            proxy_read_timeout 86400;
+        }
+    }
+
+    server {
+        listen 443 ssl;
+        server_name lk.$DOMAIN;
+        # ssl_certificate / ssl_certificate_key ... (your certs)
+        location / {
+            proxy_pass http://127.0.0.1:8880;
+            proxy_http_version 1.1;
+            proxy_set_header Host              \$host;
+            proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_set_header Upgrade           \$http_upgrade;       # WebSocket
+            proxy_set_header Connection        "upgrade";
+            proxy_read_timeout 86400;
+        }
+    }
+
+  Both names go to :8880 — the containerized Caddy splits app vs LiveKit by
+  Host internally. Skip the firewall note above for 80/443 (your proxy owns
+  them); the other ports still apply.
+EOF
+fi
