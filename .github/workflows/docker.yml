@@ -1,10 +1,17 @@
 name: Docker Build
 
 on:
+  # Publish only on push to main. dev pushes are covered by the PR build,
+  # so building them again here just duplicates the Rust compile in ci.yml.
   push:
-    branches: [main, dev]
+    branches: [main]
+  # PR validation only when the image inputs change — avoids a full Rust
+  # rebuild on PRs that don't touch the backend.
   pull_request:
     branches: [main, dev]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/docker.yml'
 
 env:
   IMAGE: zcolor/farbstroem-backend
