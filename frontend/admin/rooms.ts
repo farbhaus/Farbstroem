@@ -129,14 +129,11 @@ function renderRooms(): void {
             <span class="url-label">Viewer</span>
             <input readonly class="url-input" value="${esc(viewerUrl)}">
           </div>
-          <div class="url-row">
+          <div class="url-row host-actions">
             <span class="url-label">Host</span>
-            <input readonly class="url-input" value="${esc(hostUrl)}">
-            <button class="btn btn-sm" data-action="rotate-host-key" data-id="${esc(r.id)}" title="Generate a fresh link; old link stops granting host">Rotate</button>
-          </div>
-          <div class="url-row">
-            <span class="url-label">Presenter</span>
-            <button class="btn btn-primary" data-action="enter-presenter" data-id="${esc(r.id)}">Enter Room</button>
+            <button class="btn btn-sm btn-primary" data-action="enter-presenter" data-id="${esc(r.id)}">Enter Room</button>
+            <button class="btn btn-sm" data-action="copy" data-value="${esc(hostUrl)}" title="Copy a host link to share with a colorist">Share with host</button>
+            <button class="btn btn-sm" data-action="rotate-host-key" data-id="${esc(r.id)}" title="Invalidate the current host link">Rotate</button>
           </div>
         </div>
 

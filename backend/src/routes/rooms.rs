@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::auth::AdminAuth;
 use crate::error::AppError;
-use crate::events::HostRevokedEvent;
+use crate::events::{HostRevokedEvent, ModerationChangedEvent};
 use crate::livekit::LiveKitClient;
 use crate::state::AppState;
 
@@ -840,10 +840,11 @@ async fn admit_participant(
     Path((id, participant_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, AppError> {
     let conn = state.db.get()?;
+    let id_clone = id.clone();
     tokio::task::spawn_blocking(move || {
         let changes = conn.execute(
             "UPDATE participants SET is_admitted = 1 WHERE id = ?1 AND room_id = ?2",
-            rusqlite::params![participant_id, id],
+            rusqlite::params![participant_id, id_clone],
         )?;
         if changes == 0 {
             return Err(AppError::NotFound("Participant not found".into()));
@@ -853,6 +854,7 @@ async fn admit_participant(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
+    fire_moderation_changed(&state, &id).await;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -863,16 +865,18 @@ async fn admit_all(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     let conn = state.db.get()?;
+    let id_clone = id.clone();
     tokio::task::spawn_blocking(move || {
         conn.execute(
             "UPDATE participants SET is_admitted = 1 WHERE room_id = ?1 AND is_admitted = 0 AND is_kicked = 0",
-            rusqlite::params![id],
+            rusqlite::params![id_clone],
         )?;
         Ok::<_, rusqlite::Error>(())
     })
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
+    fire_moderation_changed(&state, &id).await;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -908,10 +912,11 @@ async fn unkick_participant(
     Path((id, participant_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, AppError> {
     let conn = state.db.get()?;
+    let id_clone = id.clone();
     tokio::task::spawn_blocking(move || {
         let changes = conn.execute(
             "UPDATE participants SET is_kicked = 0 WHERE id = ?1 AND room_id = ?2",
-            rusqlite::params![participant_id, id],
+            rusqlite::params![participant_id, id_clone],
         )?;
         if changes == 0 {
             return Err(AppError::NotFound("Participant not found".into()));
@@ -921,7 +926,37 @@ async fn unkick_participant(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
+    fire_moderation_changed(&state, &id).await;
     Ok(Json(json!({ "ok": true })))
+}
+
+/// Look up the room slug from its id and broadcast a moderation-changed
+/// event so the WS layer can push the new waiting/kicked lists to any
+/// connected presenters. Admin handlers know the room by id; the WS layer
+/// keys by slug.
+async fn fire_moderation_changed(state: &Arc<AppState>, room_id: &str) {
+    let conn = match state.db.get() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let room_id = room_id.to_string();
+    let slug: Option<String> = tokio::task::spawn_blocking(move || {
+        conn.query_row(
+            "SELECT slug FROM rooms WHERE id = ?1",
+            rusqlite::params![room_id],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+    })
+    .await
+    .ok()
+    .flatten();
+    if let Some(slug) = slug {
+        let _ = state
+            .events
+            .moderation_changed
+            .send(ModerationChangedEvent { slug });
+    }
 }
 
 pub fn router() -> Router<Arc<AppState>> {

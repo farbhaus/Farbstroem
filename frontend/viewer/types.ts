@@ -75,6 +75,12 @@ export type WsMessage =
   | { type: 'auth:ok' }
   | { type: 'kicked' }
   | { type: 'host:revoked' }
+  | {
+      type: 'moderation:update';
+      waiting: { id: string; name: string }[];
+      kicked: { id: string; name: string }[];
+      newWaiting: string[];
+    }
   | { type: 'room:live' }
   | { type: 'room:pending' }
   | { type: 'room:ended' }

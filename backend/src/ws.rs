@@ -235,6 +235,16 @@ async fn handle_socket(socket: WebSocket, slug: String, state: Arc<AppState>) {
     // Broadcast participants update
     broadcast_participants(&WS_ROOMS, &slug).await;
 
+    // Presenters get a snapshot of waiting/kicked immediately so the
+    // Roster tab is populated even if the event subscriber's
+    // last-known state for this room is empty.
+    if role == "presenter" {
+        let _ = state
+            .events
+            .moderation_changed
+            .send(crate::events::ModerationChangedEvent { slug: slug.clone() });
+    }
+
     info!("WS connected: participant={} slug={}", pid, slug);
 
     // Message loop
@@ -649,6 +659,19 @@ async fn broadcast_participants(rooms: &WsRooms, slug: &str) {
     }
 }
 
+/// Send a message to every connected presenter in the room. Used by the
+/// moderation push so viewers never see waiting/kicked names.
+async fn send_to_presenters_in_room(rooms: &WsRooms, slug: &str, msg: &str) {
+    let rooms_guard = rooms.read().await;
+    if let Some(room) = rooms_guard.get(slug) {
+        for participant in room.values() {
+            if participant.role == "presenter" {
+                let _ = participant.tx.send(Message::Text(msg.to_string().into()));
+            }
+        }
+    }
+}
+
 /// Send a message to a specific participant and close their connection.
 async fn send_to_participant_and_close(
     rooms: &WsRooms,
@@ -831,6 +854,99 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
                 send_to_participant_and_close(&WS_ROOMS, &event.slug, &event.participant_id, &msg)
                     .await;
                 broadcast_participants(&WS_ROOMS, &event.slug).await;
+            }
+        });
+    }
+
+    // moderation:update — push current waiting + kicked lists to presenters.
+    // Diff'd server-side against the previous waiting list per room so each
+    // presenter can toast on new arrivals without remembering its own state.
+    {
+        let state = state.clone();
+        let mut rx = state.events.moderation_changed.subscribe();
+        // last_waiting_ids: tracks the waiting-list snapshot per room so we
+        // can compute which names are *newly* waiting.
+        let last_waiting: Arc<tokio::sync::Mutex<HashMap<String, Vec<String>>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        tokio::spawn(async move {
+            while let Ok(event) = rx.recv().await {
+                let slug = event.slug.clone();
+                let conn = match state.db.get() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::error!("moderation:update db get failed: {e}");
+                        continue;
+                    }
+                };
+                let slug_clone = slug.clone();
+                type ModRows = (Vec<(String, String)>, Vec<(String, String)>);
+                let rows_res = tokio::task::spawn_blocking(move || -> rusqlite::Result<ModRows> {
+                    let mut waiting = Vec::new();
+                    let mut stmt = conn.prepare(
+                        "SELECT p.id, p.name FROM participants p \
+                         JOIN rooms r ON r.id = p.room_id \
+                         WHERE r.slug = ?1 AND p.is_admitted = 0 AND p.is_kicked = 0 \
+                         ORDER BY p.joined_at ASC",
+                    )?;
+                    for row in stmt.query_map([&slug_clone], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })? {
+                        waiting.push(row?);
+                    }
+                    let mut kicked = Vec::new();
+                    let mut stmt = conn.prepare(
+                        "SELECT p.id, p.name FROM participants p \
+                         JOIN rooms r ON r.id = p.room_id \
+                         WHERE r.slug = ?1 AND p.is_kicked = 1 \
+                         ORDER BY p.joined_at ASC",
+                    )?;
+                    for row in stmt.query_map([&slug_clone], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })? {
+                        kicked.push(row?);
+                    }
+                    Ok((waiting, kicked))
+                })
+                .await;
+                let (waiting, kicked) = match rows_res {
+                    Ok(Ok(v)) => v,
+                    Ok(Err(e)) => {
+                        tracing::error!("moderation:update query failed: {e}");
+                        continue;
+                    }
+                    Err(e) => {
+                        tracing::error!("moderation:update join failed: {e}");
+                        continue;
+                    }
+                };
+
+                // Diff against previous snapshot to find new arrivals.
+                let waiting_ids: Vec<String> = waiting.iter().map(|(id, _)| id.clone()).collect();
+                let new_waiting_names: Vec<&str> = {
+                    let mut map = last_waiting.lock().await;
+                    let prev = map.get(&slug).cloned().unwrap_or_default();
+                    map.insert(slug.clone(), waiting_ids.clone());
+                    waiting
+                        .iter()
+                        .filter(|(id, _)| !prev.contains(id))
+                        .map(|(_, name)| name.as_str())
+                        .collect()
+                };
+
+                let msg = json!({
+                    "type": "moderation:update",
+                    "waiting": waiting
+                        .iter()
+                        .map(|(id, name)| json!({"id": id, "name": name}))
+                        .collect::<Vec<_>>(),
+                    "kicked": kicked
+                        .iter()
+                        .map(|(id, name)| json!({"id": id, "name": name}))
+                        .collect::<Vec<_>>(),
+                    "newWaiting": new_waiting_names,
+                })
+                .to_string();
+                send_to_presenters_in_room(&WS_ROOMS, &slug, &msg).await;
             }
         });
     }
