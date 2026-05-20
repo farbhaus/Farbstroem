@@ -74,6 +74,7 @@ interface ChatHistoryItem {
 export type WsMessage =
   | { type: 'auth:ok' }
   | { type: 'kicked' }
+  | { type: 'host:revoked' }
   | { type: 'room:live' }
   | { type: 'room:pending' }
   | { type: 'room:ended' }

@@ -160,20 +160,32 @@ async fn join_room(
         }
     }
 
-    // 401 if password required but wrong
-    if let Some(ref hash) = password_hash {
-        if !hash.is_empty() {
-            let provided = body.password.clone().unwrap_or_default();
-            if provided.is_empty() {
-                return Err(AppError::Unauthorized("Password required".into()));
-            }
-            let hash_clone = hash.clone();
-            let valid = tokio::task::spawn_blocking(move || bcrypt::verify(provided, &hash_clone))
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()))?
-                .map_err(|_| AppError::Unauthorized("Wrong password".into()))?;
-            if !valid {
-                return Err(AppError::Unauthorized("Wrong password".into()));
+    // A valid host link (correct presenter_key) bypasses the password gate
+    // so the room password can be rotated for clients without invalidating
+    // the host's bookmark.
+    let is_valid_presenter = body.role.as_deref() == Some("presenter")
+        && match (&presenter_key, &body.presenter_key) {
+            (Some(stored), Some(provided)) => stored == provided,
+            _ => false,
+        };
+
+    // 401 if password required but wrong (skipped for valid host links).
+    if !is_valid_presenter {
+        if let Some(ref hash) = password_hash {
+            if !hash.is_empty() {
+                let provided = body.password.clone().unwrap_or_default();
+                if provided.is_empty() {
+                    return Err(AppError::Unauthorized("Password required".into()));
+                }
+                let hash_clone = hash.clone();
+                let valid =
+                    tokio::task::spawn_blocking(move || bcrypt::verify(provided, &hash_clone))
+                        .await
+                        .map_err(|e| AppError::Internal(e.to_string()))?
+                        .map_err(|_| AppError::Unauthorized("Wrong password".into()))?;
+                if !valid {
+                    return Err(AppError::Unauthorized("Wrong password".into()));
+                }
             }
         }
     }

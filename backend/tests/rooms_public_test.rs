@@ -311,3 +311,45 @@ async fn kick_returns_403_non_presenter() {
         .await;
     assert_eq!(res.status_code(), 403);
 }
+
+#[tokio::test]
+async fn join_with_valid_presenter_key_bypasses_password() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let room_id =
+        common::seed_room_with_password(&state, "PW Host", "pw-host-abc123", "client-secret");
+    let presenter_key = common::get_room_presenter_key(&state, &room_id);
+
+    // Host link → no password sent, still admitted as presenter.
+    let res = server
+        .post("/api/public/rooms/pw-host-abc123/join")
+        .json(&json!({
+            "name": "Host Colorist",
+            "role": "presenter",
+            "presenter_key": presenter_key,
+        }))
+        .await;
+    assert_eq!(res.status_code(), 200);
+    assert_eq!(res.json::<Value>()["role"], "presenter");
+}
+
+#[tokio::test]
+async fn join_with_wrong_presenter_key_still_requires_password() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let _room_id =
+        common::seed_room_with_password(&state, "PW Guard", "pw-guard-abc123", "client-secret");
+
+    // Wrong pk + no password → 401 (the password gate still applies).
+    let res = server
+        .post("/api/public/rooms/pw-guard-abc123/join")
+        .json(&json!({
+            "name": "Sneaky",
+            "role": "presenter",
+            "presenter_key": "deadbeef",
+        }))
+        .await;
+    assert_eq!(res.status_code(), 401);
+}

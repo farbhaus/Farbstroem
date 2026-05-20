@@ -92,6 +92,18 @@ function handleMessage(msg: WsMessage): void {
       onKicked();
       startKickedPoller();
       return;
+    case 'host:revoked':
+      // The admin rotated the room's host link. Our session token has been
+      // invalidated server-side; drop the saved session and reload. The URL
+      // still carries the (now stale) presenter_key, which will downgrade
+      // us to viewer on rejoin.
+      clearAllPointers();
+      void disconnectLiveKit();
+      destroyPlayer();
+      clearSession();
+      wsReconnect = false;
+      location.reload();
+      return;
     case 'room:live':
       onRoomLive();
       reloadPlayer();

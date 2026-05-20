@@ -821,4 +821,17 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
             }
         });
     }
+
+    // host:revoked — presenter_key rotation force-rejoins existing hosts.
+    {
+        let mut rx = state.events.host_revoked.subscribe();
+        tokio::spawn(async move {
+            while let Ok(event) = rx.recv().await {
+                let msg = json!({"type": "host:revoked"}).to_string();
+                send_to_participant_and_close(&WS_ROOMS, &event.slug, &event.participant_id, &msg)
+                    .await;
+                broadcast_participants(&WS_ROOMS, &event.slug).await;
+            }
+        });
+    }
 }

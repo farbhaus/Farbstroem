@@ -26,6 +26,16 @@ pub struct KickedEvent {
     pub participant_id: String,
 }
 
+/// Emitted when an admin rotates the room's presenter_key. Connected
+/// presenters get force-rejoined so their old link no longer grants host
+/// privileges — they reload, re-hit the join API with the (now stale) pk,
+/// and are downgraded to viewer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostRevokedEvent {
+    pub slug: String,
+    pub participant_id: String,
+}
+
 /// Emitted when an admin attaches a stream key to a room. Carries the new
 /// key_token so connected clients can swap it into their session and reload
 /// the player without bouncing through /join (which would require re-auth
@@ -46,6 +56,7 @@ pub struct EventChannels {
     pub file_shared: broadcast::Sender<FileSharedEvent>,
     pub file_unshared: broadcast::Sender<FileUnsharedEvent>,
     pub participant_kicked: broadcast::Sender<KickedEvent>,
+    pub host_revoked: broadcast::Sender<HostRevokedEvent>,
 }
 
 impl EventChannels {
@@ -59,6 +70,7 @@ impl EventChannels {
             file_shared: broadcast::channel(64).0,
             file_unshared: broadcast::channel(64).0,
             participant_kicked: broadcast::channel(64).0,
+            host_revoked: broadcast::channel(64).0,
         }
     }
 }
