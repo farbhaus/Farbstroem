@@ -38,10 +38,53 @@ static WS_ROOMS: LazyLock<WsRooms> = LazyLock::new(|| Arc::new(RwLock::new(HashM
 
 // Current host-pinned focus per room. Held in memory only — late joiners
 // receive the current value on auth, but a server restart resets it.
-// Value is the tile id ("stream" | "share") or absence = unpinned.
+// Value is the tile id ("stream" | "share" | "display") or absence = unpinned.
 type WsRoomFocus = Arc<RwLock<HashMap<String, String>>>;
 static WS_ROOM_FOCUS: LazyLock<WsRoomFocus> =
     LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
+
+// Currently-displayed file + transport per room. Like WS_ROOM_FOCUS this
+// is in-memory only: a server restart clears it. Cleared explicitly on
+// room:ended (see spawn_event_listeners).
+#[derive(Clone)]
+struct DisplayState {
+    file_id: String,
+    name: String,
+    mime: String,
+    size: i64,
+    playing: bool,
+    // Last known head, in seconds. Combined with updated_at_ms a late
+    // joiner can extrapolate the current position if `playing`.
+    position: f64,
+    updated_at_ms: u64,
+}
+type WsRoomDisplay = Arc<RwLock<HashMap<String, DisplayState>>>;
+static WS_ROOM_DISPLAY: LazyLock<WsRoomDisplay> =
+    LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
+
+fn display_state_msg(state: Option<&DisplayState>) -> String {
+    match state {
+        Some(s) => json!({
+            "type": "display:state",
+            "fileId": s.file_id,
+            "name": s.name,
+            "mime": s.mime,
+            "size": s.size,
+            "playing": s.playing,
+            "position": s.position,
+            "updatedAtMs": s.updated_at_ms,
+        })
+        .to_string(),
+        None => json!({"type": "display:state", "fileId": null}).to_string(),
+    }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
 
 // ---------------------------------------------------------------------------
 // Auth message
@@ -226,6 +269,15 @@ async fn handle_socket(socket: WebSocket, slug: String, state: Arc<AppState>) {
                     .to_string()
                     .into(),
             ));
+        }
+    }
+
+    // Replay currently-displayed file (if any) so a late joiner sees the
+    // same image / video as everyone else.
+    {
+        let display = WS_ROOM_DISPLAY.read().await;
+        if let Some(state) = display.get(&slug) {
+            let _ = tx.send(Message::Text(display_state_msg(Some(state)).into()));
         }
     }
 
@@ -478,10 +530,12 @@ async fn handle_text_message(
             if role != "presenter" {
                 return;
             }
-            // tileId may be a string ("stream"/"share") or null (unpin).
+            // tileId may be a string ("stream"/"share"/"display") or null (unpin).
             let tile_id = msg.get("tileId");
             let valid_tile = match tile_id {
-                Some(Value::String(s)) if s == "stream" || s == "share" => Some(s.clone()),
+                Some(Value::String(s)) if s == "stream" || s == "share" || s == "display" => {
+                    Some(s.clone())
+                }
                 Some(Value::Null) | None => None,
                 _ => return, // unknown tile id — ignore
             };
@@ -498,6 +552,120 @@ async fn handle_text_message(
                 "tileId": valid_tile,
             });
             broadcast_to_room(&WS_ROOMS, slug, &broadcast_msg.to_string()).await;
+        }
+        // Presenter picks a file to display in the room (or clears).
+        // fileId: string|null. Server resolves the file row (must belong
+        // to the room or be in the room library) and broadcasts the
+        // resulting display:state to everyone.
+        "display:set" => {
+            if role != "presenter" {
+                return;
+            }
+            let file_id_opt = match msg.get("fileId") {
+                Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+                Some(Value::Null) | None => None,
+                _ => return,
+            };
+
+            let new_state = if let Some(file_id) = file_id_opt {
+                let conn = match state.db.get() {
+                    Ok(c) => c,
+                    Err(_) => return,
+                };
+                let slug_for_block = slug.to_string();
+                let file_id_lookup = file_id.clone();
+                // Same visibility rules as the public list_files endpoint:
+                // the file must be a shared upload in this room OR be in
+                // the room's admin library via room_files.
+                type FileRow = (String, String, i64);
+                let row: Option<FileRow> = match tokio::task::spawn_blocking(move || {
+                    conn.query_row(
+                        "SELECT sf.original_name, sf.mime_type, sf.size_bytes \
+                         FROM session_files sf \
+                         WHERE sf.id = ?1 AND ( \
+                             (sf.is_shared = 1 AND sf.room_id = (SELECT id FROM rooms WHERE slug = ?2)) \
+                             OR EXISTS ( \
+                                 SELECT 1 FROM room_files rf \
+                                 JOIN rooms r ON r.id = rf.room_id \
+                                 WHERE rf.file_id = sf.id AND r.slug = ?2 \
+                             ) \
+                         )",
+                        rusqlite::params![file_id_lookup, slug_for_block],
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, i64>(2)?,
+                            ))
+                        },
+                    )
+                    .optional()
+                    .unwrap_or(None)
+                })
+                .await
+                {
+                    Ok(opt) => opt,
+                    Err(_) => return,
+                };
+
+                let (name, mime, size) = match row {
+                    Some(t) => t,
+                    None => return,
+                };
+
+                Some(DisplayState {
+                    file_id,
+                    name,
+                    mime,
+                    size,
+                    playing: false,
+                    position: 0.0,
+                    updated_at_ms: now_ms(),
+                })
+            } else {
+                None
+            };
+
+            {
+                let mut display = WS_ROOM_DISPLAY.write().await;
+                match &new_state {
+                    Some(s) => {
+                        display.insert(slug.to_string(), s.clone());
+                    }
+                    None => {
+                        display.remove(slug);
+                    }
+                }
+            }
+            broadcast_to_room(&WS_ROOMS, slug, &display_state_msg(new_state.as_ref())).await;
+        }
+        // Presenter transport update: play/pause/seek. Merged into the
+        // current room display state, then broadcast.
+        "display:transport" => {
+            if role != "presenter" {
+                return;
+            }
+            let playing = match msg.get("playing").and_then(|v| v.as_bool()) {
+                Some(b) => b,
+                None => return,
+            };
+            let position = match msg.get("position").and_then(|v| v.as_f64()) {
+                Some(p) if p.is_finite() && p >= 0.0 => p,
+                _ => return,
+            };
+
+            let broadcast_msg = {
+                let mut display = WS_ROOM_DISPLAY.write().await;
+                let Some(s) = display.get_mut(slug) else {
+                    // No file currently displayed — ignore.
+                    return;
+                };
+                s.playing = playing;
+                s.position = position;
+                s.updated_at_ms = now_ms();
+                display_state_msg(Some(s))
+            };
+            broadcast_to_room(&WS_ROOMS, slug, &broadcast_msg).await;
         }
         _ => {}
     }
@@ -606,7 +774,16 @@ async fn start_disconnect_timer(rooms: &WsRooms, slug: String, participant_id: S
 
         drop(rooms_guard);
 
-        if !room_empty {
+        if room_empty {
+            // Last participant left — wipe the per-room transient state
+            // so a fresh session doesn't get a stale display-file replay
+            // (which would mount the file player instead of the live
+            // broadcast and render black) or a stale focus pin from a
+            // previous, unrelated meeting. The room re-creates these
+            // entries when a presenter Shows / pins again.
+            WS_ROOM_DISPLAY.write().await.remove(&slug_clone);
+            WS_ROOM_FOCUS.write().await.remove(&slug_clone);
+        } else {
             broadcast_participants(&rooms, &slug_clone).await;
         }
     });
@@ -733,6 +910,10 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
         tokio::spawn(async move {
             while let Ok(slug) = rx.recv().await {
                 let msg = json!({"type": "room:ended"}).to_string();
+
+                // Clear transient per-room state.
+                WS_ROOM_FOCUS.write().await.remove(&slug);
+                WS_ROOM_DISPLAY.write().await.remove(&slug);
 
                 // Send ended message + Close frame to every participant, then remove room
                 {

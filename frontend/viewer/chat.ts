@@ -38,6 +38,53 @@ function dlUrl(fileId: string): string {
   );
 }
 
+// Files we can offer to display in the unified stage. .mov is included
+// because most are H.264 in QuickTime container — the backend's display
+// route relabels them as video/mp4 so Chrome / Firefox will play them.
+// ProRes / DNxHD MOVs will still fail at decode time; player.ts handles
+// that error by clearing display state and toasting the presenter.
+const PLAYABLE_VIDEO_MIMES = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
+function canShow(mime: string | undefined): boolean {
+  if (!mime) return false;
+  const m = mime.toLowerCase();
+  return m.startsWith('image/') || PLAYABLE_VIDEO_MIMES.has(m);
+}
+
+function showBtnHtml(fileId: string, klass: string): string {
+  const current = viewerStore.get().displayFile?.fileId === fileId;
+  const label = current ? 'Hide' : 'Show';
+  const cls = klass + (current ? ' is-active' : '');
+  return (
+    `<button class="${cls}" data-action="display-show" ` +
+    `data-file-id="${esc(fileId)}" title="${current ? 'Stop showing in room' : 'Show in room'}">${label}</button>`
+  );
+}
+
+// Delete button — presenter-only, removes the file from this room
+// (broadcast via file:removed so every client drops it from chat + the
+// files panel).
+function deleteBtnHtml(fileId: string, klass: string): string {
+  return (
+    `<button class="${klass}" data-action="file-delete" ` +
+    `data-file-id="${esc(fileId)}" title="Remove from this room" aria-label="Remove from this room">` +
+    `<svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>` +
+    `</button>`
+  );
+}
+
+// Walk every Show/Hide button in the chat column and refresh its label
+// against the current `displayFile`. Called from a viewerStore subscriber.
+export function refreshShowButtons(): void {
+  const currentId = viewerStore.get().displayFile?.fileId || null;
+  const buttons = document.querySelectorAll<HTMLButtonElement>('[data-action="display-show"]');
+  buttons.forEach((btn) => {
+    const isThis = btn.dataset['fileId'] === currentId && !!currentId;
+    btn.textContent = isThis ? 'Hide' : 'Show';
+    btn.title = isThis ? 'Stop showing in room' : 'Show in room';
+    btn.classList.toggle('is-active', isThis);
+  });
+}
+
 interface ChatMsg {
   ts: number;
   name: string;
@@ -64,6 +111,7 @@ interface FileMsg {
   role: Role;
   id: string;
   size: number;
+  mime?: string;
   uploaderName: string;
 }
 
@@ -71,14 +119,19 @@ export function appendFileMessage(msg: FileMsg, notify = true): void {
   const list = document.getElementById('chat-messages');
   if (!list) return;
   const url = dlUrl(msg.id);
+  const isPresenter = viewerStore.get().role === 'presenter';
+  const showBtn = isPresenter && canShow(msg.mime) ? showBtnHtml(msg.id, 'chat-file-show') : '';
+  const delBtn = isPresenter ? deleteBtnHtml(msg.id, 'chat-file-del') : '';
   const d = document.createElement('div');
   d.className = 'chat-msg';
   d.innerHTML =
     `<div class="chat-meta"><span class="chat-who ${esc(msg.role)}">${esc(msg.uploaderName)}</span><span class="chat-time">${fmtTime(msg.ts)}</span></div>` +
-    `<div class="chat-file">` +
+    `<div class="chat-file" data-file-id="${esc(msg.id)}" data-mime="${esc(msg.mime || '')}">` +
     `<span class="chat-file-icon"><svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>` +
     `<div class="chat-file-info"><div class="chat-file-name" title="${esc(msg.name)}">${esc(msg.name)}</div><div class="chat-file-size">${fmtBytes(msg.size)}</div></div>` +
+    showBtn +
     `<a class="chat-file-dl" href="${url}" download="${esc(msg.name)}">Get</a>` +
+    delBtn +
     `</div>`;
   list.appendChild(d);
   list.scrollTop = list.scrollHeight;
@@ -91,13 +144,19 @@ export function addFileToSection(f: SessionFile): void {
   document.getElementById('files-empty')?.remove();
   if (list.querySelector(`[data-fid="${CSS.escape(f.id)}"]`)) return;
   const url = dlUrl(f.id);
+  const isPresenter = viewerStore.get().role === 'presenter';
+  const showBtn = isPresenter && canShow(f.mime) ? showBtnHtml(f.id, 'file-row-show') : '';
+  const delBtn = isPresenter ? deleteBtnHtml(f.id, 'file-row-del') : '';
   const row = document.createElement('div');
   row.className = 'file-row';
   row.dataset['fid'] = f.id;
+  if (f.mime) row.dataset['mime'] = f.mime;
   row.innerHTML =
     `<div class="file-row-name" title="${esc(f.name)}">${esc(f.name)}</div>` +
     `<span class="file-row-size">${fmtBytes(f.size)}</span>` +
-    `<a class="file-row-dl" href="${url}" download="${esc(f.name)}">Get</a>`;
+    showBtn +
+    `<a class="file-row-dl" href="${url}" download="${esc(f.name)}">Get</a>` +
+    delBtn;
   list.appendChild(row);
   const count = document.getElementById('files-count');
   if (count) count.textContent = String(list.querySelectorAll('.file-row').length);
@@ -109,13 +168,17 @@ export function appendChatHistory(
   for (const m of messages) {
     if ('type' in m && m.type === 'file:shared') {
       appendFileMessage(m as FileMsg, false);
-      addFileToSection({
-        id: m.id,
-        name: m.name,
-        size: m.size,
-        uploaderName: m.uploaderName,
-        role: m.role,
-      });
+      {
+        const mime = (m as FileMsg).mime;
+        addFileToSection({
+          id: m.id,
+          name: m.name,
+          size: m.size,
+          ...(mime ? { mime } : {}),
+          uploaderName: m.uploaderName,
+          role: m.role,
+        });
+      }
     } else {
       const list = document.getElementById('chat-messages');
       if (!list) continue;
@@ -302,5 +365,74 @@ export function initChat(): void {
     if (file) uploadFile(file);
     target.value = '';
   });
+
+  // Presenter-only Show / Delete buttons inside chat messages and the
+  // files list. Delegated at #right-panel so dynamically-rendered rows
+  // are covered without re-wiring per row.
+  document.getElementById('right-panel')?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
+    if (!btn) return;
+    if (viewerStore.get().role !== 'presenter') return;
+    const action = btn.dataset['action'];
+    const fileId = btn.dataset['fileId'] || '';
+    if (!fileId) return;
+
+    if (action === 'display-show') {
+      if (!sendFn) return;
+      e.preventDefault();
+      const current = viewerStore.get().displayFile?.fileId === fileId;
+      sendFn({ type: 'display:set', fileId: current ? null : fileId });
+    } else if (action === 'file-delete') {
+      e.preventDefault();
+      void hostDeleteFile(fileId);
+    }
+  });
+
   syncSendButton();
+}
+
+async function hostDeleteFile(fileId: string): Promise<void> {
+  try {
+    const res = await fetch(
+      `/api/public/rooms/${encodeURIComponent(slug)}/files/${encodeURIComponent(fileId)}` +
+        `?participantId=${encodeURIComponent(getParticipantId())}&token=${encodeURIComponent(getToken())}`,
+      { method: 'DELETE' },
+    );
+    if (!res.ok && res.status !== 204) {
+      // Backend rejected (e.g. lost host role mid-session). The optimistic
+      // remove is intentionally skipped — we wait for the file:removed
+      // broadcast which only fires on a successful server-side delete.
+      console.warn('[host delete] failed', res.status);
+    }
+  } catch (err) {
+    console.error('[host delete]', err);
+  }
+}
+
+// Remove a file's chat message + files-list row in response to a
+// file:removed broadcast. If it was the currently-displayed file the
+// player will clear it independently via display:state.
+export function removeFileEverywhere(fileId: string): void {
+  const sel = `[data-file-id="${CSS.escape(fileId)}"]`;
+  // Remove every chat message that hosts this file.
+  for (const fileEl of Array.from(document.querySelectorAll<HTMLElement>(sel))) {
+    const msg = fileEl.closest('.chat-msg');
+    (msg ?? fileEl).remove();
+  }
+  // Remove the files-list row.
+  const row = document
+    .getElementById('files-list')
+    ?.querySelector<HTMLElement>(`[data-fid="${CSS.escape(fileId)}"]`);
+  row?.remove();
+  // Update the files-count badge.
+  const list = document.getElementById('files-list');
+  const count = document.getElementById('files-count');
+  if (list && count) count.textContent = String(list.querySelectorAll('.file-row').length);
+  // If the list is now empty, restore the placeholder.
+  if (list && !list.querySelector('.file-row') && !list.querySelector('#files-empty')) {
+    const empty = document.createElement('div');
+    empty.id = 'files-empty';
+    empty.textContent = 'No files shared yet.';
+    list.appendChild(empty);
+  }
 }

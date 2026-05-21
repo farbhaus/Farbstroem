@@ -1,7 +1,7 @@
 // Viewer bootstrap. Stitches the modules together and runs init order.
 
 import { applyBranding } from '../shared/branding.js';
-import { configureChat, initChat } from './chat.js';
+import { configureChat, initChat, refreshShowButtons } from './chat.js';
 import { initRoster } from './roster.js';
 import {
   configureConference,
@@ -14,7 +14,14 @@ import {
   updateFocusAspect,
 } from './conference.js';
 import { initLayout, sizeStage } from './layout.js';
-import { destroyPlayer, initPlayer, initPlayerControls, configurePlayer } from './player.js';
+import {
+  destroyPlayer,
+  getPlayer,
+  getPlayerMode,
+  initPlayer,
+  initPlayerControls,
+  configurePlayer,
+} from './player.js';
 import { configurePointer, initPointer } from './pointer.js';
 import {
   configureJoinOutcome,
@@ -47,20 +54,45 @@ import {
 
 // ---- Room status side effects ----
 
-function setRoomStatus(status: RoomStatus, playerPlaying = false): void {
-  setState({ status });
+function setRoomStatus(status: RoomStatus, playerPlaying?: boolean): void {
+  if (getState().status !== status) setState({ status });
+  refreshStatusOverlay(playerPlaying);
+}
+
+// Sync the offline overlay + live badge to the current room status,
+// player mode, and live-player state. Pure DOM read/write — never
+// touches viewerStore, so it's safe to call from the store subscriber
+// without recursing.
+function refreshStatusOverlay(playerPlaying?: boolean): void {
+  const status = getState().status;
   const offline = document.getElementById('offline-screen');
   const badge = document.getElementById('live-badge');
   const msg = document.getElementById('offline-msg');
   if (!offline || !badge || !msg) return;
 
-  // Determine "actually playing" from the live OvenPlayer state when available.
-  const pState = playerPlaying;
-  if (status === 'live' && pState) {
+  // The unified stage is showing a file (image or video) — that's valid
+  // content in its own right, no offline overlay or live badge.
+  const showingFile = getPlayerMode() === 'file' || getPlayerMode() === 'image';
+  if (showingFile) {
     offline.classList.remove('visible');
-    badge.classList.add('visible');
-  } else if (status === 'live' && !pState) {
     badge.classList.remove('visible');
+    return;
+  }
+
+  // If the caller didn't tell us, read the live player's state directly.
+  const pState =
+    playerPlaying ??
+    (getPlayerMode() === 'live' && getPlayer()?.getState() === 'playing');
+  if (status === 'live') {
+    // Live + actually playing → live badge on, overlay off.
+    // Live + player mounted but not yet playing → also clear the overlay;
+    // the player.ts error handler will re-show it after a 3 s timeout if
+    // the source genuinely fails. Keeping it up here would leave the
+    // "Waiting for livestream source..." text on top of the video any
+    // time the room flips to live before OvenPlayer reports `playing`.
+    offline.classList.remove('visible');
+    if (pState) badge.classList.add('visible');
+    else badge.classList.remove('visible');
   } else if (status === 'ended') {
     msg.textContent = 'Session has ended.';
     offline.classList.add('visible');
@@ -198,6 +230,7 @@ function init(): void {
       setRoomStatus('live', true);
       updateFocusAspect();
     },
+    send: wsSend,
   });
   configureWs({
     onAuthOk: () => {},
@@ -234,7 +267,13 @@ function init(): void {
   // here is a no-op safety net for any other state-driven re-renders.)
   viewerStore.subscribe((s) => {
     refreshConfButtons();
-    void s; // touched intentionally so future state hooks are easy
+    refreshShowButtons();
+    // Re-evaluate the offline / live badge — displayFile changes (file
+    // start / stop) flip whether the overlay should be visible at all.
+    // Use the pure DOM refresher, not setRoomStatus, so we don't write
+    // back to the store and re-enter the subscriber.
+    refreshStatusOverlay();
+    void s;
   });
 
   // Boot.
