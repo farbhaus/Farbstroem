@@ -175,7 +175,9 @@ export async function loadRoomInfo(): Promise<RoomInfoOutcome> {
       badge.textContent = 'Call room';
       nameEl.appendChild(badge);
     }
-    if (roomInfo.has_password) {
+    // Host links carry their own credential (presenter_key) and bypass the
+    // password gate server-side, so don't ask the colorist for it.
+    if (roomInfo.has_password && !isPresenter) {
       const row = el('password-row');
       if (row) row.style.display = '';
     }

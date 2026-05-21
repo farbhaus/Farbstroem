@@ -245,8 +245,8 @@ html, body { overflow: hidden; }
     grid-column: 1 / -1;
 }
 
-/* Rail: side strip in focus mode, hidden in grid mode. */
-#stage-rail {
+/* Strip: side strip in focus mode, hidden in grid mode. */
+#stage-strip {
     display: none;
     flex-direction: column;
     gap: 8px;
@@ -296,6 +296,77 @@ html, body { overflow: hidden; }
     display: flex; align-items: center; justify-content: space-between;
 }
 .panel-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+
+/* ---- Roster modal (anchored via clicking the top-bar participant count) ---- */
+#participant-count {
+    cursor: pointer; user-select: none; position: relative;
+    padding: 3px 8px; border: 1px solid var(--border); border-radius: var(--r-btn);
+    transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+#participant-count:hover { color: var(--text); border-color: var(--dim); }
+#participant-count .notif-dot {
+    display: none;
+    position: absolute; top: -2px; right: -4px;
+    width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 2px var(--surface);
+}
+#participant-count .notif-dot.visible { display: block; }
+
+#roster-overlay {
+    position: fixed; inset: 0; z-index: 150;
+    background: rgba(0,0,0,0.55);
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+#roster-overlay.hidden { display: none; }
+.roster-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r-lg); width: 380px; max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 64px); display: flex; flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    overflow: hidden;
+}
+.roster-box-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
+    border-bottom: 1px solid var(--border);
+}
+.roster-box-title { font-size: 13px; font-weight: 700; }
+.roster-box-body { overflow-y: auto; padding: var(--sp-2) 0; flex: 1; min-height: 0; }
+body:not(.has-host) #roster-body .host-only { display: none; }
+.roster-section { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); }
+.roster-section:last-child { border-bottom: none; }
+.roster-section-header {
+    display: flex; align-items: center; gap: var(--sp-2);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--dim); margin-bottom: var(--sp-2);
+}
+.roster-section-header > span:first-child { flex: 1; }
+.roster-count {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 18px; padding: 0 5px; height: 16px;
+    background: var(--surface2); border-radius: 8px; font-size: 10px; color: var(--dim);
+}
+.roster-list { display: flex; flex-direction: column; gap: var(--sp-1); }
+.roster-row {
+    display: flex; align-items: center; gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-2);
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r-md);
+}
+.roster-row .roster-name { flex: 1; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roster-row .roster-role { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; }
+.roster-empty { font-size: 11px; color: var(--dim); padding: var(--sp-1) var(--sp-2); }
+.btn-mini {
+    background: transparent; border: 1px solid var(--border); color: var(--text);
+    font: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: var(--r-md); cursor: pointer;
+    transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.btn-mini:hover { background: var(--surface); border-color: var(--dim); }
+.btn-mini.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, transparent); }
+.btn-mini.danger:hover { background: color-mix(in srgb, var(--danger) 15%, transparent); border-color: var(--danger); }
+.btn-mini.primary { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.btn-mini.primary:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); border-color: var(--accent); }
 .panel-close {
     display: inline-flex; align-items: center; justify-content: center;
     width: 28px; height: 28px; padding: 0;
@@ -356,18 +427,18 @@ html, body { overflow: hidden; }
 
 /* ---- Focus sub-layout ---- */
 /* Focus mode: stage becomes a 2-column grid — focused tile fills the main
-   area, rail holds everything else vertically. The rail lives inside #stage,
-   so #stage's grid arranges the focused tile (col 1) and rail (col 2). */
+   area, strip holds everything else vertically. The strip lives inside #stage,
+   so #stage's grid arranges the focused tile (col 1) and strip (col 2). */
 body.has-focus #stage {
     display: grid;
-    grid-template-columns: 220px 1fr;
+    grid-template-columns: var(--strip-w) 1fr;
     grid-template-rows: 1fr;
     gap: 8px;
     align-content: stretch;
     justify-content: stretch;
     transition: grid-template-columns 0.25s ease, gap 0.25s ease;
 }
-body.has-focus #stage-rail {
+body.has-focus #stage-strip {
     grid-column: 1; grid-row: 1;
     display: flex;
     padding: 8px;
@@ -388,7 +459,7 @@ body.has-focus #stage > .tile[data-focused] {
 /* The only pinnable tiles are the stream + screenshare. Constrain them to
    the content aspect ratio (real stream ratio via --focus-aspect, else
    16:9) and centre them so the room grey shows around them instead of
-   black object-fit bars — the tile "floats" like the rail card. */
+   black object-fit bars — the tile "floats" like the strip card. */
 body.has-focus #stage > #tile-stream[data-focused],
 body.has-focus #stage > #tile-share[data-focused] {
     aspect-ratio: var(--focus-aspect, 16 / 9);
@@ -414,12 +485,12 @@ body.has-focus #stage > #tile-share[data-focused] .tile-inner > video,
 body.has-focus #stage > #tile-stream[data-focused] #player video {
     background: transparent;
 }
-body.has-focus #stage-rail .tile {
+body.has-focus #stage-strip .tile {
     width: 100%; flex: 0 0 auto;
 }
 body.has-focus #stage-empty { display: none; }
 
-/* Conf-toggle (rail show/hide) and pointer overlay are only meaningful in
+/* Conf-toggle (strip show/hide) and pointer overlay are only meaningful in
    focus mode (they target the focused tile). */
 body:not(.has-focus) #conf-toggle,
 body:not(.has-focus) #pointer-btn { display: none !important; }
@@ -428,15 +499,15 @@ body:not(.has-focus) #pointer-btn { display: none !important; }
 #focus-btn .fb-icon-focus, #focus-btn .fb-icon-grid { display: none; }
 body:not(.has-focus) #focus-btn .fb-icon-focus { display: block; }
 body.has-focus #focus-btn .fb-icon-grid { display: block; }
-/* Optional: user can hide the rail entirely while in focus mode. */
-/* Hide rail by collapsing its grid column to 0 — keeps display:flex so the
-   transition plays. The rail itself fades + un-pads to disguise the
+/* Optional: user can hide the strip entirely while in focus mode. */
+/* Hide strip by collapsing its grid column to 0 — keeps display:flex so the
+   transition plays. The strip itself fades + un-pads to disguise the
    width-clip. */
-body.has-focus.rail-hidden #stage {
+body.has-focus.strip-hidden #stage {
     grid-template-columns: 0 1fr;
     gap: 0;
 }
-body.has-focus.rail-hidden #stage-rail {
+body.has-focus.strip-hidden #stage-strip {
     padding: 0;
     opacity: 0;
     border-color: transparent;
@@ -657,10 +728,10 @@ body.has-focus.rail-hidden #stage-rail {
     .tile .tile-actions { display: flex; }
     /* ...but the focused tile is already pinned, so its Pin button is
        redundant and distracting on touch. Unpin via the toolbar focus
-       button. Rail tiles keep their pin button so another can be chosen. */
+       button. Strip tiles keep their pin button so another can be chosen. */
     body.has-focus #stage > .tile[data-focused] .tile-pin-btn { display: none; }
 
-    /* Focus mode on mobile: rail on top as a horizontal carousel, focused
+    /* Focus mode on mobile: strip on top as a horizontal carousel, focused
        tile underneath. */
     body.has-focus #stage {
         grid-template-columns: 1fr;
@@ -669,20 +740,20 @@ body.has-focus.rail-hidden #stage-rail {
     body.has-focus #stage > .tile[data-focused] {
         grid-column: 1; grid-row: 2;
     }
-    body.has-focus #stage-rail {
+    body.has-focus #stage-strip {
         grid-column: 1; grid-row: 1;
         flex-direction: row;
         height: 104px;
         overflow-x: auto; overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
     }
-    /* Override desktop rail-hidden (which collapses a column) — on mobile
-       the rail occupies a row, so collapse the row instead. */
-    body.has-focus.rail-hidden #stage {
+    /* Override desktop strip-hidden (which collapses a column) — on mobile
+       the strip occupies a row, so collapse the row instead. */
+    body.has-focus.strip-hidden #stage {
         grid-template-columns: 1fr;
         grid-template-rows: 0 1fr;
     }
-    body.has-focus #stage-rail .tile {
+    body.has-focus #stage-strip .tile {
         flex: 0 0 auto;
         width: auto; height: 100%;
         aspect-ratio: 16 / 9;
@@ -836,6 +907,36 @@ body.has-focus.rail-hidden #stage-rail {
     </div>
 </div>
 
+<!-- Roster / participant management modal -->
+<div id="roster-overlay" class="hidden">
+    <div class="roster-box">
+        <div class="roster-box-header">
+            <div class="roster-box-title">Participants</div>
+            <button class="panel-close" id="roster-close" title="Close">
+                <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div id="roster-body" class="roster-box-body">
+            <div class="roster-section">
+                <div class="roster-section-header"><span>In room</span><span class="roster-count" id="roster-inroom-count">0</span></div>
+                <div id="roster-inroom" class="roster-list"></div>
+            </div>
+            <div class="roster-section host-only">
+                <div class="roster-section-header">
+                    <span>Waiting</span>
+                    <span class="roster-count" id="roster-waiting-count">0</span>
+                    <button class="btn-mini" id="roster-admit-all" style="display:none">Admit all</button>
+                </div>
+                <div id="roster-waiting" class="roster-list"></div>
+            </div>
+            <div class="roster-section host-only">
+                <div class="roster-section-header"><span>Kicked</span><span class="roster-count" id="roster-kicked-count">0</span></div>
+                <div id="roster-kicked" class="roster-list"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Main app -->
 <div id="app">
 
@@ -854,6 +955,7 @@ body.has-focus.rail-hidden #stage-rail {
             <span id="participant-count" title="Participants">
                 <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 <span id="participant-num">0</span>
+                <span class="notif-dot" id="roster-dot"></span>
             </span>
             <span id="live-badge"><svg viewBox="0 0 8 8" width="8" height="8" style="fill:var(--green);stroke:none"><circle cx="4" cy="4" r="4"/></svg> Live</span>
             <button id="leave-btn" title="Leave session" style="background:none;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:3px 10px;font:inherit;font-size:11px;cursor:pointer;margin-left:8px;">Leave</button>
@@ -865,7 +967,7 @@ body.has-focus.rail-hidden #stage-rail {
 
         <!-- Unified stage: every video source (OvenPlayer broadcast,
              screenshare, participant cameras) is a tile in the same grid.
-             #stage-rail holds non-focused tiles when focus sub-layout is
+             #stage-strip holds non-focused tiles when focus sub-layout is
              active; in grid view it is empty and hidden. -->
         <div id="stage">
             <div class="tile hidden" id="tile-stream">
@@ -908,7 +1010,7 @@ body.has-focus.rail-hidden #stage-rail {
                 <div class="tile-name">You</div>
             </div>
             <div id="stage-empty">Waiting for participants…</div>
-            <div id="stage-rail"></div>
+            <div id="stage-strip"></div>
         </div>
 
         <!-- Chat panel (right) -->
@@ -972,12 +1074,12 @@ body.has-focus.rail-hidden #stage-rail {
                 <svg viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6" stroke-linecap="round"/></svg>
             </button>
             <button class="tb-btn" id="focus-btn" title="Toggle focus view">
-                <!-- Shown in grid view (click to enter focus): rail-and-main icon. -->
+                <!-- Shown in grid view (click to enter focus): strip-and-main icon. -->
                 <svg class="fb-icon-focus" viewBox="0 0 24 24"><rect x="3" y="4" width="3" height="5" rx="0.5"/><rect x="3" y="10.5" width="3" height="5" rx="0.5"/><rect x="3" y="17" width="3" height="3" rx="0.5"/><rect x="8" y="4" width="13" height="16" rx="1"/></svg>
                 <!-- Shown in focus view (click to return to grid): 2x2 grid icon. -->
                 <svg class="fb-icon-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
             </button>
-            <button class="tb-btn" id="conf-toggle" title="Show/hide rail">
+            <button class="tb-btn" id="conf-toggle" title="Show/hide strip">
                 <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </button>
             <button class="tb-btn" id="chat-toggle" title="Chat">

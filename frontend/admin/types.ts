@@ -15,6 +15,7 @@ export interface Room {
   waiting_room: boolean | number;
   expires_at: string | null;
   password_hash: string | null;
+  presenter_key: string;
   stream_key_id: string | null;
   stream_key_name: string | null;
 }

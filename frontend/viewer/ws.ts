@@ -4,6 +4,7 @@
 import { addFileToSection, appendChatHistory, appendChatMessage, appendFileMessage, loadSessionFiles, setChatEnabled } from './chat.js';
 import { disconnectLiveKit, setFocus, syncConferenceTiles } from './conference.js';
 import { destroyPlayer, reloadPlayer } from './player.js';
+import { applyModerationUpdate } from './roster.js';
 import { clearAllPointers, hidePointer, pruneCursorsToRoster, renderPointer } from './pointer.js';
 import {
   clearKicked,
@@ -91,6 +92,25 @@ function handleMessage(msg: WsMessage): void {
       wsReconnect = false;
       onKicked();
       startKickedPoller();
+      return;
+    case 'moderation:update':
+      applyModerationUpdate({
+        waiting: msg.waiting,
+        kicked: msg.kicked,
+        newWaiting: msg.newWaiting,
+      });
+      return;
+    case 'host:revoked':
+      // The admin rotated the room's host link. Our session token has been
+      // invalidated server-side; drop the saved session and reload. The URL
+      // still carries the (now stale) presenter_key, which will downgrade
+      // us to viewer on rejoin.
+      clearAllPointers();
+      void disconnectLiveKit();
+      destroyPlayer();
+      clearSession();
+      wsReconnect = false;
+      location.reload();
       return;
     case 'room:live':
       onRoomLive();

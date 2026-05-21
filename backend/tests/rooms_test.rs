@@ -434,3 +434,129 @@ async fn kicked_list_and_unkick() {
     let body3: Vec<Value> = res3.json();
     assert!(body3.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Rotate presenter key
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn rotate_presenter_key_requires_admin() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+    let room_id = common::seed_room(&state, "Rotate Room", "rotate-room-abc123");
+
+    let res = server
+        .post(&format!("/api/rooms/{}/rotate-presenter-key", room_id))
+        .await;
+    assert_eq!(res.status_code(), 401);
+}
+
+#[tokio::test]
+async fn rotate_presenter_key_changes_key_and_invalidates_old_link() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+    let token = common::admin_token(&state);
+
+    let room_id = common::seed_room(&state, "Rotate Invalidate", "rotate-inv-abc123");
+    let old_key = common::get_room_presenter_key(&state, &room_id);
+
+    // Confirm old key works first.
+    let res_pre = server
+        .post("/api/public/rooms/rotate-inv-abc123/join")
+        .json(&json!({
+            "name": "Pre Rotate",
+            "role": "presenter",
+            "presenter_key": old_key,
+        }))
+        .await;
+    assert_eq!(res_pre.status_code(), 200);
+    assert_eq!(res_pre.json::<Value>()["role"], "presenter");
+
+    // Rotate.
+    let (h, v) = auth_header(&token);
+    let res = server
+        .post(&format!("/api/rooms/{}/rotate-presenter-key", room_id))
+        .add_header(h, v)
+        .await;
+    assert_eq!(res.status_code(), 200);
+    let body: Value = res.json();
+    let new_key = body["presenter_key"].as_str().unwrap().to_string();
+    assert_ne!(new_key, old_key);
+    assert_eq!(new_key.len(), 32);
+
+    // Old key now downgrades to viewer.
+    let res_old = server
+        .post("/api/public/rooms/rotate-inv-abc123/join")
+        .json(&json!({
+            "name": "Stale Link",
+            "role": "presenter",
+            "presenter_key": old_key,
+        }))
+        .await;
+    assert_eq!(res_old.status_code(), 200);
+    assert_eq!(res_old.json::<Value>()["role"], "viewer");
+
+    // New key grants presenter.
+    let res_new = server
+        .post("/api/public/rooms/rotate-inv-abc123/join")
+        .json(&json!({
+            "name": "Fresh Link",
+            "role": "presenter",
+            "presenter_key": new_key,
+        }))
+        .await;
+    assert_eq!(res_new.status_code(), 200);
+    assert_eq!(res_new.json::<Value>()["role"], "presenter");
+}
+
+#[tokio::test]
+async fn rotate_presenter_key_returns_404_for_missing_room() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+    let token = common::admin_token(&state);
+    let (h, v) = auth_header(&token);
+
+    let res = server
+        .post("/api/rooms/no-such-room/rotate-presenter-key")
+        .add_header(h, v)
+        .await;
+    assert_eq!(res.status_code(), 404);
+}
+
+#[tokio::test]
+async fn rotate_presenter_key_deletes_existing_presenters() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+    let token = common::admin_token(&state);
+
+    let room_id = common::seed_room(&state, "Rotate Drop", "rotate-drop-abc123");
+    let (pres_id, _) =
+        common::seed_participant(&state, &room_id, "Old Host", "presenter", true, false);
+    let (viewer_id, _) =
+        common::seed_participant(&state, &room_id, "Old Viewer", "viewer", true, false);
+
+    let (h, v) = auth_header(&token);
+    let res = server
+        .post(&format!("/api/rooms/{}/rotate-presenter-key", room_id))
+        .add_header(h, v)
+        .await;
+    assert_eq!(res.status_code(), 200);
+
+    let conn = state.db.get().unwrap();
+    let pres_exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM participants WHERE id = ?1",
+            rusqlite::params![pres_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let viewer_exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM participants WHERE id = ?1",
+            rusqlite::params![viewer_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(pres_exists, 0, "presenter should be removed");
+    assert_eq!(viewer_exists, 1, "viewer should remain");
+}

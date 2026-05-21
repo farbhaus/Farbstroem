@@ -58,7 +58,9 @@
     --nav-h:     62px;
     --topbar-h:  48px;
     --toolbar-h: 56px;
-    --panel-w:   320px;
+    --panel-w:     320px;
+    --panel-w-max: 560px;
+    --strip-w:      220px;
 }
 
 html, body {

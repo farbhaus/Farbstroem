@@ -2,6 +2,7 @@
 
 import { applyBranding } from '../shared/branding.js';
 import { configureChat, initChat } from './chat.js';
+import { initRoster } from './roster.js';
 import {
   configureConference,
   initConference,
@@ -220,6 +221,7 @@ function init(): void {
   initPlayerControls();
   initPointer();
   initChat();
+  initRoster();
   initConference();
   initLandingForm();
   initJoinForm();

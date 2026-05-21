@@ -6,11 +6,20 @@ import type { SavedSession } from './types.js';
 const path = location.pathname.replace(/^\//, '').split('/').filter(Boolean);
 export const slug: string = path[path.length - 1] || '';
 
-const params = new URLSearchParams(location.search);
-export const autoPassword = params.get('p') || '';
-export const autoName = params.get('n') || '';
-export const presenterKey = params.get('pk') || '';
-export const isPresenter = params.get('role') === 'presenter' && presenterKey.length > 0;
+const query = new URLSearchParams(location.search);
+// Host links carry `role` + `pk` in the URL fragment so the secret never
+// hits the server (no Referer leak, no access logs) and we can wipe it
+// from the address bar immediately after capture.
+const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+
+export const autoPassword = query.get('p') || '';
+export const autoName = query.get('n') || '';
+export const presenterKey = hash.get('pk') || '';
+export const isPresenter = hash.get('role') === 'presenter' && presenterKey.length > 0;
+
+if (location.hash) {
+  history.replaceState(null, '', location.pathname + location.search);
+}
 
 // Mutable session identity, populated on join() or session resume.
 let participantId: string | null = null;

@@ -13,7 +13,7 @@ use std::sync::Arc;
 use tokio_stream::StreamExt;
 
 use crate::error::AppError;
-use crate::events::KickedEvent;
+use crate::events::{KickedEvent, ModerationChangedEvent};
 use crate::livekit::LiveKitClient;
 use crate::routes::rate_limit;
 use crate::state::AppState;
@@ -160,20 +160,32 @@ async fn join_room(
         }
     }
 
-    // 401 if password required but wrong
-    if let Some(ref hash) = password_hash {
-        if !hash.is_empty() {
-            let provided = body.password.clone().unwrap_or_default();
-            if provided.is_empty() {
-                return Err(AppError::Unauthorized("Password required".into()));
-            }
-            let hash_clone = hash.clone();
-            let valid = tokio::task::spawn_blocking(move || bcrypt::verify(provided, &hash_clone))
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()))?
-                .map_err(|_| AppError::Unauthorized("Wrong password".into()))?;
-            if !valid {
-                return Err(AppError::Unauthorized("Wrong password".into()));
+    // A valid host link (correct presenter_key) bypasses the password gate
+    // so the room password can be rotated for clients without invalidating
+    // the host's bookmark.
+    let is_valid_presenter = body.role.as_deref() == Some("presenter")
+        && match (&presenter_key, &body.presenter_key) {
+            (Some(stored), Some(provided)) => stored == provided,
+            _ => false,
+        };
+
+    // 401 if password required but wrong (skipped for valid host links).
+    if !is_valid_presenter {
+        if let Some(ref hash) = password_hash {
+            if !hash.is_empty() {
+                let provided = body.password.clone().unwrap_or_default();
+                if provided.is_empty() {
+                    return Err(AppError::Unauthorized("Password required".into()));
+                }
+                let hash_clone = hash.clone();
+                let valid =
+                    tokio::task::spawn_blocking(move || bcrypt::verify(provided, &hash_clone))
+                        .await
+                        .map_err(|e| AppError::Internal(e.to_string()))?
+                        .map_err(|_| AppError::Unauthorized("Wrong password".into()))?;
+                if !valid {
+                    return Err(AppError::Unauthorized("Wrong password".into()));
+                }
             }
         }
     }
@@ -243,6 +255,14 @@ async fn join_room(
     })
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
+
+    // New waiting joiner → tell connected presenters via WS so they can
+    // admit without polling. (Auto-admit also fires so admin-page state
+    // stays consistent.)
+    let _ = state
+        .events
+        .moderation_changed
+        .send(ModerationChangedEvent { slug: slug.clone() });
 
     Ok(Json(json!({
         "participant_id": participant_id,
@@ -558,6 +578,10 @@ async fn kick_participant(
         slug: slug.clone(),
         participant_id: target_id.clone(),
     });
+    let _ = state
+        .events
+        .moderation_changed
+        .send(ModerationChangedEvent { slug: slug.clone() });
 
     // Remove from LiveKit so the victim's A/V actually stops. DB flag + WS
     // force-close already happened; this is the call that matters for the
@@ -654,6 +678,204 @@ async fn mute_participant(
         action = "mute",
         "participant track muted",
     );
+
+    Ok(Json(json!({ "ok": true })))
+}
+
+// ---------------------------------------------------------------------------
+// Presenter-gated moderation endpoints — mirror the admin admit/kick/unkick
+// surface so a host link holder can run the session without admin access.
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct PresenterAuthQuery {
+    #[serde(rename = "participantId")]
+    participant_id: Option<String>,
+    token: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PresenterAuthBody {
+    #[serde(rename = "participantId")]
+    participant_id: Option<String>,
+    token: Option<String>,
+}
+
+/// Verify (participantId, token, slug) belongs to a presenter and return the
+/// underlying room_id for use in subsequent queries. Used by every endpoint
+/// in this block.
+async fn require_presenter(
+    state: &Arc<AppState>,
+    slug: &str,
+    participant_id: Option<String>,
+    token: Option<String>,
+) -> Result<String, AppError> {
+    let participant_id =
+        participant_id.ok_or_else(|| AppError::BadRequest("participantId required".into()))?;
+    let token = token.ok_or_else(|| AppError::Unauthorized("Token required".into()))?;
+    let slug = slug.to_string();
+
+    let conn = state.db.get()?;
+    let (role, room_id): (String, String) = tokio::task::spawn_blocking(move || {
+        conn.query_row(
+            "SELECT p.role, p.room_id FROM participants p \
+             JOIN rooms r ON r.id = p.room_id \
+             WHERE p.id = ?1 AND p.token = ?2 AND r.slug = ?3",
+            rusqlite::params![participant_id, token, slug],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => {
+                AppError::NotFound("Participant not found".into())
+            }
+            _ => AppError::Internal(e.to_string()),
+        })
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))??;
+
+    if role != "presenter" {
+        return Err(AppError::Forbidden("Presenter role required".into()));
+    }
+    Ok(room_id)
+}
+
+async fn list_participants_by_state(
+    state: &Arc<AppState>,
+    room_id: String,
+    waiting: bool,
+) -> Result<Vec<Value>, AppError> {
+    let sql = if waiting {
+        "SELECT id, name, role, joined_at FROM participants \
+         WHERE room_id = ?1 AND is_admitted = 0 AND is_kicked = 0 \
+         ORDER BY joined_at ASC"
+    } else {
+        "SELECT id, name, role, joined_at FROM participants \
+         WHERE room_id = ?1 AND is_kicked = 1 \
+         ORDER BY joined_at ASC"
+    };
+    let conn = state.db.get()?;
+    let rows = tokio::task::spawn_blocking(move || {
+        let mut stmt = conn.prepare(sql)?;
+        let cols = &["id", "name", "role", "joined_at"];
+        let rows = stmt
+            .query_map(rusqlite::params![room_id], |row| row_to_json(row, cols))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok::<_, rusqlite::Error>(rows)
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))??;
+    Ok(rows)
+}
+
+// GET /:slug/conference/waiting
+async fn conf_get_waiting(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+    Query(q): Query<PresenterAuthQuery>,
+) -> Result<Json<Vec<Value>>, AppError> {
+    let room_id = require_presenter(&state, &slug, q.participant_id, q.token).await?;
+    let rows = list_participants_by_state(&state, room_id, true).await?;
+    Ok(Json(rows))
+}
+
+// GET /:slug/conference/kicked
+async fn conf_get_kicked(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+    Query(q): Query<PresenterAuthQuery>,
+) -> Result<Json<Vec<Value>>, AppError> {
+    let room_id = require_presenter(&state, &slug, q.participant_id, q.token).await?;
+    let rows = list_participants_by_state(&state, room_id, false).await?;
+    Ok(Json(rows))
+}
+
+// POST /:slug/conference/admit/:targetId
+async fn conf_admit(
+    State(state): State<Arc<AppState>>,
+    Path((slug, target_id)): Path<(String, String)>,
+    Json(body): Json<PresenterAuthBody>,
+) -> Result<Json<Value>, AppError> {
+    let room_id = require_presenter(&state, &slug, body.participant_id, body.token).await?;
+    let conn = state.db.get()?;
+    let rid = room_id.clone();
+    let tid = target_id.clone();
+    tokio::task::spawn_blocking(move || {
+        let changes = conn.execute(
+            "UPDATE participants SET is_admitted = 1 WHERE id = ?1 AND room_id = ?2",
+            rusqlite::params![tid, rid],
+        )?;
+        if changes == 0 {
+            return Err(AppError::NotFound("Participant not found".into()));
+        }
+        Ok::<_, AppError>(())
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))??;
+
+    let _ = state
+        .events
+        .moderation_changed
+        .send(ModerationChangedEvent { slug: slug.clone() });
+
+    Ok(Json(json!({ "ok": true })))
+}
+
+// POST /:slug/conference/admit-all
+async fn conf_admit_all(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+    Json(body): Json<PresenterAuthBody>,
+) -> Result<Json<Value>, AppError> {
+    let room_id = require_presenter(&state, &slug, body.participant_id, body.token).await?;
+    let conn = state.db.get()?;
+    let rid = room_id.clone();
+    let count: usize = tokio::task::spawn_blocking(move || {
+        conn.execute(
+            "UPDATE participants SET is_admitted = 1 \
+             WHERE room_id = ?1 AND is_admitted = 0 AND is_kicked = 0",
+            rusqlite::params![rid],
+        )
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?
+    .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let _ = state
+        .events
+        .moderation_changed
+        .send(ModerationChangedEvent { slug: slug.clone() });
+
+    Ok(Json(json!({ "ok": true, "count": count })))
+}
+
+// POST /:slug/conference/unkick/:targetId
+async fn conf_unkick(
+    State(state): State<Arc<AppState>>,
+    Path((slug, target_id)): Path<(String, String)>,
+    Json(body): Json<PresenterAuthBody>,
+) -> Result<Json<Value>, AppError> {
+    let room_id = require_presenter(&state, &slug, body.participant_id, body.token).await?;
+    let conn = state.db.get()?;
+    let rid = room_id.clone();
+    let tid = target_id.clone();
+    tokio::task::spawn_blocking(move || {
+        let changes = conn.execute(
+            "UPDATE participants SET is_kicked = 0 WHERE id = ?1 AND room_id = ?2",
+            rusqlite::params![tid, rid],
+        )?;
+        if changes == 0 {
+            return Err(AppError::NotFound("Participant not found".into()));
+        }
+        Ok::<_, AppError>(())
+    })
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))??;
+
+    let _ = state
+        .events
+        .moderation_changed
+        .send(ModerationChangedEvent { slug: slug.clone() });
 
     Ok(Json(json!({ "ok": true })))
 }
@@ -765,4 +987,9 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/{slug}/livekit-token", get(livekit_token))
         .route("/{slug}/conference/kick", post(kick_participant))
         .route("/{slug}/conference/mute", post(mute_participant))
+        .route("/{slug}/conference/waiting", get(conf_get_waiting))
+        .route("/{slug}/conference/kicked", get(conf_get_kicked))
+        .route("/{slug}/conference/admit/{targetId}", post(conf_admit))
+        .route("/{slug}/conference/admit-all", post(conf_admit_all))
+        .route("/{slug}/conference/unkick/{targetId}", post(conf_unkick))
 }

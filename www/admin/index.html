@@ -107,6 +107,9 @@ main { margin-top: var(--nav-h); padding: 32px; }
     display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
 }
 .url-row:last-child { margin-bottom: 0; }
+/* Multi-button host action row — buttons match the .url-input height so the
+   row aligns vertically with the Viewer link row above it. */
+.url-row .btn-sm { line-height: 1.2; height: 32px; padding: 0 14px; }
 .url-label {
     font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
     color: var(--dim); width: 90px; flex-shrink: 0;

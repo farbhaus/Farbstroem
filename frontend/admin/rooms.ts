@@ -89,6 +89,7 @@ function renderRooms(): void {
   container.innerHTML = rooms
     .map((r) => {
       const viewerUrl = `${VIEWER_BASE}/${r.slug}`;
+      const hostUrl = `${VIEWER_BASE}/${r.slug}#role=presenter&pk=${r.presenter_key}`;
       const expires = fmtDateTime(r.expires_at);
       const keyLabel = r.stream_key_name || '—';
 
@@ -128,9 +129,11 @@ function renderRooms(): void {
             <span class="url-label">Viewer</span>
             <input readonly class="url-input" value="${esc(viewerUrl)}">
           </div>
-          <div class="url-row">
-            <span class="url-label">Presenter</span>
-            <button class="btn btn-primary" data-action="enter-presenter" data-id="${esc(r.id)}">Enter Room</button>
+          <div class="url-row host-actions">
+            <span class="url-label">Host</span>
+            <button class="btn btn-sm btn-primary" data-action="enter-presenter" data-id="${esc(r.id)}">Enter Room</button>
+            <button class="btn btn-sm" data-action="copy" data-value="${esc(hostUrl)}" title="Copy a host link to share with a colorist">Share with host</button>
+            <button class="btn btn-sm" data-action="rotate-host-key" data-id="${esc(r.id)}" title="Invalidate the current host link">Rotate</button>
           </div>
         </div>
 
@@ -366,6 +369,29 @@ export async function admitAll(roomId: string): Promise<void> {
   loadRooms();
 }
 
+export async function rotateHostKey(id: string): Promise<void> {
+  if (
+    !(await confirmModal({
+      title: 'Rotate host link?',
+      message:
+        'A new host link will be generated. The current link will stop granting host privileges.',
+      confirmLabel: 'Rotate',
+      danger: true,
+    }))
+  )
+    return;
+  const res = await apiFetch(`/api/rooms/${id}/rotate-presenter-key`, { method: 'POST' });
+  if (res && res.ok) {
+    const updated = (await res.json()) as Room;
+    const idx = rooms.findIndex((x) => x.id === id);
+    if (idx >= 0) rooms[idx] = updated;
+    toast('Host link rotated');
+    renderRooms();
+  } else {
+    toast('Rotate failed');
+  }
+}
+
 export async function unkickOne(roomId: string, participantId: string): Promise<void> {
   await apiFetch(`/api/rooms/${roomId}/unkick/${participantId}`, { method: 'POST' });
   toast('Participant unblocked');
@@ -407,6 +433,9 @@ export function handleRoomAction(action: string, target: HTMLElement): void {
       break;
     case 'enter-presenter':
       openEnterModal(id);
+      break;
+    case 'rotate-host-key':
+      void rotateHostKey(id);
       break;
     case 'admit-all':
       void admitAll(id);
