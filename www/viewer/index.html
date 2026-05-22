@@ -360,6 +360,22 @@ html, body { overflow: hidden; }
     display: flex; align-items: center; justify-content: space-between;
 }
 .panel-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+.panel-tabs { display: flex; gap: var(--sp-2); }
+.panel-tab {
+    position: relative;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--dim); background: none; border: none; cursor: pointer;
+    padding: 4px 2px; border-bottom: 2px solid transparent;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.panel-tab:hover { color: var(--text); }
+.panel-tab.is-active { color: var(--text); border-bottom-color: var(--accent); }
+.panel-tab:focus-visible { outline: none; box-shadow: var(--ring-accent); border-radius: var(--r-sm); }
+.panel-tab.has-notification::after {
+    content: ''; position: absolute; top: 0; right: -2px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+}
 
 /* ---- Roster modal (anchored via clicking the top-bar participant count) ---- */
 #participant-count {
@@ -590,7 +606,9 @@ body.has-focus.strip-hidden #stage-strip {
 }
 
 /* ---- Chat ---- */
-#chat-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+/* Chat + Files share the panel body as swappable tab panes. */
+#chat-body, #files-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#chat-body[hidden], #files-pane[hidden] { display: none; }
 
 #chat-messages { flex: 1; overflow-y: auto; padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-3); }
 .chat-msg { display: flex; flex-direction: column; gap: 2px; padding-left: 0; border-left: 3px solid transparent; padding: 2px 0 2px var(--sp-2); margin-left: calc(var(--sp-2) * -1); transition: border-color var(--dur-fast) var(--ease-out); }
@@ -670,17 +688,14 @@ body.has-focus.strip-hidden #stage-strip {
 .chat-draft-remove:hover { background: var(--surface); color: var(--text); }
 .chat-draft-remove svg { width: 14px; height: 14px; }
 
-/* ---- Files section ---- */
-#files-section { flex-shrink: 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; max-height: 180px; }
-#files-header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--surface2); flex-shrink: 0; }
-.files-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+/* ---- Files tab ---- */
 .files-count-badge {
     font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
     background: var(--surface); color: var(--dim);
     border: 1px solid var(--border); border-radius: 999px;
     padding: 1px 8px; line-height: 1.6;
 }
-#files-list { overflow-y: auto; display: flex; flex-direction: column; padding: var(--sp-1) var(--sp-2); gap: 2px; }
+#files-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: var(--sp-1) var(--sp-2); gap: 2px; }
 .file-row {
     display: flex; align-items: center; gap: var(--sp-2);
     padding: 6px 10px; border-radius: var(--r-md);
@@ -839,9 +854,6 @@ body.has-focus.strip-hidden #stage-strip {
         aspect-ratio: 16 / 9;
     }
 
-    /* Files section — cap to ~2 rows so messages get most of the panel */
-    #files-section { max-height: 96px; }
-
     /* Join / waiting boxes fit small screens */
     .join-box, .waiting-box, #landing-screen .panel-box { width: calc(100vw - 32px); padding: 32px 24px; }
 }
@@ -861,9 +873,6 @@ body.has-focus.strip-hidden #stage-strip {
     }
 
     #right-panel.open { width: 280px; }
-
-    /* Files section — tighter cap in landscape since total height is ~440px */
-    #files-section { max-height: 72px; }
 }
 </style>
 </head>
@@ -1097,22 +1106,16 @@ body.has-focus.strip-hidden #stage-strip {
         <!-- Chat panel (right) -->
         <div id="right-panel" class="side-panel">
             <div class="panel-header">
-                <div class="panel-label">Chat</div>
+                <div class="panel-tabs" role="tablist">
+                    <button class="panel-tab is-active" id="tab-chat" data-tab="chat" role="tab">Chat</button>
+                    <button class="panel-tab" id="tab-files" data-tab="files" role="tab">Files <span class="files-count-badge" id="files-count">0</span></button>
+                </div>
                 <button class="panel-close" id="chat-close" title="Close">
                     <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             </div>
-            <div id="chat-body">
+            <div id="chat-body" class="tab-pane" data-tab="chat">
                 <div id="chat-messages"></div>
-                <div id="files-section">
-                    <div id="files-header">
-                        <span class="files-label">Files</span>
-                        <span class="files-count-badge" id="files-count">0</span>
-                    </div>
-                    <div id="files-list">
-                        <div id="files-empty">No files shared yet.</div>
-                    </div>
-                </div>
                 <div id="upload-progress-row" style="display:none;align-items:center;gap:8px;padding:4px 6px;margin-bottom:4px;font-size:11px;color:var(--dim);">
                     <div id="upload-progress-name" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
                     <div id="upload-progress-pct" style="font-variant-numeric:tabular-nums;">0%</div>
@@ -1130,6 +1133,11 @@ body.has-focus.strip-hidden #stage-strip {
                         <svg viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
                     </button>
                     <input type="file" id="file-input" style="display:none">
+                </div>
+            </div>
+            <div id="files-pane" class="tab-pane" data-tab="files" hidden>
+                <div id="files-list">
+                    <div id="files-empty">No files shared yet.</div>
                 </div>
             </div>
         </div>

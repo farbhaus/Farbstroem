@@ -138,7 +138,7 @@ export function appendFileMessage(msg: FileMsg, notify = true): void {
   if (notify) notifyChat();
 }
 
-export function addFileToSection(f: SessionFile): void {
+export function addFileToSection(f: SessionFile, notify = true): void {
   const list = document.getElementById('files-list');
   if (!list) return;
   document.getElementById('files-empty')?.remove();
@@ -160,6 +160,14 @@ export function addFileToSection(f: SessionFile): void {
   list.appendChild(row);
   const count = document.getElementById('files-count');
   if (count) count.textContent = String(list.querySelectorAll('.file-row').length);
+  // Dot the Files tab when a file arrives while another tab is showing, so the
+  // (now hidden) list still signals new arrivals.
+  if (notify) {
+    const filesTab = document.getElementById('tab-files');
+    if (filesTab && !filesTab.classList.contains('is-active')) {
+      filesTab.classList.add('has-notification');
+    }
+  }
 }
 
 export function appendChatHistory(
@@ -170,14 +178,17 @@ export function appendChatHistory(
       appendFileMessage(m as FileMsg, false);
       {
         const mime = (m as FileMsg).mime;
-        addFileToSection({
-          id: m.id,
-          name: m.name,
-          size: m.size,
-          ...(mime ? { mime } : {}),
-          uploaderName: m.uploaderName,
-          role: m.role,
-        });
+        addFileToSection(
+          {
+            id: m.id,
+            name: m.name,
+            size: m.size,
+            ...(mime ? { mime } : {}),
+            uploaderName: m.uploaderName,
+            role: m.role,
+          },
+          false,
+        );
       }
     } else {
       const list = document.getElementById('chat-messages');
@@ -202,7 +213,7 @@ export async function loadSessionFiles(): Promise<void> {
     );
     if (!res.ok) return;
     const files: SessionFile[] = await res.json();
-    files.forEach(addFileToSection);
+    files.forEach((f) => addFileToSection(f, false));
   } catch {}
 }
 
