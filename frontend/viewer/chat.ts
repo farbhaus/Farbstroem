@@ -120,17 +120,19 @@ export function appendFileMessage(msg: FileMsg, notify = true): void {
   if (!list) return;
   const url = dlUrl(msg.id);
   const isPresenter = viewerStore.get().role === 'presenter';
-  const showBtn = isPresenter && canShow(msg.mime) ? showBtnHtml(msg.id, 'chat-file-show') : '';
-  const delBtn = isPresenter ? deleteBtnHtml(msg.id, 'chat-file-del') : '';
+  const showBtn = isPresenter && canShow(msg.mime) ? showBtnHtml(msg.id, 'file-row-show') : '';
+  const delBtn = isPresenter ? deleteBtnHtml(msg.id, 'file-row-del') : '';
   const d = document.createElement('div');
   d.className = 'chat-msg';
+  // The file element reuses the Files-tab `.file-row` look so a shared file
+  // reads identically in both tabs. (The draft chip keeps `.chat-file`.)
   d.innerHTML =
     `<div class="chat-meta"><span class="chat-who ${esc(msg.role)}">${esc(msg.uploaderName)}</span><span class="chat-time">${fmtTime(msg.ts)}</span></div>` +
-    `<div class="chat-file" data-file-id="${esc(msg.id)}" data-mime="${esc(msg.mime || '')}">` +
-    `<span class="chat-file-icon"><svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>` +
-    `<div class="chat-file-info"><div class="chat-file-name" title="${esc(msg.name)}">${esc(msg.name)}</div><div class="chat-file-size">${fmtBytes(msg.size)}</div></div>` +
+    `<div class="file-row" data-file-id="${esc(msg.id)}" data-mime="${esc(msg.mime || '')}">` +
+    `<div class="file-row-name" title="${esc(msg.name)}">${esc(msg.name)}</div>` +
+    `<span class="file-row-size">${fmtBytes(msg.size)}</span>` +
     showBtn +
-    `<a class="chat-file-dl" href="${url}" download="${esc(msg.name)}">Get</a>` +
+    `<a class="file-row-dl" href="${url}" download="${esc(msg.name)}">Get</a>` +
     delBtn +
     `</div>`;
   list.appendChild(d);
