@@ -227,7 +227,10 @@ function init(): void {
   configureConference({ send: wsSend });
   configurePlayer({
     onPlayingChange: () => {
-      setRoomStatus('live', true);
+      // Only the live broadcast playing means the room is live. A presenter
+      // file reaching 'playing' must NOT flip room status, or the offline
+      // overlay won't return when the file is later cleared.
+      if (getPlayerMode() === 'live') setRoomStatus('live', true);
       updateFocusAspect();
     },
     send: wsSend,

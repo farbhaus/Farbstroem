@@ -306,8 +306,9 @@ function showImageOverlay(url: string | null): void {
 // switching modes, swapping sources, and applying the transport snapshot.
 export function applyDisplayState(state: DisplayFileState | null): void {
   if (!state || !state.fileId) {
-    viewerStore.set({ displayFile: null });
-    // Clear the file/image and fall back to live (if any) or unmount.
+    // Clear the file/image and fall back to live (if any) or unmount FIRST,
+    // so `mode` is settled before the store write below fires the subscriber
+    // that re-evaluates the offline overlay (which keys off getPlayerMode()).
     showImageOverlay(null);
     if (mode === 'file' || mode === 'image') {
       destroyPlayerInstance();
@@ -315,6 +316,7 @@ export function applyDisplayState(state: DisplayFileState | null): void {
       currentFileId = null;
       initLivePlayer();
     }
+    viewerStore.set({ displayFile: null });
     updateStageVisibility();
     return;
   }
