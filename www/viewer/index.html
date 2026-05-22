@@ -733,25 +733,35 @@ body.has-focus.strip-hidden #stage-strip {
 
 /* Player controls group */
 #player-controls { align-items: center; }
-#volume-slider {
+#volume-slider, #seek-slider {
     -webkit-appearance: none; appearance: none;
-    width: 80px; height: 4px; border-radius: 2px;
+    height: 4px; border-radius: 2px;
     background: var(--border); outline: none; cursor: pointer;
     margin: 0 4px;
 }
-#volume-slider:disabled { opacity: 0.35; cursor: default; }
-#volume-slider::-webkit-slider-thumb {
+#volume-slider { width: 80px; }
+#volume-slider:disabled, #seek-slider:disabled { opacity: 0.35; cursor: default; }
+#volume-slider::-webkit-slider-thumb, #seek-slider::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
     width: 14px; height: 14px; border-radius: 50%;
     background: var(--text); cursor: pointer; border: none;
     margin-top: -5px;
 }
-#volume-slider::-moz-range-thumb {
+#volume-slider::-moz-range-thumb, #seek-slider::-moz-range-thumb {
     width: 14px; height: 14px; border-radius: 50%;
     background: var(--text); cursor: pointer; border: none;
 }
-#volume-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; }
-#volume-slider::-moz-range-track { height: 4px; border-radius: 2px; background: var(--border); }
+#volume-slider::-webkit-slider-runnable-track, #seek-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; }
+#volume-slider::-moz-range-track, #seek-slider::-moz-range-track { height: 4px; border-radius: 2px; background: var(--border); }
+
+/* Seek bar (file playback only) */
+#seek-group { display: flex; align-items: center; gap: 6px; }
+#seek-slider { width: 140px; }
+.seek-time {
+    font-family: var(--mono, ui-monospace, monospace);
+    font-size: 12px; color: var(--dim);
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+}
 
 /* ---- Responsive ---- */
 @media (max-width: 640px) {
@@ -772,6 +782,8 @@ body.has-focus.strip-hidden #stage-strip {
     #utility-controls { order: 11; }
     .tb-sep:has(+ #utility-controls) { order: 11; }
     #volume-slider { display: none; }
+    #seek-slider { width: 100px; }
+    .seek-time { display: none; }
 
     /* Chat panel overlays the stage on mobile, anchored right so it
        expands/collapses toward the right edge. Keeps desktop's rounded
@@ -1153,6 +1165,10 @@ body.has-focus.strip-hidden #stage-strip {
                 <svg id="icon-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 <svg id="icon-pause" viewBox="0 0 24 24" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
             </button>
+            <div id="seek-group" style="display:none">
+                <input type="range" id="seek-slider" min="0" max="0" step="0.1" value="0" disabled>
+                <span id="seek-time" class="seek-time">0:00 / 0:00</span>
+            </div>
             <button class="tb-btn muted" id="mute-btn" title="Unmute" disabled>
                 <svg id="icon-vol" viewBox="0 0 24 24" style="display:none"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
                 <svg id="icon-muted" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>

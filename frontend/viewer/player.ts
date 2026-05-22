@@ -26,6 +26,9 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null;
 // presenter transport event. Bumped while a programmatic call is in
 // flight; the OvenPlayer event handlers ignore events when > 0.
 let suppressTransport = 0;
+// True while the user is dragging the seek slider, so the `time` event
+// feed doesn't yank the thumb out from under them mid-drag.
+let isScrubbing = false;
 
 let onPlayingChange: () => void = () => {};
 let wsSend: (msg: WsClientMessage) => void = () => {};
@@ -83,6 +86,7 @@ function destroyPlayerInstance(): void {
 
 export function destroyPlayer(): void {
   destroyPlayerInstance();
+  showSeekBar(false);
   mode = null;
   currentFileId = null;
 }
@@ -153,6 +157,7 @@ function initLivePlayer(): void {
   currentFileId = null;
 
   enablePlayerControls(true);
+  showSeekBar(false);
   syncPlayerControls();
 
   // Event handlers — wired exactly as on dev to avoid behavioural drift.
@@ -196,6 +201,16 @@ function initFilePlayer(fileId: string): void {
   enablePlayerControls(true);
   syncPlayerControls();
   bindCommonEvents();
+
+  // Seek bar: visible for everyone in file mode, draggable only for the
+  // presenter (viewers stay synced via applyTransport, so their bar is
+  // read-only).
+  showSeekBar(true);
+  (document.getElementById('seek-slider') as HTMLInputElement).disabled = !isPresenter;
+  player.on('time', (e) => {
+    if (mode !== 'file') return;
+    updateSeekBar(e?.position ?? 0, e?.duration ?? 0);
+  });
 
   player.on('stateChanged', (e) => {
     if (mode !== 'file') return;
@@ -297,6 +312,7 @@ export function applyDisplayState(state: DisplayFileState | null): void {
     mode = 'image';
     currentFileId = state.fileId;
     enablePlayerControls(false);
+    showSeekBar(false);
     return;
   }
   if (kind === 'video') {
@@ -369,6 +385,43 @@ function enablePlayerControls(on: boolean): void {
   (document.getElementById('volume-slider') as HTMLInputElement).disabled = !on;
 }
 
+function fmtTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
+  const total = Math.floor(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// The seek bar only makes sense for a seekable file. Live broadcast isn't
+// seekable and image mode has no player, so it's hidden in those modes.
+function showSeekBar(on: boolean): void {
+  const group = document.getElementById('seek-group');
+  if (group) group.style.display = on ? 'flex' : 'none';
+  if (!on) {
+    isScrubbing = false;
+    const slider = document.getElementById('seek-slider') as HTMLInputElement | null;
+    if (slider) {
+      slider.value = '0';
+      slider.max = '0';
+    }
+    const time = document.getElementById('seek-time');
+    if (time) time.textContent = '0:00 / 0:00';
+  }
+}
+
+function updateSeekBar(position: number, duration: number): void {
+  const slider = document.getElementById('seek-slider') as HTMLInputElement | null;
+  const time = document.getElementById('seek-time');
+  if (Number.isFinite(duration) && duration > 0) {
+    if (slider) slider.max = String(duration);
+  }
+  if (!isScrubbing && slider && Number.isFinite(position)) {
+    slider.value = String(position);
+  }
+  if (time) time.textContent = `${fmtTime(position)} / ${fmtTime(duration)}`;
+}
+
 function syncPlayerControls(): void {
   if (!player) return;
   const playing = player.getState() === 'playing';
@@ -407,6 +460,23 @@ export function initPlayerControls(): void {
     player.setVolume(vol);
     syncPlayerControls();
   });
+  const seekSlider = document.getElementById('seek-slider') as HTMLInputElement | null;
+  if (seekSlider) {
+    // While dragging: hold the time-feed off the thumb and show the
+    // target time live. On release: commit the seek — for the presenter
+    // this fires OvenPlayer's `seek` event, which already broadcasts
+    // display:transport, so viewers follow.
+    seekSlider.addEventListener('input', () => {
+      isScrubbing = true;
+      const pos = parseFloat(seekSlider.value);
+      const time = document.getElementById('seek-time');
+      if (time) time.textContent = `${fmtTime(pos)} / ${fmtTime(parseFloat(seekSlider.max))}`;
+    });
+    seekSlider.addEventListener('change', () => {
+      isScrubbing = false;
+      if (player) player.seek(parseFloat(seekSlider.value));
+    });
+  }
   document.getElementById('resync-btn')?.addEventListener('click', () => {
     // For file mode, rebind to the same file (forces a fresh source).
     // For live mode, destroy + remount.

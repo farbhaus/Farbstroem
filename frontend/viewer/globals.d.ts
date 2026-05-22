@@ -9,7 +9,7 @@ declare const OvenPlayer: {
 interface OvenPlayerInstance {
   on(
     event: string,
-    handler: (e?: { newstate?: string; position?: number; offset?: number }) => void,
+    handler: (e?: { newstate?: string; position?: number; offset?: number; duration?: number }) => void,
   ): void;
   getState(): string;
   getMute(): boolean;
