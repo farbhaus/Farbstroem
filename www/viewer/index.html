@@ -128,6 +128,43 @@ html, body { overflow: hidden; }
 }
 .device-picker-row select:focus { border-color: var(--dim); }
 
+/* ---- "Show" button next to "Get" on shared files (presenter-only) ---- */
+.file-row-show {
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); font: inherit; font-weight: 700; letter-spacing: 0.04em;
+    flex-shrink: 0; cursor: pointer;
+    padding: 3px 10px; font-size: 10px; border-radius: var(--r-md);
+    transition: border-color var(--dur-fast) var(--ease-out),
+                background var(--dur-fast) var(--ease-out),
+                color var(--dur-fast) var(--ease-out);
+}
+.file-row-show:hover { border-color: var(--dim); background: var(--surface2); }
+.file-row-show.is-active {
+    color: var(--bg); background: var(--accent); border-color: var(--accent);
+}
+.file-row-show.is-active:hover {
+    background: var(--accent); border-color: var(--accent); opacity: 0.85;
+}
+
+/* Presenter-only Delete buttons next to Get on shared files. Icon-only
+   to keep the row compact; turns danger-red on hover. */
+.file-row-del {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid transparent;
+    color: var(--dim); cursor: pointer; flex-shrink: 0;
+    border-radius: var(--r-md);
+    padding: 4px;
+    transition: background var(--dur-fast) var(--ease-out),
+                border-color var(--dur-fast) var(--ease-out),
+                color var(--dur-fast) var(--ease-out);
+}
+.file-row-del svg { width: 14px; height: 14px; }
+.file-row-del:hover {
+    color: var(--danger);
+    background: var(--surface2);
+    border-color: var(--border);
+}
+
 /* ---- App layout ---- */
 #app { display: none; flex-direction: column; height: 100vh; height: 100dvh; }
 #app.visible { display: flex; }
@@ -217,14 +254,32 @@ html, body { overflow: hidden; }
 #tile-stream .tile-inner > video, #tile-share .tile-inner > video {
     object-fit: contain; background: #000;
 }
+/* When the presenter is showing a still image, #display-img overlays the
+   OvenPlayer mount inside #tile-stream. Same fit treatment so it lands
+   exactly where video would. */
+#display-img {
+    position: absolute; inset: 0; z-index: 6;
+    width: 100%; height: 100%;
+    object-fit: contain;
+    /* No background: the parent .tile already paints black, and giving
+       the <img> its own black background means a stray display:'' state
+       (no src) would render a full-tile black rectangle on top of the
+       live player. */
+}
 .conf-player-inner { width: 100%; height: 100%; }
 
 /* OvenPlayer mounts into #player which lives in #tile-stream. */
 #player { position: absolute; inset: 0; overflow: hidden; }
-#player .op-ui-container, #player .op-loading-container,
-#player .op-controls-container, #player .op-bottom-area,
-#player .op-watermark, #player .op-message-container,
-#player .op-notification-container { display: none !important; }
+/* We render our own toolbar, so suppress all OvenPlayer chrome. Player DOM:
+   .op-player > .op-core-ui-wrapper > { .op-media-element-container (video),
+   .op-ui (control bar, loading spinner, big centre play button, captions,
+   message boxes) }. Hiding .op-ui drops every overlay while keeping the
+   video. The explicit spinner/big-button hides guard against either being
+   injected outside .op-ui in a future CDN build. (Class names are pinned to
+   OvenPlayer "latest" and have drifted before.) */
+#player .op-ui,
+#player .op-spinner-container,
+#player .op-bigbutton-container { display: none !important; }
 #player .op-player { position: absolute !important; inset: 0 !important; }
 #player video { width: 100% !important; height: 100% !important; object-fit: contain !important; }
 
@@ -296,6 +351,22 @@ html, body { overflow: hidden; }
     display: flex; align-items: center; justify-content: space-between;
 }
 .panel-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+.panel-tabs { display: flex; gap: var(--sp-2); }
+.panel-tab {
+    position: relative;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--dim); background: none; border: none; cursor: pointer;
+    padding: 4px 2px; border-bottom: 2px solid transparent;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.panel-tab:hover { color: var(--text); }
+.panel-tab.is-active { color: var(--text); border-bottom-color: var(--accent); }
+.panel-tab:focus-visible { outline: none; box-shadow: var(--ring-accent); border-radius: var(--r-sm); }
+.panel-tab.has-notification::after {
+    content: ''; position: absolute; top: 0; right: -2px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+}
 
 /* ---- Roster modal (anchored via clicking the top-bar participant count) ---- */
 #participant-count {
@@ -482,7 +553,8 @@ body.has-focus #stage > #tile-share[data-focused].focus-fit-h {
 }
 body.has-focus #stage > #tile-stream[data-focused] .tile-inner > video,
 body.has-focus #stage > #tile-share[data-focused] .tile-inner > video,
-body.has-focus #stage > #tile-stream[data-focused] #player video {
+body.has-focus #stage > #tile-stream[data-focused] #player video,
+body.has-focus #stage > #tile-stream[data-focused] #display-img {
     background: transparent;
 }
 body.has-focus #stage-strip .tile {
@@ -525,7 +597,9 @@ body.has-focus.strip-hidden #stage-strip {
 }
 
 /* ---- Chat ---- */
-#chat-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+/* Chat + Files share the panel body as swappable tab panes. */
+#chat-body, #files-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#chat-body[hidden], #files-pane[hidden] { display: none; }
 
 #chat-messages { flex: 1; overflow-y: auto; padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-3); }
 .chat-msg { display: flex; flex-direction: column; gap: 2px; padding-left: 0; border-left: 3px solid transparent; padding: 2px 0 2px var(--sp-2); margin-left: calc(var(--sp-2) * -1); transition: border-color var(--dur-fast) var(--ease-out); }
@@ -566,7 +640,7 @@ body.has-focus.strip-hidden #stage-strip {
 #chat-send:disabled, #chat-attach:disabled { opacity: 0.4; cursor: default; }
 #chat-send svg, #chat-attach svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
 
-/* File message card */
+/* Draft-chip file card (posted files use the slim .file-row look). */
 .chat-file {
     display: flex; align-items: center; gap: var(--sp-2);
     padding: var(--sp-2) var(--sp-3);
@@ -581,15 +655,6 @@ body.has-focus.strip-hidden #stage-strip {
 .chat-file-info { flex: 1; min-width: 0; }
 .chat-file-name { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-file-size { font-size: 11px; color: var(--dim); }
-.chat-file-dl {
-    padding: 5px 12px; background: var(--surface); border: 1px solid var(--border);
-    color: var(--text); font: inherit; font-size: 11px; font-weight: 700;
-    text-decoration: none; letter-spacing: 0.04em; flex-shrink: 0;
-    border-radius: var(--r-btn);
-    transition: border-color var(--dur-fast) var(--ease-out),
-                background var(--dur-fast) var(--ease-out);
-}
-.chat-file-dl:hover { border-color: var(--dim); background: var(--surface2); }
 
 /* Draft chip — same shape as a posted file message, but with an X to remove
    instead of a download link, and tucked against the input row. */
@@ -605,17 +670,14 @@ body.has-focus.strip-hidden #stage-strip {
 .chat-draft-remove:hover { background: var(--surface); color: var(--text); }
 .chat-draft-remove svg { width: 14px; height: 14px; }
 
-/* ---- Files section ---- */
-#files-section { flex-shrink: 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; max-height: 180px; }
-#files-header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--surface2); flex-shrink: 0; }
-.files-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+/* ---- Files tab ---- */
 .files-count-badge {
     font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
     background: var(--surface); color: var(--dim);
     border: 1px solid var(--border); border-radius: 999px;
     padding: 1px 8px; line-height: 1.6;
 }
-#files-list { overflow-y: auto; display: flex; flex-direction: column; padding: var(--sp-1) var(--sp-2); gap: 2px; }
+#files-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: var(--sp-1) var(--sp-2); gap: 2px; }
 .file-row {
     display: flex; align-items: center; gap: var(--sp-2);
     padding: 6px 10px; border-radius: var(--r-md);
@@ -674,25 +736,38 @@ body.has-focus.strip-hidden #stage-strip {
 
 /* Player controls group */
 #player-controls { align-items: center; }
-#volume-slider {
+#volume-slider, #seek-slider {
     -webkit-appearance: none; appearance: none;
-    width: 80px; height: 4px; border-radius: 2px;
+    height: 4px; border-radius: 2px;
     background: var(--border); outline: none; cursor: pointer;
     margin: 0 4px;
 }
-#volume-slider:disabled { opacity: 0.35; cursor: default; }
-#volume-slider::-webkit-slider-thumb {
+#volume-slider { width: 80px; }
+#volume-slider:disabled, #seek-slider:disabled { opacity: 0.35; cursor: default; }
+#volume-slider::-webkit-slider-thumb, #seek-slider::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
     width: 14px; height: 14px; border-radius: 50%;
     background: var(--text); cursor: pointer; border: none;
     margin-top: -5px;
 }
-#volume-slider::-moz-range-thumb {
+#volume-slider::-moz-range-thumb, #seek-slider::-moz-range-thumb {
     width: 14px; height: 14px; border-radius: 50%;
     background: var(--text); cursor: pointer; border: none;
 }
-#volume-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; }
-#volume-slider::-moz-range-track { height: 4px; border-radius: 2px; background: var(--border); }
+#volume-slider::-webkit-slider-runnable-track, #seek-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; }
+#volume-slider::-moz-range-track, #seek-slider::-moz-range-track { height: 4px; border-radius: 2px; background: var(--border); }
+
+/* Seek bar (file playback only) */
+#seek-group { display: flex; align-items: center; gap: 6px; }
+/* Taller, transparent element = bigger click/touch target; the visible
+   4px track is drawn by the track pseudo-elements (centered by the UA). */
+#seek-slider { width: 140px; height: 20px; background: transparent; }
+#seek-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--border); }
+.seek-time {
+    font-family: var(--mono, ui-monospace, monospace);
+    font-size: 12px; color: var(--dim);
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+}
 
 /* ---- Responsive ---- */
 @media (max-width: 640px) {
@@ -713,6 +788,8 @@ body.has-focus.strip-hidden #stage-strip {
     #utility-controls { order: 11; }
     .tb-sep:has(+ #utility-controls) { order: 11; }
     #volume-slider { display: none; }
+    #seek-slider { width: 100px; }
+    .seek-time { display: none; }
 
     /* Chat panel overlays the stage on mobile, anchored right so it
        expands/collapses toward the right edge. Keeps desktop's rounded
@@ -759,9 +836,6 @@ body.has-focus.strip-hidden #stage-strip {
         aspect-ratio: 16 / 9;
     }
 
-    /* Files section — cap to ~2 rows so messages get most of the panel */
-    #files-section { max-height: 96px; }
-
     /* Join / waiting boxes fit small screens */
     .join-box, .waiting-box, #landing-screen .panel-box { width: calc(100vw - 32px); padding: 32px 24px; }
 }
@@ -781,9 +855,6 @@ body.has-focus.strip-hidden #stage-strip {
     }
 
     #right-panel.open { width: 280px; }
-
-    /* Files section — tighter cap in landscape since total height is ~440px */
-    #files-section { max-height: 72px; }
 }
 </style>
 </head>
@@ -973,6 +1044,7 @@ body.has-focus.strip-hidden #stage-strip {
             <div class="tile hidden" id="tile-stream">
                 <div class="tile-inner">
                     <div id="player"></div>
+                    <img id="display-img" alt="" style="display:none">
                 </div>
                 <div id="pointer-overlay"></div>
                 <div id="offline-screen">
@@ -984,7 +1056,7 @@ body.has-focus.strip-hidden #stage-strip {
                         <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76a2 2 0 0 0 .54 1.37l1.96 2.1H6.5l1.96-2.1A2 2 0 0 0 9 10.76z"/></svg>
                     </button>
                 </div>
-                <div class="tile-name">Stream</div>
+                <div class="tile-name" id="tile-stream-name">Stream</div>
             </div>
             <div class="tile hidden" id="tile-share">
                 <div class="tile-inner">
@@ -1016,22 +1088,16 @@ body.has-focus.strip-hidden #stage-strip {
         <!-- Chat panel (right) -->
         <div id="right-panel" class="side-panel">
             <div class="panel-header">
-                <div class="panel-label">Chat</div>
+                <div class="panel-tabs" role="tablist">
+                    <button class="panel-tab is-active" id="tab-chat" data-tab="chat" role="tab">Chat</button>
+                    <button class="panel-tab" id="tab-files" data-tab="files" role="tab">Files <span class="files-count-badge" id="files-count">0</span></button>
+                </div>
                 <button class="panel-close" id="chat-close" title="Close">
                     <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             </div>
-            <div id="chat-body">
+            <div id="chat-body" class="tab-pane" data-tab="chat">
                 <div id="chat-messages"></div>
-                <div id="files-section">
-                    <div id="files-header">
-                        <span class="files-label">Files</span>
-                        <span class="files-count-badge" id="files-count">0</span>
-                    </div>
-                    <div id="files-list">
-                        <div id="files-empty">No files shared yet.</div>
-                    </div>
-                </div>
                 <div id="upload-progress-row" style="display:none;align-items:center;gap:8px;padding:4px 6px;margin-bottom:4px;font-size:11px;color:var(--dim);">
                     <div id="upload-progress-name" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
                     <div id="upload-progress-pct" style="font-variant-numeric:tabular-nums;">0%</div>
@@ -1049,6 +1115,11 @@ body.has-focus.strip-hidden #stage-strip {
                         <svg viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
                     </button>
                     <input type="file" id="file-input" style="display:none">
+                </div>
+            </div>
+            <div id="files-pane" class="tab-pane" data-tab="files" hidden>
+                <div id="files-list">
+                    <div id="files-empty">No files shared yet.</div>
                 </div>
             </div>
         </div>
@@ -1093,6 +1164,10 @@ body.has-focus.strip-hidden #stage-strip {
                 <svg id="icon-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 <svg id="icon-pause" viewBox="0 0 24 24" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
             </button>
+            <div id="seek-group" style="display:none">
+                <input type="range" id="seek-slider" min="0" max="0" step="0.1" value="0" disabled>
+                <span id="seek-time" class="seek-time">0:00 / 0:00</span>
+            </div>
             <button class="tb-btn muted" id="mute-btn" title="Unmute" disabled>
                 <svg id="icon-vol" viewBox="0 0 24 24" style="display:none"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
                 <svg id="icon-muted" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>

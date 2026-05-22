@@ -177,6 +177,20 @@ export function toggleChat(): void {
   reflowDuringPanelTransition();
 }
 
+// Swap the chat panel between its Chat and Files tab panes. Pure DOM state —
+// no store field, since nothing outside the panel needs to read it.
+export function switchPanelTab(tab: 'chat' | 'files'): void {
+  document.querySelectorAll<HTMLElement>('.panel-tab').forEach((b) => {
+    b.classList.toggle('is-active', b.dataset['tab'] === tab);
+  });
+  document.querySelectorAll<HTMLElement>('.tab-pane').forEach((p) => {
+    p.hidden = p.dataset['tab'] !== tab;
+  });
+  if (tab === 'files') {
+    document.getElementById('tab-files')?.classList.remove('has-notification');
+  }
+}
+
 export function toggleConf(): void {
   // In the unified stage model, the "strip" is the focus-mode side strip.
   // The Participants toggle button now shows/hides that strip; when not in
@@ -244,6 +258,12 @@ export function initLayout(): void {
     if (viewerStore.get().chatOpen) toggleChat();
   });
   document.getElementById('conf-toggle')?.addEventListener('click', toggleConf);
+  document.querySelectorAll<HTMLElement>('.panel-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset['tab'];
+      if (tab === 'chat' || tab === 'files') switchPanelTab(tab);
+    });
+  });
 
   setupFullscreen();
 

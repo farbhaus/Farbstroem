@@ -1,9 +1,9 @@
 // WebSocket connection + typed message router. Owns reconnect backoff and
 // the kicked-poller. Other modules call `wsSend()` to push client messages.
 
-import { addFileToSection, appendChatHistory, appendChatMessage, appendFileMessage, loadSessionFiles, setChatEnabled } from './chat.js';
+import { addFileToSection, appendChatHistory, appendChatMessage, appendFileMessage, loadSessionFiles, removeFileEverywhere, setChatEnabled } from './chat.js';
 import { disconnectLiveKit, setFocus, syncConferenceTiles } from './conference.js';
-import { destroyPlayer, reloadPlayer } from './player.js';
+import { applyDisplayState, destroyPlayer, reloadPlayer } from './player.js';
 import { applyModerationUpdate } from './roster.js';
 import { clearAllPointers, hidePointer, pruneCursorsToRoster, renderPointer } from './pointer.js';
 import {
@@ -149,9 +149,13 @@ function handleMessage(msg: WsMessage): void {
         id: msg.id,
         name: msg.name,
         size: msg.size,
+        ...(msg.mime ? { mime: msg.mime } : {}),
         uploaderName: msg.uploaderName,
         role: msg.role,
       });
+      return;
+    case 'file:removed':
+      removeFileEverywhere(msg.id);
       return;
     case 'pointer:move':
       if (msg.participantId !== getParticipantId()) {
@@ -165,6 +169,21 @@ function handleMessage(msg: WsMessage): void {
       // Host has driven a pin (or unpin). Apply with override=false so
       // viewers can still click locally to override.
       setFocus(msg.tileId, { override: false });
+      return;
+    case 'display:state':
+      if (msg.fileId) {
+        applyDisplayState({
+          fileId: msg.fileId,
+          name: msg.name ?? '',
+          mime: msg.mime ?? '',
+          size: msg.size ?? 0,
+          playing: msg.playing ?? false,
+          position: msg.position ?? 0,
+          updatedAtMs: msg.updatedAtMs ?? Date.now(),
+        });
+      } else {
+        applyDisplayState(null);
+      }
       return;
   }
 }

@@ -8,4 +8,5 @@ pub mod livekit;
 pub mod routes;
 pub mod state;
 pub mod tasks;
+pub mod uploads;
 pub mod ws;

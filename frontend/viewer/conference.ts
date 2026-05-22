@@ -130,6 +130,18 @@ export function updateFocusAspect(): void {
     tile = document.getElementById('tile-share');
     video = document.getElementById('screenshare-video') as HTMLVideoElement | null;
   }
+  // When the stream tile is showing a still image, OvenPlayer is
+  // unmounted — read the image's natural aspect for --focus-aspect.
+  if (focusedTile === 'stream') {
+    const img = document.getElementById('display-img') as HTMLImageElement | null;
+    if (img && img.style.display !== 'none' && img.naturalWidth > 0) {
+      if (tile) {
+        tile.style.setProperty('--focus-aspect', `${img.naturalWidth} / ${img.naturalHeight}`);
+      }
+      requestAnimationFrame(sizeStage);
+      return;
+    }
+  }
   // Keep one `resize` listener on the current video so a mid-stream
   // resolution change re-fits the tile.
   if (focusAspectVid && focusAspectVid.el !== video) {
@@ -157,14 +169,16 @@ export function updateFocusAspect(): void {
 // preferred is an explicit hint (e.g. the share just started) — useful when
 // the call site knows the natural target.
 export function requestAutoFocus(preferred?: TileId): void {
-  const { focusOverride, streamKey, focusedTile } = viewerStore.get();
+  const { focusOverride, streamKey, focusedTile, displayFile } = viewerStore.get();
   if (focusOverride) return;
   let target: TileId | null;
   if (preferred && findTileEl(preferred)) {
     target = preferred;
   } else if (activeScreenShareTrack) {
     target = 'share';
-  } else if (streamKey) {
+  } else if (streamKey || displayFile) {
+    // 'stream' tile now hosts either the live broadcast or the
+    // presenter-displayed file.
     target = 'stream';
   } else {
     target = null;
