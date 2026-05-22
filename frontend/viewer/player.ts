@@ -29,6 +29,13 @@ let suppressTransport = 0;
 // True while the user is dragging the seek slider, so the `time` event
 // feed doesn't yank the thumb out from under them mid-drag.
 let isScrubbing = false;
+// Latest server display state for the current file, and a flag set on each
+// (re)mount. autoStart races ahead of the synchronous applyTransport in
+// applyDisplayFile, so we reconcile once the player actually reaches
+// 'playing' — otherwise a late joiner autoplays even when the room is
+// paused (the pause branch in applyTransport no-ops while not yet playing).
+let lastFileState: DisplayFileState | null = null;
+let fileSyncPending = false;
 
 let onPlayingChange: () => void = () => {};
 let wsSend: (msg: WsClientMessage) => void = () => {};
@@ -89,6 +96,8 @@ export function destroyPlayer(): void {
   showSeekBar(false);
   mode = null;
   currentFileId = null;
+  lastFileState = null;
+  fileSyncPending = false;
 }
 
 // Reload current source. For live mode that pings OvenPlayer's load();
@@ -212,9 +221,20 @@ function initFilePlayer(fileId: string): void {
     updateSeekBar(e?.position ?? 0, e?.duration ?? 0);
   });
 
+  // autoStart will race ahead and start playing; reconcile to the room's
+  // transport once playback has actually begun so a late joiner lands on
+  // the right play/pause + position instead of just autoplaying.
+  fileSyncPending = true;
+
   player.on('stateChanged', (e) => {
     if (mode !== 'file') return;
-    if (e?.newstate === 'playing') onPlayingChange();
+    if (e?.newstate === 'playing') {
+      onPlayingChange();
+      if (fileSyncPending && lastFileState) {
+        fileSyncPending = false;
+        applyTransport(lastFileState);
+      }
+    }
     if (e?.newstate === 'error') {
       // The file can't be decoded in this browser (ProRes / DNxHD MOV,
       // unsupported codec, etc.). Drop the source so the presenter knows.
@@ -324,6 +344,7 @@ export function applyDisplayState(state: DisplayFileState | null): void {
 }
 
 function applyDisplayFile(state: DisplayFileState): void {
+  lastFileState = state;
   // (Re)mount the file player only when the file actually changes.
   if (mode !== 'file' || currentFileId !== state.fileId) {
     initFilePlayer(state.fileId);

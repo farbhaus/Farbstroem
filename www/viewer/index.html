@@ -279,10 +279,16 @@ html, body { overflow: hidden; }
 
 /* OvenPlayer mounts into #player which lives in #tile-stream. */
 #player { position: absolute; inset: 0; overflow: hidden; }
-#player .op-ui-container, #player .op-loading-container,
-#player .op-controls-container, #player .op-bottom-area,
-#player .op-watermark, #player .op-message-container,
-#player .op-notification-container { display: none !important; }
+/* We render our own toolbar, so suppress all OvenPlayer chrome. Player DOM:
+   .op-player > .op-core-ui-wrapper > { .op-media-element-container (video),
+   .op-ui (control bar, loading spinner, big centre play button, captions,
+   message boxes) }. Hiding .op-ui drops every overlay while keeping the
+   video. The explicit spinner/big-button hides guard against either being
+   injected outside .op-ui in a future CDN build. (Class names are pinned to
+   OvenPlayer "latest" and have drifted before.) */
+#player .op-ui,
+#player .op-spinner-container,
+#player .op-bigbutton-container { display: none !important; }
 #player .op-player { position: absolute !important; inset: 0 !important; }
 #player video { width: 100% !important; height: 100% !important; object-fit: contain !important; }
 
@@ -756,7 +762,10 @@ body.has-focus.strip-hidden #stage-strip {
 
 /* Seek bar (file playback only) */
 #seek-group { display: flex; align-items: center; gap: 6px; }
-#seek-slider { width: 140px; }
+/* Taller, transparent element = bigger click/touch target; the visible
+   4px track is drawn by the track pseudo-elements (centered by the UA). */
+#seek-slider { width: 140px; height: 20px; background: transparent; }
+#seek-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--border); }
 .seek-time {
     font-family: var(--mono, ui-monospace, monospace);
     font-size: 12px; color: var(--dim);
