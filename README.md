@@ -92,10 +92,10 @@ One command on a **fresh VPS where only zStream runs**:
 sudo ./deploy.sh stream.yourdomain.com
 ```
 
-That's it. The script installs missing prerequisites (Docker + Compose, Node, openssl), generates `.env` with all secrets, opens the firewall, builds the frontend, brings the stack up, and prints the admin password once. The containerized Caddy provisions Let's Encrypt and serves both `stream.yourdomain.com` (app + `/live/`) and `lk.stream.yourdomain.com` (LiveKit) — no host web server to configure.
+That's it. The script installs missing prerequisites (Docker + Compose, Node, openssl), generates `.env` with all secrets, opens the firewall, builds the frontend, pulls the published backend image, brings the stack up, and prints the admin password once. The containerized Caddy provisions Let's Encrypt and serves `stream.yourdomain.com` — app, `/live/*` (OME), and LiveKit (proxied same-origin at `/livekit/*`) — no host web server to configure.
 
 **Before running:**
-- Point DNS at the VPS for **both** `stream.yourdomain.com` and `lk.stream.yourdomain.com` (needed for Let's Encrypt).
+- Point DNS at the VPS for `stream.yourdomain.com` (needed for Let's Encrypt).
 - Run as root / with `sudo` (installs packages, opens the firewall).
 - Prereq auto-install is apt-based; on other distros install Docker/Node/openssl first.
 
@@ -105,10 +105,8 @@ That's it. The script installs missing prerequisites (Docker + Compose, Node, op
 |---|---|
 | `--regenerate` | Rewrite `.env` from scratch (rotates secrets) |
 | `--yes` | Skip confirmation prompts (unattended) |
-| `--behind-host-caddy` | *Advanced.* Host Caddy fronts the stack; the script edits `/etc/caddy/Caddyfile` |
-| `--reverse-proxy` | *Advanced.* Stack serves HTTP on `:8880`; you point your existing nginx/etc. at it (prints the server blocks; touches nothing) |
 
-The script targets a clean box: if something already holds ports 80/443, it stops and points you at the advanced flags rather than failing cryptically.
+The script targets a clean box: if something already holds ports 80/443, it stops and points you at manual configuration (below) rather than failing cryptically.
 
 ### Manual / advanced configuration
 
@@ -121,24 +119,15 @@ Skip `deploy.sh` and configure `.env` by hand (`cp .env.example .env`). Required
 | `LIVEKIT_API_KEY` | — | any identifier (the LiveKit JWT `iss`) |
 | `PUBLIC_ORIGIN` | — | exact browser origin, e.g. `https://stream.yourdomain.com` (WebAuthn RP — no path) |
 
-The containerized Caddy ([caddy/Caddyfile](caddy/Caddyfile)) owns **all** routing (app, `/live/*` → OME, LiveKit). The mode only changes *who terminates TLS* — set these in `.env` (this is exactly what the corresponding `deploy.sh` flag writes):
+The containerized Caddy ([caddy/Caddyfile](caddy/Caddyfile)) owns **all** routing — app, `/live/*` → OME, and LiveKit (proxied same-origin at `/livekit/*`). For a standalone host where Caddy gets its own Let's Encrypt certs, set:
 
 ```bash
-# Standalone (default) — container gets its own Let's Encrypt certs
 SITE_ADDRESS=stream.yourdomain.com
-LK_SITE_ADDRESS=lk.stream.yourdomain.com
-LIVEKIT_URL=wss://lk.stream.yourdomain.com
-
-# Behind a host Caddy / reverse proxy — stack serves plain HTTP on :8880,
-# the front terminates TLS for both names and forwards them to :8880
-SITE_ADDRESS=:80
-HTTP_PORT=8880
-HTTPS_PORT=8444
-LK_SITE_ADDRESS=http://lk.stream.yourdomain.com
-LIVEKIT_URL=wss://lk.stream.yourdomain.com
+LIVEKIT_URL=wss://stream.yourdomain.com/livekit
+PUBLIC_ORIGIN=https://stream.yourdomain.com
 ```
 
-For a host Caddy, add the blocks from [caddyfile.example](caddyfile.example) (both hostnames → `localhost:8880`) and `systemctl reload caddy`. Then `docker compose up -d`.
+To run behind an existing reverse proxy, set `SITE_ADDRESS=:80` plus `HTTP_PORT`/`HTTPS_PORT` overrides so the published ports don't collide with the front, terminate TLS at your proxy, and forward `stream.yourdomain.com` to the stack's HTTP port. Then `docker compose -f docker-compose.yml up -d`.
 
 Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 443 1935 3478 7881`, udp `443 9999 9998 10000-10009 50000-50100`. The 50000-50100/udp LiveKit range is deliberately narrow — wider ranges create thousands of iptables rules and make `docker compose up/down` take minutes.
 

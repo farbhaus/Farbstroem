@@ -25,7 +25,6 @@ services:
       - caddy_config:/config
     environment:
       - SITE_ADDRESS=${SITE_ADDRESS:-localhost}
-      - LK_SITE_ADDRESS=${LK_SITE_ADDRESS:-lk.localhost}
     healthcheck:
       test: ["CMD", "wget", "-q", "-O-", "http://localhost/"]
       interval: 15s

@@ -49,15 +49,3 @@
 	# Everything else → backend (API + WebSocket + static files)
 	reverse_proxy stream-backend:4001
 }
-
-# LiveKit SFU subdomain — the browser uses it for WebSocket signaling, so it
-# needs its own hostname. This Caddy owns the routing; the host Caddy (if any)
-# is just a TLS front that forwards Host: lk.<domain> here.
-#   standalone:        LK_SITE_ADDRESS=lk.<domain>        (Caddy auto-TLS)
-#   behind host Caddy: LK_SITE_ADDRESS=http://lk.<domain> (host Caddy does TLS)
-#   local dev:         default lk.localhost — never hit
-{$LK_SITE_ADDRESS:lk.localhost} {
-	reverse_proxy stream-livekit:7880 {
-		header_up Host {upstream_hostport}
-	}
-}
