@@ -58,7 +58,7 @@ function getTileIdFromEl(tile: HTMLElement): TileId | null {
   return null;
 }
 
-// Pin a tile to the focus stage (rail on the side), or unpin (grid view).
+// Pin a tile to the focus stage (strip on the side), or unpin (grid view).
 // `override: true` records the choice as manual so auto-pin won't fight it.
 export function setFocus(tileId: TileId | null, opts: { override?: boolean } = {}): void {
   const patch: { focusedTile: TileId | null; focusOverride?: boolean } = {
@@ -73,39 +73,39 @@ export function setFocus(tileId: TileId | null, opts: { override?: boolean } = {
   if (tileId !== 'stream') disablePointerMode();
 
   const stage = document.getElementById('stage');
-  const rail = document.getElementById('stage-rail');
-  if (!stage || !rail) return;
+  const strip = document.getElementById('stage-strip');
+  if (!stage || !strip) return;
 
   if (tileId === null) {
     // Grid mode: all tiles back to the main stage as direct children.
     document.body.classList.remove('has-focus');
-    for (const tile of Array.from(rail.querySelectorAll<HTMLElement>(':scope > .tile'))) {
-      stage.insertBefore(tile, rail);
+    for (const tile of Array.from(strip.querySelectorAll<HTMLElement>(':scope > .tile'))) {
+      stage.insertBefore(tile, strip);
     }
     stage
       .querySelectorAll<HTMLElement>('[data-focused]')
       .forEach((el) => el.removeAttribute('data-focused'));
   } else {
     document.body.classList.add('has-focus');
-    // Sync the rail-toggle button's lit state to the current confOpen flag
+    // Sync the strip-toggle button's lit state to the current confOpen flag
     // — without this it looks "off" on first entry into focus mode even
-    // though the rail is visible.
+    // though the strip is visible.
     document
       .getElementById('conf-toggle')
       ?.classList.toggle('panel-open', viewerStore.get().confOpen);
     const focusedEl = findTileEl(tileId);
-    // Everything not the focused tile goes into the rail.
+    // Everything not the focused tile goes into the strip.
     const all = [
       ...Array.from(stage.querySelectorAll<HTMLElement>(':scope > .tile')),
-      ...Array.from(rail.querySelectorAll<HTMLElement>(':scope > .tile')),
+      ...Array.from(strip.querySelectorAll<HTMLElement>(':scope > .tile')),
     ];
     for (const tile of all) {
       if (tile === focusedEl) {
         tile.setAttribute('data-focused', '');
-        if (tile.parentElement !== stage) stage.insertBefore(tile, rail);
+        if (tile.parentElement !== stage) stage.insertBefore(tile, strip);
       } else {
         tile.removeAttribute('data-focused');
-        if (tile.parentElement !== rail) rail.appendChild(tile);
+        if (tile.parentElement !== strip) strip.appendChild(tile);
       }
     }
   }
@@ -129,6 +129,18 @@ export function updateFocusAspect(): void {
   } else if (focusedTile === 'share') {
     tile = document.getElementById('tile-share');
     video = document.getElementById('screenshare-video') as HTMLVideoElement | null;
+  }
+  // When the stream tile is showing a still image, OvenPlayer is
+  // unmounted — read the image's natural aspect for --focus-aspect.
+  if (focusedTile === 'stream') {
+    const img = document.getElementById('display-img') as HTMLImageElement | null;
+    if (img && img.style.display !== 'none' && img.naturalWidth > 0) {
+      if (tile) {
+        tile.style.setProperty('--focus-aspect', `${img.naturalWidth} / ${img.naturalHeight}`);
+      }
+      requestAnimationFrame(sizeStage);
+      return;
+    }
   }
   // Keep one `resize` listener on the current video so a mid-stream
   // resolution change re-fits the tile.
@@ -157,14 +169,16 @@ export function updateFocusAspect(): void {
 // preferred is an explicit hint (e.g. the share just started) — useful when
 // the call site knows the natural target.
 export function requestAutoFocus(preferred?: TileId): void {
-  const { focusOverride, streamKey, focusedTile } = viewerStore.get();
+  const { focusOverride, streamKey, focusedTile, displayFile } = viewerStore.get();
   if (focusOverride) return;
   let target: TileId | null;
   if (preferred && findTileEl(preferred)) {
     target = preferred;
   } else if (activeScreenShareTrack) {
     target = 'share';
-  } else if (streamKey) {
+  } else if (streamKey || displayFile) {
+    // 'stream' tile now hosts either the live broadcast or the
+    // presenter-displayed file.
     target = 'stream';
   } else {
     target = null;
@@ -375,13 +389,13 @@ function updateSelfTile(): void {
 export function syncConferenceTiles(): void {
   const { focusedTile, roster, role: myRole, cameraOn, micOn } = viewerStore.get();
   const stage = document.getElementById('stage');
-  const rail = document.getElementById('stage-rail');
+  const strip = document.getElementById('stage-strip');
   const emptyEl = document.getElementById('stage-empty');
-  if (!stage || !rail) return;
-  // New tiles created below go into the rail when focus mode is active,
+  if (!stage || !strip) return;
+  // New tiles created below go into the strip when focus mode is active,
   // otherwise straight into the stage. Existing tiles stay where they are
   // (setFocus is the only thing that re-parents tiles).
-  const newTileHost = focusedTile !== null ? rail : stage;
+  const newTileHost = focusedTile !== null ? strip : stage;
 
   const lkMap: Map<string, LkRemoteParticipant> = livekitRoom
     ? new Map(Array.from(livekitRoom.remoteParticipants.values()).map((p) => [p.identity, p]))
@@ -408,10 +422,10 @@ export function syncConferenceTiles(): void {
     }
   }
 
-  // Remove tiles for participants no longer present (search both stage and rail).
+  // Remove tiles for participants no longer present (search both stage and strip).
   for (const tile of [
     ...Array.from(stage.querySelectorAll<HTMLElement>('.tile[id^="conf-tile-"]')),
-    ...Array.from(rail.querySelectorAll<HTMLElement>('.tile[id^="conf-tile-"]')),
+    ...Array.from(strip.querySelectorAll<HTMLElement>('.tile[id^="conf-tile-"]')),
   ]) {
     const id = tile.id.slice('conf-tile-'.length);
     if (!byId.has(id)) tile.remove();
@@ -821,8 +835,8 @@ export function initConference(): void {
 
   // Pin button (top-right of #tile-stream / #tile-share) → toggle focus on
   // that tile. Host pins broadcast via focus:set; viewer pins are local
-  // override. The rail lives inside #stage so this delegator covers both
-  // the grid and the rail.
+  // override. The strip lives inside #stage so this delegator covers both
+  // the grid and the strip.
   document.getElementById('stage')?.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-action="toggle-focus"]');
     if (!btn) return;
@@ -883,7 +897,7 @@ export function initConference(): void {
   });
 
   // Presenter moderation, delegated at #app level — tiles live in #stage
-  // (focused) or #stage-rail (unfocused). One listener handles both.
+  // (focused) or #stage-strip (unfocused). One listener handles both.
   document.getElementById('app')?.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
     if (!btn || viewerStore.get().role !== 'presenter') return;

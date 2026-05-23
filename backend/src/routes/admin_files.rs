@@ -8,7 +8,6 @@ use axum::{
 use rusqlite::{params, OptionalExtension};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 use tracing::info;
@@ -18,8 +17,9 @@ use crate::error::AppError;
 use crate::events::{FileSharedEvent, FileUnsharedEvent};
 use crate::routes::files::{extract_extension, sanitize_mime, SAFE_MIMES};
 use crate::state::AppState;
+use crate::uploads::stream_field_to_temp;
 
-const MAX_FILE_SIZE: usize = 100 * 1024 * 1024; // 100MB
+const MAX_FILE_SIZE: usize = 2560 * 1024 * 1024; // 2.5 GB
 const SORT_WHITELIST: &[&str] = &["created_at", "original_name", "size_bytes", "mime_type"];
 
 #[derive(Deserialize)]
@@ -208,7 +208,7 @@ async fn upload_library_file(
     State(state): State<Arc<AppState>>,
     mut multipart: Multipart,
 ) -> Result<Json<Value>, AppError> {
-    while let Some(field) = multipart
+    while let Some(mut field) = multipart
         .next_field()
         .await
         .map_err(|e| AppError::BadRequest(e.to_string()))?
@@ -223,24 +223,14 @@ async fn upload_library_file(
             .unwrap_or("application/octet-stream")
             .to_string();
         let mime = sanitize_mime(&mime_raw);
-        let data = field
-            .bytes()
-            .await
-            .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
-        if data.len() > MAX_FILE_SIZE {
-            return Err(AppError::BadRequest("File too large (max 100MB)".into()));
-        }
-
-        let size = data.len() as u64;
-        let mut hasher = Sha256::new();
-        hasher.update(&data);
-        let content_hash = format!("{:x}", hasher.finalize());
-
+        // Stream the field to disk in chunks instead of slurping into a
+        // Vec — keeps backend RSS bounded on large uploads.
         let files_dir = format!("{}/files", state.config.data_path);
-        tokio::fs::create_dir_all(&files_dir)
-            .await
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let uploaded = stream_field_to_temp(&mut field, &files_dir, MAX_FILE_SIZE as u64).await?;
+        let size = uploaded.size;
+        let content_hash = uploaded.sha256_hex.clone();
+        let temp_path = format!("{}/{}", files_dir, uploaded.temp_name);
 
         let conn = state.db.get()?;
         let hash_lookup = content_hash.clone();
@@ -257,6 +247,8 @@ async fn upload_library_file(
         .map_err(|e| AppError::Internal(e.to_string()))??;
 
         let (file_id, effective_name, deduped) = if let Some((id, existing_name)) = existing {
+            // Dedup hit — discard the temp we just wrote.
+            let _ = tokio::fs::remove_file(&temp_path).await;
             info!(file_id = %id, action = "admin_upload_dedup", "upload hit existing blob");
             (id, existing_name, true)
         } else {
@@ -264,7 +256,7 @@ async fn upload_library_file(
             let ext = extract_extension(&original_name);
             let stored_name = format!("{}{}", new_id, ext);
 
-            tokio::fs::write(format!("{}/{}", files_dir, stored_name), &data)
+            tokio::fs::rename(&temp_path, format!("{}/{}", files_dir, stored_name))
                 .await
                 .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -366,7 +358,7 @@ async fn replace_file(
     let (old_stored, _old_hash) =
         existing.ok_or_else(|| AppError::NotFound("File not found".into()))?;
 
-    while let Some(field) = multipart
+    while let Some(mut field) = multipart
         .next_field()
         .await
         .map_err(|e| AppError::BadRequest(e.to_string()))?
@@ -381,28 +373,18 @@ async fn replace_file(
             .unwrap_or("application/octet-stream")
             .to_string();
         let mime = sanitize_mime(&mime_raw);
-        let data = field
-            .bytes()
-            .await
-            .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
-        if data.len() > MAX_FILE_SIZE {
-            return Err(AppError::BadRequest("File too large (max 100MB)".into()));
-        }
-
-        let size = data.len() as u64;
-        let mut hasher = Sha256::new();
-        hasher.update(&data);
-        let content_hash = format!("{:x}", hasher.finalize());
-
+        // Stream the field to disk in chunks; rename to its final name
+        // once we know the upload finished and we want to keep it.
         let files_dir = format!("{}/files", state.config.data_path);
-        tokio::fs::create_dir_all(&files_dir)
-            .await
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let uploaded = stream_field_to_temp(&mut field, &files_dir, MAX_FILE_SIZE as u64).await?;
+        let size = uploaded.size;
+        let content_hash = uploaded.sha256_hex.clone();
+        let temp_path = format!("{}/{}", files_dir, uploaded.temp_name);
 
         let ext = extract_extension(&original_name);
         let new_stored = format!("{}{}", uuid::Uuid::new_v4(), ext);
-        tokio::fs::write(format!("{}/{}", files_dir, new_stored), &data)
+        tokio::fs::rename(&temp_path, format!("{}/{}", files_dir, new_stored))
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
 

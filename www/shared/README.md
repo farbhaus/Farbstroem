@@ -1,4 +1,4 @@
-# zStream design system
+# Farbstroem design system
 
 Shared tokens, components, and utilities used by every page in `www/`. Loaded as plain CSS/JS so any page can `<link>` or `<script>` them with no build step.
 

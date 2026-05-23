@@ -311,3 +311,186 @@ async fn kick_returns_403_non_presenter() {
         .await;
     assert_eq!(res.status_code(), 403);
 }
+
+#[tokio::test]
+async fn join_with_valid_presenter_key_bypasses_password() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let room_id =
+        common::seed_room_with_password(&state, "PW Host", "pw-host-abc123", "client-secret");
+    let presenter_key = common::get_room_presenter_key(&state, &room_id);
+
+    // Host link → no password sent, still admitted as presenter.
+    let res = server
+        .post("/api/public/rooms/pw-host-abc123/join")
+        .json(&json!({
+            "name": "Host Colorist",
+            "role": "presenter",
+            "presenter_key": presenter_key,
+        }))
+        .await;
+    assert_eq!(res.status_code(), 200);
+    assert_eq!(res.json::<Value>()["role"], "presenter");
+}
+
+#[tokio::test]
+async fn join_with_wrong_presenter_key_still_requires_password() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let _room_id =
+        common::seed_room_with_password(&state, "PW Guard", "pw-guard-abc123", "client-secret");
+
+    // Wrong pk + no password → 401 (the password gate still applies).
+    let res = server
+        .post("/api/public/rooms/pw-guard-abc123/join")
+        .json(&json!({
+            "name": "Sneaky",
+            "role": "presenter",
+            "presenter_key": "deadbeef",
+        }))
+        .await;
+    assert_eq!(res.status_code(), 401);
+}
+
+// ---------------------------------------------------------------------------
+// Presenter-gated moderation endpoints
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn conf_waiting_requires_presenter() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let room_id = common::seed_room(&state, "Mod Auth", "mod-auth-abc123");
+    let (vpid, vtok) = common::seed_participant(&state, &room_id, "Viewer", "viewer", true, false);
+
+    // Missing creds → 400
+    let r = server
+        .get("/api/public/rooms/mod-auth-abc123/conference/waiting")
+        .await;
+    assert_eq!(r.status_code(), 400);
+
+    // Viewer token → 403
+    let r = server
+        .get(&format!(
+            "/api/public/rooms/mod-auth-abc123/conference/waiting?participantId={vpid}&token={vtok}"
+        ))
+        .await;
+    assert_eq!(r.status_code(), 403);
+}
+
+#[tokio::test]
+async fn conf_admit_promotes_waiter() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let room_id = common::seed_room(&state, "Mod Admit", "mod-admit-abc123");
+    let (host_pid, host_tok) =
+        common::seed_participant(&state, &room_id, "Host", "presenter", true, false);
+    let (waiter_pid, _) =
+        common::seed_participant(&state, &room_id, "Alice", "viewer", false, false);
+
+    let r = server
+        .post(&format!(
+            "/api/public/rooms/mod-admit-abc123/conference/admit/{waiter_pid}"
+        ))
+        .json(&json!({ "participantId": host_pid, "token": host_tok }))
+        .await;
+    assert_eq!(r.status_code(), 200);
+    assert_eq!(r.json::<Value>()["ok"], true);
+
+    // Confirm DB flag flipped.
+    let conn = state.db.get().unwrap();
+    let admitted: i32 = conn
+        .query_row(
+            "SELECT is_admitted FROM participants WHERE id = ?1",
+            rusqlite::params![waiter_pid],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(admitted, 1);
+}
+
+#[tokio::test]
+async fn conf_admit_all_returns_count() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let room_id = common::seed_room(&state, "Mod All", "mod-all-abc123");
+    let (host_pid, host_tok) =
+        common::seed_participant(&state, &room_id, "Host", "presenter", true, false);
+    let _ = common::seed_participant(&state, &room_id, "Alice", "viewer", false, false);
+    let _ = common::seed_participant(&state, &room_id, "Bob", "viewer", false, false);
+
+    let r = server
+        .post("/api/public/rooms/mod-all-abc123/conference/admit-all")
+        .json(&json!({ "participantId": host_pid, "token": host_tok }))
+        .await;
+    assert_eq!(r.status_code(), 200);
+    let body: Value = r.json();
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["count"], 2);
+}
+
+#[tokio::test]
+async fn conf_unkick_clears_kicked_flag() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let room_id = common::seed_room(&state, "Mod Unkick", "mod-unkick-abc123");
+    let (host_pid, host_tok) =
+        common::seed_participant(&state, &room_id, "Host", "presenter", true, false);
+    let (kicked_pid, _) = common::seed_participant(&state, &room_id, "Bad", "viewer", true, true);
+
+    let r = server
+        .post(&format!(
+            "/api/public/rooms/mod-unkick-abc123/conference/unkick/{kicked_pid}"
+        ))
+        .json(&json!({ "participantId": host_pid, "token": host_tok }))
+        .await;
+    assert_eq!(r.status_code(), 200);
+
+    let conn = state.db.get().unwrap();
+    let kicked: i32 = conn
+        .query_row(
+            "SELECT is_kicked FROM participants WHERE id = ?1",
+            rusqlite::params![kicked_pid],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(kicked, 0);
+}
+
+#[tokio::test]
+async fn conf_get_lists_return_data() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let room_id = common::seed_room(&state, "Mod List", "mod-list-abc123");
+    let (host_pid, host_tok) =
+        common::seed_participant(&state, &room_id, "Host", "presenter", true, false);
+    let _ = common::seed_participant(&state, &room_id, "Waiter", "viewer", false, false);
+    let _ = common::seed_participant(&state, &room_id, "Naughty", "viewer", true, true);
+
+    let r = server
+        .get(&format!(
+            "/api/public/rooms/mod-list-abc123/conference/waiting?participantId={host_pid}&token={host_tok}"
+        ))
+        .await;
+    assert_eq!(r.status_code(), 200);
+    let waiting: Vec<Value> = r.json();
+    assert_eq!(waiting.len(), 1);
+    assert_eq!(waiting[0]["name"], "Waiter");
+
+    let r = server
+        .get(&format!(
+            "/api/public/rooms/mod-list-abc123/conference/kicked?participantId={host_pid}&token={host_tok}"
+        ))
+        .await;
+    assert_eq!(r.status_code(), 200);
+    let kicked: Vec<Value> = r.json();
+    assert_eq!(kicked.len(), 1);
+    assert_eq!(kicked[0]["name"], "Naughty");
+}

@@ -1,6 +1,37 @@
 {$SITE_ADDRESS:localhost} {
 	encode gzip zstd
 
+	# Baseline security headers. HSTS is safe because Caddy terminates TLS
+	# (auto-HTTPS); X-Frame-Options + frame-ancestors block clickjacking of
+	# the admin panel; a conservative default CSP is the defence-in-depth
+	# backstop for the innerHTML-heavy frontend. CDN-loaded runtime deps
+	# (OvenPlayer, HLS.js, LiveKit) plus inline init scripts in www/*.html
+	# need 'unsafe-inline' for now — tighten once those move to local hashes.
+	#
+	# Skipped on localhost: HSTS on localhost pins HTTPS forever against
+	# Caddy's internal CA, which browsers trust inconsistently and breaks
+	# OME/LiveKit WebRTC during local dev.
+	@prod not host localhost
+	header @prod {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "interest-cohort=()"
+		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: https:; font-src 'self' data:; script-src 'self' 'unsafe-inline' https:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+	}
+
+	# LiveKit signaling — proxied as wss so the browser sees one origin.
+	# Direct ws://localhost:7880 works on Chrome/Firefox but Safari rejects
+	# it as mixed content from an https page. handle_path strips /livekit
+	# so the upstream sees /rtc/v1 etc. unchanged.
+	handle_path /livekit/* {
+		reverse_proxy stream-livekit:7880 {
+			header_up Host {upstream_hostport}
+		}
+	}
+
 	# OME — LLHLS + WebRTC signaling (must be HTTP/1.1, unbuffered)
 	handle /live/* {
 		reverse_proxy stream-ome:3333 {

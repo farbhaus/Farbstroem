@@ -38,6 +38,9 @@ export interface ViewerState {
   confOpen: boolean;
   // Pointer mode toggle
   pointerMode: boolean;
+  // Currently presenter-displayed file (image/video) in the room, or null
+  // if nothing is being displayed. Drives the #tile-display tile.
+  displayFile: { fileId: string; name: string; mime: string } | null;
 }
 
 export const viewerStore = createStore<ViewerState>({
@@ -53,9 +56,10 @@ export const viewerStore = createStore<ViewerState>({
   screenOn: false,
   roster: [],
   chatOpen: false,
-  // Rail is "open" by default — entering focus mode shows it.
+  // Strip is "open" by default — entering focus mode shows it.
   confOpen: true,
   pointerMode: false,
+  displayFile: null,
 });
 
 // Convenience helpers — modules that just want a single field don't need

@@ -37,6 +37,42 @@ async fn login_returns_token_on_correct_password() {
     assert!(body.get("token").is_some());
 }
 
+/// S3 regression: a JWT signed with the same `jwt_secret` but missing
+/// `admin: true` must NOT be accepted by the AdminAuth extractor. This
+/// guards against any future token type signed with the same secret
+/// silently turning into an admin credential.
+#[tokio::test]
+async fn admin_endpoint_rejects_token_without_admin_claim() {
+    use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    struct NonAdminClaims {
+        admin: bool,
+        exp: usize,
+    }
+
+    let state = common::test_state();
+    let exp = (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 3600) as usize;
+    let token = encode(
+        &Header::new(Algorithm::HS256),
+        &NonAdminClaims { admin: false, exp },
+        &EncodingKey::from_secret(state.config.jwt_secret.as_bytes()),
+    )
+    .unwrap();
+
+    let server = common::test_app(state);
+    let res = server
+        .get("/api/rooms")
+        .add_header("authorization", format!("Bearer {token}"))
+        .await;
+    assert_eq!(res.status_code(), 401);
+}
+
 #[tokio::test]
 async fn logout_returns_ok() {
     let state = common::test_state();

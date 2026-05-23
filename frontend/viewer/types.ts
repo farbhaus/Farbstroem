@@ -6,10 +6,20 @@
 export type Role = 'presenter' | 'viewer';
 export type RoomStatus = 'pending' | 'live' | 'ended';
 export type DeliveryMode = 'webrtc' | 'llhls';
-// A tile in the unified viewer stage. 'stream' is the OvenPlayer broadcast,
-// 'share' is the active screenshare, anything else is a LiveKit participant
-// identity.
+// A tile in the unified viewer stage. 'stream' is the unified OvenPlayer
+// stage tile (live broadcast OR a presenter-displayed file), 'share' is
+// the active screenshare, anything else is a LiveKit participant identity.
 export type TileId = 'stream' | 'share' | string;
+
+export interface DisplayFileState {
+  fileId: string;
+  name: string;
+  mime: string;
+  size: number;
+  playing: boolean;
+  position: number;
+  updatedAtMs: number;
+}
 
 export interface RoomInfo {
   name: string;
@@ -53,6 +63,7 @@ export interface SessionFile {
   id: string;
   name: string;
   size: number;
+  mime?: string;
   uploaderName?: string;
   role?: Role;
 }
@@ -74,6 +85,13 @@ interface ChatHistoryItem {
 export type WsMessage =
   | { type: 'auth:ok' }
   | { type: 'kicked' }
+  | { type: 'host:revoked' }
+  | {
+      type: 'moderation:update';
+      waiting: { id: string; name: string }[];
+      kicked: { id: string; name: string }[];
+      newWaiting: string[];
+    }
   | { type: 'room:live' }
   | { type: 'room:pending' }
   | { type: 'room:ended' }
@@ -95,11 +113,23 @@ export type WsMessage =
       role: Role;
       id: string;
       size: number;
+      mime?: string;
       uploaderName: string;
     }
+  | { type: 'file:removed'; id: string }
   | { type: 'pointer:move'; participantId: string; name: string; x: number; y: number }
   | { type: 'pointer:hide'; participantId: string }
-  | { type: 'focus:set'; tileId: TileId | null };
+  | { type: 'focus:set'; tileId: TileId | null }
+  | {
+      type: 'display:state';
+      fileId: string | null;
+      name?: string;
+      mime?: string;
+      size?: number;
+      playing?: boolean;
+      position?: number;
+      updatedAtMs?: number;
+    };
 
 // ---- WebSocket message variants (client → server) ----
 
@@ -109,7 +139,9 @@ export type WsClientMessage =
   | { type: 'pointer:move'; x: number; y: number }
   | { type: 'pointer:hide' }
   | { type: 'focus:set'; tileId: TileId | null }
-  | { type: 'file:share'; fileId: string };
+  | { type: 'file:share'; fileId: string }
+  | { type: 'display:set'; fileId: string | null }
+  | { type: 'display:transport'; playing: boolean; position: number };
 
 // ---- Saved session (sessionStorage) ----
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-zStream is a private low-latency streaming platform for color-grading review sessions. It combines OvenMediaEngine (OME) for broadcast ingest/delivery, LiveKit for participant voice/video, and a Rust/Axum backend for API and session management. The frontend is TypeScript compiled with `tsc` (no bundler, no runtime npm deps) emitted as plain ES modules.
+Farbstroem is a private low-latency streaming platform for color-grading review sessions. It combines OvenMediaEngine (OME) for broadcast ingest/delivery, LiveKit for participant voice/video, and a Rust/Axum backend for API and session management. The frontend is TypeScript compiled with `tsc` (no bundler, no runtime npm deps) emitted as plain ES modules.
 
 ## Commands
 
@@ -30,10 +30,22 @@ watchexec -r -e rs -- cargo run
 ### Full stack (Docker Compose — repo root)
 
 ```bash
+# Local dev — docker-compose.override.yml is auto-merged and builds the
+# backend from ./backend.
 docker compose up -d                     # start all 5 services
 docker compose up -d --build stream-backend  # rebuild after Rust changes
 docker compose down
+
+# Deploy hosts — pull the published backend image instead of building.
+# -f selects ONLY the base file so the dev override is not auto-merged.
+docker compose -f docker-compose.yml up -d
 ```
+
+The backend image (`zcolor/farbstroem-backend`) is published to Docker Hub
+by `.github/workflows/docker.yml` on every push to `main` (tags `:latest`
+and `:sha-<short>`, linux/amd64). Deploy hosts pin a tag via
+`BACKEND_TAG` in `.env`. Requires repo secrets `DOCKERHUB_USERNAME` and
+`DOCKERHUB_TOKEN`.
 
 ### Environment setup
 

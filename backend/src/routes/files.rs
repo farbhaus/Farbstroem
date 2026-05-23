@@ -8,24 +8,28 @@ use axum::{
 use rusqlite::{params, OptionalExtension};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 use tracing::info;
 
 use crate::error::AppError;
-use crate::events::FileSharedEvent;
+use crate::events::{FileSharedEvent, FileUnsharedEvent};
 use crate::state::AppState;
+use crate::uploads::stream_field_to_temp;
 
-const MAX_FILE_SIZE: usize = 100 * 1024 * 1024; // 100MB
+const MAX_FILE_SIZE: usize = 2560 * 1024 * 1024; // 2.5 GB
 
 pub const SAFE_MIMES: &[&str] = &[
     "image/jpeg",
     "image/png",
     "image/gif",
     "image/webp",
-    "image/svg+xml",
     "image/avif",
+    // image/svg+xml is intentionally NOT here: SVGs served inline execute any
+    // embedded <script> in the browser's document context, which would be a
+    // stored-XSS vector against the admin previewing a participant upload.
+    // `nosniff` doesn't help — the content-type really is image/svg+xml.
+    // SVGs fall through to application/octet-stream + attachment disposition.
     "video/mp4",
     "video/quicktime",
     "video/x-quicktime",
@@ -47,6 +51,12 @@ struct ParticipantQuery {
     #[serde(rename = "participantId")]
     participant_id: Option<String>,
     token: Option<String>,
+    // Set by the in-room display flow (Show button → OvenPlayer source).
+    // Switches Content-Disposition to inline so the browser plays the file
+    // rather than triggering a download, and relabels video/quicktime as
+    // video/mp4 so H.264-in-MOV files (common from phones / cameras) are
+    // not rejected upfront by Chrome/Firefox.
+    display: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -108,14 +118,23 @@ pub fn sanitize_mime(mime: &str) -> String {
 }
 
 /// Derive a `.ext` suffix (including leading dot) from a filename, or "" if
-/// the filename has no distinguishable extension. Used for the stored blob
-/// filename so downloads can hint at the type.
+/// the filename has no usable extension. Used for the stored blob filename so
+/// downloads can hint at the type.
+///
+/// The result is concatenated straight into an on-disk path, so it MUST stay
+/// path-safe: ASCII alphanumeric only, 1-10 chars, no `/`, `\`, or `.`.
+/// Anything else is dropped — a crafted filename like `x.../../../../tmp/p`
+/// would otherwise escape the files dir and let an uploader write anywhere
+/// the backend user can.
 pub fn extract_extension(name: &str) -> String {
-    name.rsplit('.')
-        .next()
-        .filter(|e| *e != name)
-        .map(|e| format!(".{}", e))
-        .unwrap_or_default()
+    let ext = match name.rsplit('.').next() {
+        Some(e) if e != name => e,
+        _ => return String::new(),
+    };
+    if ext.is_empty() || ext.len() > 10 || !ext.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return String::new();
+    }
+    format!(".{}", ext)
 }
 
 async fn upload_file(
@@ -147,7 +166,7 @@ async fn upload_file(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
-    while let Some(field) = multipart
+    while let Some(mut field) = multipart
         .next_field()
         .await
         .map_err(|e| AppError::BadRequest(e.to_string()))?
@@ -159,26 +178,17 @@ async fn upload_file(
                 .unwrap_or("application/octet-stream")
                 .to_string();
             let mime = sanitize_mime(&mime_raw);
-            let data = field
-                .bytes()
-                .await
-                .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
-            if data.len() > MAX_FILE_SIZE {
-                return Err(AppError::BadRequest("File too large (max 100MB)".into()));
-            }
-
-            let size = data.len() as u64;
-
-            // Content-addressable hash for dedup
-            let mut hasher = Sha256::new();
-            hasher.update(&data);
-            let content_hash = format!("{:x}", hasher.finalize());
-
+            // Stream the field body to disk in chunks (bounded memory)
+            // instead of materialising it as a single Vec. The helper
+            // computes Sha256 + size as it goes and deletes its temp
+            // file on any error path.
             let files_dir = format!("{}/files", state.config.data_path);
-            tokio::fs::create_dir_all(&files_dir)
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()))?;
+            let uploaded =
+                stream_field_to_temp(&mut field, &files_dir, MAX_FILE_SIZE as u64).await?;
+            let size = uploaded.size;
+            let content_hash = uploaded.sha256_hex.clone();
+            let temp_path = format!("{}/{}", files_dir, uploaded.temp_name);
 
             // Dedup applies only to non-deferred uploads. Drafts always get
             // a fresh row (and content_hash = NULL) so we don't entangle
@@ -208,6 +218,9 @@ async fn upload_file(
                 .as_secs();
 
             let (file_id, effective_name) = if let Some(id) = existing {
+                // Dedup hit — discard the temp we just wrote; the
+                // original blob on disk is still good.
+                let _ = tokio::fs::remove_file(&temp_path).await;
                 info!(
                     room_slug = %participant.slug,
                     actor_id = %participant.id,
@@ -221,7 +234,7 @@ async fn upload_file(
                 let ext = extract_extension(&original_name);
                 let stored_name = format!("{}{}", new_id, ext);
 
-                tokio::fs::write(format!("{}/{}", files_dir, stored_name), &data)
+                tokio::fs::rename(&temp_path, format!("{}/{}", files_dir, stored_name))
                     .await
                     .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -418,15 +431,29 @@ async fn download_file(
         .await
         .map_err(|_| AppError::NotFound("File not found".into()))?;
 
-    let disposition = format!(
-        "attachment; filename=\"{}\"",
-        original_name.replace('"', "\\\"")
-    );
+    let is_display = matches!(query.display.as_deref(), Some("1" | "true"));
+    let disposition = if is_display {
+        "inline".to_string()
+    } else {
+        format!(
+            "attachment; filename=\"{}\"",
+            original_name.replace('"', "\\\"")
+        )
+    };
+    // .mov H.264 plays fine in Chromium-family browsers but only when
+    // the Content-Type is video/mp4 (the QuickTime container header is
+    // an ISO BMFF superset). Browsers reject `video/quicktime` upfront
+    // regardless of inner codec, so on the display path we relabel.
+    let served_mime = if is_display && mime == "video/quicktime" {
+        "video/mp4".to_string()
+    } else {
+        mime
+    };
 
     Ok((
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE, mime),
+            (header::CONTENT_TYPE, served_mime),
             (header::CONTENT_DISPOSITION, disposition),
             (
                 header::HeaderName::from_static("x-content-type-options"),
@@ -437,11 +464,34 @@ async fn download_file(
     ))
 }
 
-/// Delete a draft (unshared) upload. Used when a participant removes the
-/// chip from their chat composer before sending. Only the original
-/// uploader can delete, and only while the file is still a draft —
-/// shared files are part of chat history and stay around.
-async fn delete_draft_file(
+/// Delete a file from the room. Two callers / two behaviours, handled
+/// on the same endpoint:
+///
+/// 1. **Draft cleanup** — the uploading participant removes the chip
+///    from their chat composer before sending. Allowed for anyone on
+///    their own un-shared draft.
+/// 2. **Host delete** — a presenter removes a shared file from the
+///    room. If the file was uploaded directly into this room
+///    (`session_files.room_id` matches), the row is dropped and the
+///    blob is reclaimed when no other row still references it. If the
+///    file is a library file assigned via `room_files`, only the
+///    assignment is removed — the library copy survives.
+///
+/// The host path broadcasts `file:removed` so every connected client
+/// can drop the row from their chat and files panel.
+#[derive(Debug)]
+enum DeleteOutcome {
+    /// Nothing to do — file doesn't exist (or was already gone).
+    NotFound,
+    /// Draft removed (no broadcast — no one ever saw it).
+    DraftCleanup { stored_path: String },
+    /// Host removed the row (and possibly the blob).
+    HostHardDelete { stored_path: String },
+    /// Host removed only the room_files link (library copy survives).
+    HostUnassign,
+}
+
+async fn delete_room_file(
     State(state): State<Arc<AppState>>,
     Path((slug, file_id)): Path<(String, String)>,
     Query(query): Query<ParticipantQuery>,
@@ -459,35 +509,118 @@ async fn delete_draft_file(
 
     let conn = state.db.get()?;
     let data_path = state.config.data_path.clone();
-    let stored = tokio::task::spawn_blocking(move || -> Result<Option<String>, AppError> {
-        let participant = validate_participant(&conn, &pid, &token, &slug)?;
-        // Lookup + ownership + draft check in one shot.
-        let stored_path: Option<String> = conn
+    let slug_for_block = slug.clone();
+    let file_id_for_block = file_id.clone();
+    let outcome = tokio::task::spawn_blocking(move || -> Result<DeleteOutcome, AppError> {
+        let participant = validate_participant(&conn, &pid, &token, &slug_for_block)?;
+
+        // Look up the file row. Anyone in the room may *attempt* delete;
+        // we authorize by inspecting ownership / role next.
+        type Row = (String, Option<String>, String, i64);
+        let row: Option<Row> = conn
             .query_row(
-                "SELECT stored_path FROM session_files \
-                 WHERE id = ?1 AND uploader_id = ?2 AND is_shared = 0",
-                params![file_id, participant.id],
-                |row| row.get::<_, String>(0),
+                "SELECT stored_path, room_id, uploader_id, is_shared \
+                 FROM session_files WHERE id = ?1",
+                params![file_id_for_block],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, Option<String>>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, i64>(3)?,
+                    ))
+                },
             )
             .optional()
             .map_err(|e| AppError::Internal(e.to_string()))?;
-        let stored_path = match stored_path {
-            Some(p) => p,
-            None => return Ok(None),
+
+        let (stored_path, file_room_id, uploader_id, is_shared) = match row {
+            Some(r) => r,
+            None => return Ok(DeleteOutcome::NotFound),
         };
-        conn.execute("DELETE FROM session_files WHERE id = ?1", params![file_id])
+
+        // (1) Draft cleanup — own un-shared upload. Allowed for any role.
+        if is_shared == 0 && uploader_id == participant.id {
+            conn.execute(
+                "DELETE FROM session_files WHERE id = ?1",
+                params![file_id_for_block],
+            )
             .map_err(|e| AppError::Internal(e.to_string()))?;
-        Ok(Some(stored_path))
+            return Ok(DeleteOutcome::DraftCleanup { stored_path });
+        }
+
+        // (2) Host delete — presenter only, file must be visible in this room.
+        if participant.role != "presenter" {
+            return Err(AppError::Forbidden("Host only".into()));
+        }
+        let direct_here = file_room_id.as_deref() == Some(participant.room_id.as_str());
+        let linked_here: bool = conn
+            .query_row(
+                "SELECT 1 FROM room_files WHERE room_id = ?1 AND file_id = ?2",
+                params![participant.room_id, file_id_for_block],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(|e| AppError::Internal(e.to_string()))?
+            .is_some();
+        if !direct_here && !linked_here {
+            return Ok(DeleteOutcome::NotFound);
+        }
+        if direct_here {
+            // Hard delete the row (room_files links cascade via FK).
+            conn.execute(
+                "DELETE FROM session_files WHERE id = ?1",
+                params![file_id_for_block],
+            )
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+            Ok(DeleteOutcome::HostHardDelete { stored_path })
+        } else {
+            conn.execute(
+                "DELETE FROM room_files WHERE room_id = ?1 AND file_id = ?2",
+                params![participant.room_id, file_id_for_block],
+            )
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+            Ok(DeleteOutcome::HostUnassign)
+        }
     })
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
-    if let Some(stored_name) = stored {
-        let blob_path = format!("{}/files/{}", data_path, stored_name);
-        let _ = tokio::fs::remove_file(&blob_path).await;
+    match outcome {
+        DeleteOutcome::NotFound => {}
+        DeleteOutcome::DraftCleanup { stored_path } => {
+            let _ = tokio::fs::remove_file(format!("{}/files/{}", data_path, stored_path)).await;
+        }
+        DeleteOutcome::HostHardDelete { stored_path } => {
+            // Reclaim the blob only when no surviving row still references it.
+            let conn = state.db.get()?;
+            let path_check = stored_path.clone();
+            let refs: i64 = tokio::task::spawn_blocking(move || -> Result<i64, AppError> {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM session_files WHERE stored_path = ?1",
+                    params![path_check],
+                    |row| row.get(0),
+                )
+                .map_err(|e| AppError::Internal(e.to_string()))
+            })
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))??;
+            if refs == 0 {
+                let _ =
+                    tokio::fs::remove_file(format!("{}/files/{}", data_path, stored_path)).await;
+            }
+            let _ = state.events.file_unshared.send(FileUnsharedEvent {
+                slug: slug.clone(),
+                id: file_id.clone(),
+            });
+        }
+        DeleteOutcome::HostUnassign => {
+            let _ = state.events.file_unshared.send(FileUnsharedEvent {
+                slug: slug.clone(),
+                id: file_id.clone(),
+            });
+        }
     }
-    // Idempotent: missing/already-shared returns 204 too, since either way
-    // the client's intent ("draft is gone") holds.
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -497,7 +630,55 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/{slug}/files/{fileId}/download", get(download_file))
         .route(
             "/{slug}/files/{fileId}",
-            axum::routing::delete(delete_draft_file),
+            axum::routing::delete(delete_room_file),
         )
         .layer(DefaultBodyLimit::max(MAX_FILE_SIZE))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_extension_normal_cases() {
+        assert_eq!(extract_extension("photo.jpg"), ".jpg");
+        assert_eq!(extract_extension("doc.pdf"), ".pdf");
+        assert_eq!(extract_extension("archive.tar.gz"), ".gz");
+        assert_eq!(extract_extension("noext"), "");
+        assert_eq!(extract_extension(""), "");
+        // Dotfile: the whole basename after the dot is treated as the ext.
+        // Path-safe so we keep it.
+        assert_eq!(extract_extension(".hidden"), ".hidden");
+    }
+
+    #[test]
+    fn extract_extension_rejects_path_traversal() {
+        // The dangerous cases: anything that would let the on-disk write
+        // escape the files dir or smuggle a separator.
+        assert_eq!(extract_extension("evil.../../../../tmp/p"), "");
+        assert_eq!(extract_extension("x.tar/../etc/passwd"), "");
+        assert_eq!(extract_extension("y.a/b"), "");
+        assert_eq!(extract_extension("z.a\\b"), "");
+        assert_eq!(extract_extension("w..ext"), ".ext"); // single trailing ext OK
+    }
+
+    #[test]
+    fn extract_extension_caps_length_and_charset() {
+        // 10 alnum chars OK, 11 rejected.
+        assert_eq!(extract_extension("a.abcdefghij"), ".abcdefghij");
+        assert_eq!(extract_extension("a.abcdefghijk"), "");
+        // Non-alnum (unicode, punctuation) rejected.
+        assert_eq!(extract_extension("a.exé"), "");
+        assert_eq!(extract_extension("a.ex!"), "");
+    }
+
+    #[test]
+    fn sanitize_mime_drops_svg() {
+        // Regression for the stored-XSS preview path: SVG must not survive
+        // sanitize_mime, so admin preview falls through to octet-stream
+        // and gets attachment disposition.
+        assert_eq!(sanitize_mime("image/svg+xml"), "application/octet-stream");
+        assert_eq!(sanitize_mime("image/png"), "image/png");
+        assert_eq!(sanitize_mime("text/html"), "application/octet-stream");
+    }
 }

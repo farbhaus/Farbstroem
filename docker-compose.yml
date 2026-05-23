@@ -7,7 +7,11 @@ volumes:
 
 services:
   stream-caddy:
-    image: caddy:2-alpine
+    # Tags are overridable so operators can pin a known-good version in .env
+    # (mirrors BACKEND_TAG). Defaults track the floating upstream tag — fine
+    # for dev, but production hosts should pin in .env to avoid surprise
+    # upgrades on `docker compose pull`.
+    image: caddy:${CADDY_TAG:-2-alpine}
     container_name: stream-caddy
     restart: unless-stopped
     networks: [stream-net]
@@ -35,7 +39,7 @@ services:
         condition: service_healthy
 
   stream-redis:
-    image: redis:7-alpine
+    image: redis:${REDIS_TAG:-7-alpine}
     container_name: stream-redis
     restart: unless-stopped
     networks: [stream-net]
@@ -48,7 +52,7 @@ services:
       start_period: 5s
 
   stream-livekit:
-    image: livekit/livekit-server:latest
+    image: livekit/livekit-server:${LIVEKIT_TAG:-latest}
     container_name: stream-livekit
     restart: unless-stopped
     networks: [stream-net]
@@ -73,13 +77,19 @@ services:
         condition: service_healthy
 
   stream-ome:
-    image: airensoft/ovenmediaengine:latest
+    image: airensoft/ovenmediaengine:${OME_TAG:-latest}
     container_name: stream-ome
     restart: unless-stopped
     networks: [stream-net]
-    env_file: .env
+    # Explicit env list — OME only needs these three (see
+    # ome/origin_conf/Server.xml: ${env:OME_API_TOKEN},
+    # ${env:OME_HOST_IP}, ${env:OME_WEBHOOK_SECRET}). The previous
+    # `env_file: .env` was over-scoped and leaked JWT_SECRET, LIVEKIT_*,
+    # ADMIN_PASSWORD into a third-party container.
     environment:
       - OME_HOST_IP=${DOMAIN:-localhost}
+      - OME_API_TOKEN=${OME_API_TOKEN}
+      - OME_WEBHOOK_SECRET=${OME_WEBHOOK_SECRET}
     volumes:
       - ./ome/origin_conf:/opt/ovenmediaengine/bin/origin_conf
     ports:
@@ -102,7 +112,7 @@ services:
         condition: service_healthy
 
   stream-backend:
-    build: ./backend
+    image: zcolor/farbstroem-backend:${BACKEND_TAG:-latest}
     container_name: stream-backend
     restart: unless-stopped
     networks: [stream-net]
