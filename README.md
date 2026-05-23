@@ -144,3 +144,28 @@ cd backend && cargo test
 ```
 
 Integration tests live in `backend/tests/` and use [`axum-test`](https://crates.io/crates/axum-test). See [backend/DEVELOPMENT.md](backend/DEVELOPMENT.md#tests) for single-file runs and common patterns.
+
+## License
+
+Farbstroem is licensed under the **GNU Affero General Public License v3.0**
+(AGPL-3.0) — see [LICENSE](LICENSE). In short: you are free to use, study,
+modify, and self-host it, but if you run a modified version as a network
+service you must make your modified source available to its users.
+
+Contributions are accepted under the same license via the Developer Certificate
+of Origin — see [CONTRIBUTING.md](CONTRIBUTING.md). Attribution notices for
+bundled dependencies are collected in
+[THIRD_PARTY_NOTICES.html](THIRD_PARTY_NOTICES.html).
+
+## Acknowledgements
+
+Farbstroem is built on the work of these open-source projects:
+
+- [OvenMediaEngine](https://github.com/AirenSoft/OvenMediaEngine) — broadcast ingest/delivery engine (AGPL-3.0)
+- [OvenPlayer](https://github.com/AirenSoft/OvenPlayer) — LLHLS/WebRTC player (MIT)
+- [LiveKit](https://github.com/livekit/livekit) — WebRTC SFU for participant conference (Apache-2.0)
+- [Caddy](https://github.com/caddyserver/caddy) — TLS termination and routing (Apache-2.0)
+- [Axum](https://github.com/tokio-rs/axum) and the broader Rust/Tokio ecosystem (MIT)
+- [hls.js](https://github.com/video-dev/hls.js) — HLS playback fallback (Apache-2.0)
+
+…and the many crates enumerated in [THIRD_PARTY_NOTICES.html](THIRD_PARTY_NOTICES.html).
