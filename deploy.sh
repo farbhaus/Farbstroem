@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# deploy.sh — one-click production deployment for zStream.
+# deploy.sh — one-click production deployment for Farbström.
 #
 # From a clean checkout to a running TLS deployment in one command:
 #   ./deploy.sh stream.yourdomain.com      (run with bash, not sh)
 #
-# Designed for a CLEAN VPS where ONLY zStream runs. It installs missing
+# Designed for a CLEAN VPS where ONLY Farbström runs. It installs missing
 # prerequisites (Docker + Compose, Node/npm, openssl) on apt-based hosts,
 # generates secrets into .env, opens the firewall, builds the frontend, and
 # brings the stack up by pulling the published backend image. The containerized
@@ -131,6 +131,25 @@ stack_running() {
     | grep -qx stream-caddy
 }
 
+# ensure_backend_image — make the backend image available locally under the ref
+# the compose file expects. Tries the published image first; if the registry has
+# no build for this host's platform (the published image is linux/amd64 only, so
+# arm64 hosts get "no matching manifest"), or the tag is missing, falls back to
+# building it from ./backend.
+ensure_backend_image() {
+  if $DOCKER compose -f docker-compose.yml pull stream-backend 2>/dev/null; then
+    return
+  fi
+  # `|| true` is load-bearing: BACKEND_TAG is usually commented out, so grep
+  # finds nothing and exits non-zero — under `set -euo pipefail` that would
+  # silently abort the script on this assignment.
+  local tag image
+  tag="$( { grep -E '^BACKEND_TAG=' .env 2>/dev/null || true; } | cut -d= -f2-)"
+  image="zcolor/farbstroem-backend:${tag:-latest}"
+  info "No published backend image for this platform/tag — building from ./backend ($image)"
+  $DOCKER build -t "$image" ./backend
+}
+
 # Ports the stack needs reachable from the internet. Single source of truth
 # for both open_firewall and the printed summary.
 FW_TCP=(80 443 1935 3478 7881)
@@ -205,7 +224,7 @@ fi
 # holds 80/443 — UNLESS it's our own already-running stack (a redeploy), which
 # must stay idempotent.
 if http_ports_busy && ! stack_running; then
-  die "ports 80/443 are already in use — this one-click script expects a fresh VPS where only zStream runs.
+  die "ports 80/443 are already in use — this one-click script expects a fresh VPS where only Farbström runs.
        Free 80/443, or if this host already has a reverse proxy, configure .env by
        hand and point the proxy at the stack (see README, 'Manual configuration')."
 fi
@@ -272,23 +291,40 @@ info "Building frontend (npm ci && npm run build)"
 ( cd frontend && npm ci && npm run build )
 
 # --- prepare bind-mounted data dir ------------------------------------------
-# The backend image runs as non-root `app` (Dockerfile: USER app). The
-# `./data:/data` bind mount masks the image's `chown app /data`, so a
-# fresh root-owned ./data leaves the container unable to create
-# /data/stream.db → the backend panics and crash-loops. Chown ./data to the
-# image's app uid (mode 0700) rather than world-writable; fall back to 0777
-# only if the uid can't be determined.
-info "Preparing ./data (owned by the non-root container user)"
+info "Preparing ./data"
 mkdir -p data
-$DOCKER compose -f docker-compose.yml pull stream-backend
-appuid="$({ $DOCKER compose -f docker-compose.yml run --rm --no-deps --entrypoint id stream-backend -u 2>/dev/null || true; } | tr -dc '0-9')"
-if [[ -n "$appuid" ]]; then
-  $SUDO chown -R "$appuid:$appuid" data
-  $SUDO chmod -R u+rwX,go-rwx data
-  info "./data owned by container uid $appuid (mode 0700)"
+ensure_backend_image
+# On a NATIVE LINUX host the `./data:/data` bind mount shares the host's uids
+# and masks the image's `chown app /data` (Dockerfile: USER app), so a fresh
+# root-owned ./data leaves the container unable to create /data/stream.db → the
+# backend panics and crash-loops. Chown ./data to the image's app uid.
+#
+# On Docker Desktop (macOS/Windows) the bind mount goes through a virtualization
+# layer (VirtioFS/gRPC-FUSE) that maps ownership automatically. Chowning the
+# host dir to a Linux uid there is not just unnecessary — a uid-foreign, 0700
+# dir becomes unreadable by the file-sharing daemon and the mount fails with
+# "mkdir ... permission denied". So only touch ownership on Linux.
+if [[ "$(uname -s)" == "Linux" ]]; then
+  appuid="$({ $DOCKER compose -f docker-compose.yml run --rm --no-deps --entrypoint id stream-backend -u 2>/dev/null || true; } | tr -dc '0-9')"
+  if [[ -n "$appuid" ]]; then
+    $SUDO chown -R "$appuid:$appuid" data
+    $SUDO chmod -R u+rwX,go-rwx data
+    info "./data owned by container uid $appuid (mode 0700)"
+  else
+    $SUDO chmod -R 777 data
+    info "couldn't detect container uid — ./data left world-writable; review perms"
+  fi
 else
-  $SUDO chmod -R 777 data
-  info "couldn't detect container uid — ./data left world-writable; review perms"
+  # Docker Desktop maps uids itself, so we don't chown — but a ./data left
+  # chowned to a Linux container uid (by an older version of this script, or by
+  # a Linux deploy of this same checkout) is unreadable here and makes the bind
+  # mount fail with a cryptic "mkdir ... permission denied". Catch it early.
+  if [[ ! -w data ]]; then
+    die "./data exists but isn't writable by $(id -un) — it was likely chowned to a
+       container uid by a previous run. Fix it and re-run:
+         sudo chown -R \"\$(id -un)\" data"
+  fi
+  info "Non-Linux host (Docker Desktop) — leaving ./data ownership to the VM mount layer"
 fi
 
 # --- firewall ---------------------------------------------------------------
@@ -296,16 +332,17 @@ open_firewall
 
 # --- deploy -----------------------------------------------------------------
 # -f docker-compose.yml selects ONLY the base file so the dev override
-# (docker-compose.override.yml, which builds from ./backend) is NOT merged —
-# deploy hosts pull the published zcolor/farbstroem-backend image (BACKEND_TAG).
-info "Starting stack (pulling published images)"
-$DOCKER compose -f docker-compose.yml pull
-$DOCKER compose -f docker-compose.yml up -d
+# (docker-compose.override.yml, which builds from ./backend) is NOT merged.
+# The backend image is already local (pulled or built by ensure_backend_image);
+# --pull missing fetches the infra images (caddy/redis/livekit/ome) without
+# re-pulling the local backend (which would fail on arm64).
+info "Starting stack"
+$DOCKER compose -f docker-compose.yml up -d --pull missing
 
 # --- summary ----------------------------------------------------------------
 echo
 echo "============================================================"
-echo " zStream deployed: https://$DOMAIN"
+echo " Farbström deployed: https://$DOMAIN"
 echo "============================================================"
 if [[ -n "$ADMIN_PASSWORD" ]]; then
   echo
