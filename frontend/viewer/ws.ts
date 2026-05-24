@@ -2,7 +2,7 @@
 // the kicked-poller. Other modules call `wsSend()` to push client messages.
 
 import { addFileToSection, appendChatHistory, appendChatMessage, appendFileMessage, loadSessionFiles, removeFileEverywhere, setChatEnabled } from './chat.js';
-import { disconnectLiveKit, setFocus, syncConferenceTiles } from './conference.js';
+import { disconnectLiveKit, requestAutoFocus, setFocus, syncConferenceTiles } from './conference.js';
 import { applyDisplayState, destroyPlayer, reloadPlayer } from './player.js';
 import { applyModerationUpdate } from './roster.js';
 import { clearAllPointers, hidePointer, pruneCursorsToRoster, renderPointer } from './pointer.js';
@@ -181,8 +181,19 @@ function handleMessage(msg: WsMessage): void {
           position: msg.position ?? 0,
           updatedAtMs: msg.updatedAtMs ?? Date.now(),
         });
+        // The stream tile now hosts a file. Pin it (auto-focus resolves to
+        // 'stream' unless a screen share is active or the viewer overrode).
+        requestAutoFocus();
       } else {
         applyDisplayState(null);
+        // File gone. If the stream tile was pinned only because of the file
+        // (no live stream key), that target is now hidden — clear any manual
+        // pin so auto-focus can fall back to grid. Mirrors handleStreamRemoved.
+        const { streamKey, focusedTile } = viewerStore.get();
+        if (!streamKey && focusedTile === 'stream') {
+          viewerStore.set({ focusOverride: false });
+        }
+        requestAutoFocus();
       }
       return;
   }
