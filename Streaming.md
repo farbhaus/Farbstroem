@@ -22,14 +22,13 @@ This document is focused on **what's not obvious from reading the code**: securi
 
 The production server runs a host-level Caddy (systemd) in front of the containerized Caddy, so one host handles TLS for all domains on the machine:
 
-- Host Caddy terminates TLS and proxies:
-  - `stream.zemariacolor.com → localhost:8880` (container Caddy)
-  - `lk.stream.zemariacolor.com → localhost:7880` (LiveKit directly)
+- Host Caddy terminates TLS and proxies `stream.zemariacolor.com → localhost:8880` (container Caddy)
 - Container Caddy runs plain HTTP on `:80` (mapped to host `8880`), no TLS
 - `.env` sets `SITE_ADDRESS=:80` and `HTTP_PORT=8880`
-- LiveKit subdomain Caddy block includes `header_up Host {upstream_hostport}` for WebSocket signaling
 
 This is the "behind external reverse proxy" path documented in the README. Stock standalone deployments would use `SITE_ADDRESS=stream.yourdomain.com` and let container Caddy handle TLS.
+
+> **LiveKit is now same-origin.** It used to live on its own `lk.stream.zemariacolor.com` subdomain (host Caddy proxied it straight to `localhost:7880`). Since the container Caddy now proxies LiveKit at `/livekit/*` on the main domain (`LIVEKIT_URL=wss://<domain>/livekit`), that subdomain — its DNS record, cert, and Caddy block — is no longer needed. A live server still on the old layout keeps working until it's redeployed; drop the `lk.` block from the host Caddyfile when convenient.
 
 ### `stream-ome` depends on `stream-backend`
 
