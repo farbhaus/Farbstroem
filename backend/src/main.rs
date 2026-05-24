@@ -81,6 +81,16 @@ async fn main() {
     let branding_dir = format!("{}/branding", state.config.data_path);
     tokio::fs::create_dir_all(&branding_dir).await.ok();
 
+    // Sweep any leftover upload-temp files from a previous crash. We
+    // only care about files we wrote more than an hour ago — anything
+    // newer might be an in-flight upload from a sibling worker (we
+    // currently only run one, but the time bound is cheap insurance).
+    stream_backend::uploads::sweep_stale_temps(
+        &format!("{}/files", state.config.data_path),
+        std::time::Duration::from_secs(3600),
+    )
+    .await;
+
     // Spawn background tasks
     tasks::spawn_ome_poller(state.clone());
     tasks::spawn_expiry_poller(state.clone());

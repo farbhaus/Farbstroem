@@ -62,65 +62,74 @@ All services run on a single Docker bridge network (`stream-net`) and reference 
 
 ## Local development
 
-Backend (Rust): see [backend/DEVELOPMENT.md](backend/DEVELOPMENT.md) for the dev loop (`cargo check`, `watchexec`, `cargo test`), required tools (mold/clang on Linux, `watchexec-cli`), and environment variables.
-
-Frontend (TypeScript): `tsc` only — no bundler. After installing once, keep the watcher running in a side terminal:
-
-```bash
-cd frontend && npm install        # one-time
-npm run watch                     # rebuilds www/dist/ on every .ts save
-```
-
-The backend container bind-mounts `./www`, so hard-refreshing the browser picks up the new build immediately — no Docker rebuild needed for frontend changes. Production hosts must run `npm ci && npm run build` before `docker compose up -d` so `www/dist/` exists on disk.
-
-## Production deployment
-
-### Prerequisites
-
-- Docker and Docker Compose v2
-- A domain name (if running standalone with TLS) or an external reverse proxy
-- Firewall: open the ingest ports plus `50000-50100/udp` and `7881/tcp` for LiveKit media
-- UDP 50000-50100 is deliberately narrow — larger ranges create thousands of iptables rules per port and make `docker compose up/down` take minutes
-
-### Configuration
+No deploy script for dev. Fill the secrets (the backend refuses empty/short ones — the
+rest of the `.env.example` defaults are already correct for localhost), then run the
+stack plus the frontend watcher in a side terminal:
 
 ```bash
 cp .env.example .env
-# Edit .env — all secrets enforced at startup:
-#   JWT_SECRET            ≥ 32 chars  (openssl rand -hex 32)
-#   OME_WEBHOOK_SECRET    ≥ 32 chars  (openssl rand -hex 32)
-#   LIVEKIT_API_SECRET    ≥ 32 chars  (openssl rand -hex 32)
-#   LIVEKIT_API_KEY       required    (becomes the iss claim in LiveKit JWTs)
-#   ADMIN_PASSWORD        ≥ 12 chars  (bcrypt-hashed once at startup)
+for k in JWT_SECRET OME_WEBHOOK_SECRET OME_API_TOKEN LIVEKIT_API_SECRET; do
+  sed -i "s|^$k=.*|$k=$(openssl rand -hex 32)|" .env
+done
+sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=devpassword123|" .env   # ≥12 chars
+
+docker compose up -d --build                 # full stack on localhost
+cd frontend && npm install && npm run watch  # rebuilds www/dist/ on every .ts save
 ```
 
-The backend panics with a clear `FATAL:` message at startup if any of these are missing or too short.
+The backend bind-mounts `./www`, so a browser refresh picks up `tsc` rebuilds — no Docker
+rebuild for frontend changes. (Production hosts run `npm ci && npm run build` once so
+`www/dist/` exists; `deploy.sh` does this for you.)
 
-### Standalone (with automatic TLS)
+Backend dev loop (`cargo check`, `watchexec`, `cargo test`) and required tools: see
+[backend/DEVELOPMENT.md](backend/DEVELOPMENT.md).
+
+## Production deployment
+
+One command on a **fresh VPS where only zStream runs**:
 
 ```bash
-SITE_ADDRESS=stream.yourdomain.com docker compose up -d
+sudo ./deploy.sh stream.yourdomain.com
 ```
 
-Caddy will provision Let's Encrypt certificates automatically on first run. Point DNS at the host before starting.
+That's it. The script installs missing prerequisites (Docker + Compose, Node, openssl), generates `.env` with all secrets, opens the firewall, builds the frontend, pulls the published backend image, brings the stack up, and prints the admin password once. The containerized Caddy provisions Let's Encrypt and serves `stream.yourdomain.com` — app, `/live/*` (OME), and LiveKit (proxied same-origin at `/livekit/*`) — no host web server to configure.
 
-### Behind an external reverse proxy
+**Before running:**
+- Point DNS at the VPS for `stream.yourdomain.com` (needed for Let's Encrypt).
+- Run as root / with `sudo` (installs packages, opens the firewall).
+- Prereq auto-install is apt-based; on other distros install Docker/Node/openssl first.
+
+**Re-running is safe** — an existing `.env` is reused and secrets are not rotated, so a redeploy keeps sessions alive. Flags:
+
+| Flag | Effect |
+|---|---|
+| `--regenerate` | Rewrite `.env` from scratch (rotates secrets) |
+| `--yes` | Skip confirmation prompts (unattended) |
+
+The script targets a clean box: if something already holds ports 80/443, it stops and points you at manual configuration (below) rather than failing cryptically.
+
+### Manual / advanced configuration
+
+Skip `deploy.sh` and configure `.env` by hand (`cp .env.example .env`). Required secrets, all enforced at startup (backend panics with a clear `FATAL:` otherwise):
+
+| Var | Min | Generate |
+|---|---|---|
+| `JWT_SECRET`, `OME_WEBHOOK_SECRET`, `OME_API_TOKEN`, `LIVEKIT_API_SECRET` | 32 chars | `openssl rand -hex 32` |
+| `ADMIN_PASSWORD` | 12 chars | (bcrypt-hashed once at startup) |
+| `LIVEKIT_API_KEY` | — | any identifier (the LiveKit JWT `iss`) |
+| `PUBLIC_ORIGIN` | — | exact browser origin, e.g. `https://stream.yourdomain.com` (WebAuthn RP — no path) |
+
+The containerized Caddy ([caddy/Caddyfile](caddy/Caddyfile)) owns **all** routing — app, `/live/*` → OME, and LiveKit (proxied same-origin at `/livekit/*`). For a standalone host where Caddy gets its own Let's Encrypt certs, set:
 
 ```bash
-# .env
-SITE_ADDRESS=:80
-HTTP_PORT=8880
+SITE_ADDRESS=stream.yourdomain.com
+LIVEKIT_URL=wss://stream.yourdomain.com/livekit
+PUBLIC_ORIGIN=https://stream.yourdomain.com
 ```
 
-```bash
-docker compose up -d
-```
+To run behind an existing reverse proxy, set `SITE_ADDRESS=:80` plus `HTTP_PORT`/`HTTPS_PORT` overrides so the published ports don't collide with the front, terminate TLS at your proxy, and forward `stream.yourdomain.com` to the stack's HTTP port. Then `docker compose -f docker-compose.yml up -d`.
 
-Then proxy `stream.yourdomain.com → localhost:8880` and `lk.stream.yourdomain.com → localhost:7880` from the host. Auto-HTTPS is disabled by `SITE_ADDRESS=:80`; the outer proxy handles TLS.
-
-### LiveKit subdomain
-
-LiveKit needs its own subdomain (e.g. `lk.stream.yourdomain.com`) proxying to port 7880 because the JS client uses it for WebSocket signaling. When proxying through Caddy, include `header_up Host {upstream_hostport}` on that site block.
+Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 443 1935 3478 7881`, udp `443 9999 9998 10000-10009 50000-50100`. The 50000-50100/udp LiveKit range is deliberately narrow — wider ranges create thousands of iptables rules and make `docker compose up/down` take minutes.
 
 ## Repository layout
 
@@ -144,3 +153,28 @@ cd backend && cargo test
 ```
 
 Integration tests live in `backend/tests/` and use [`axum-test`](https://crates.io/crates/axum-test). See [backend/DEVELOPMENT.md](backend/DEVELOPMENT.md#tests) for single-file runs and common patterns.
+
+## License
+
+Farbstroem is licensed under the **GNU Affero General Public License v3.0**
+(AGPL-3.0) — see [LICENSE](LICENSE). In short: you are free to use, study,
+modify, and self-host it, but if you run a modified version as a network
+service you must make your modified source available to its users.
+
+Contributions are accepted under the same license via the Developer Certificate
+of Origin — see [CONTRIBUTING.md](CONTRIBUTING.md). Attribution notices for
+bundled dependencies are collected in
+[THIRD_PARTY_NOTICES.html](THIRD_PARTY_NOTICES.html).
+
+## Acknowledgements
+
+Farbstroem is built on the work of these open-source projects:
+
+- [OvenMediaEngine](https://github.com/AirenSoft/OvenMediaEngine) — broadcast ingest/delivery engine (AGPL-3.0)
+- [OvenPlayer](https://github.com/AirenSoft/OvenPlayer) — LLHLS/WebRTC player (MIT)
+- [LiveKit](https://github.com/livekit/livekit) — WebRTC SFU for participant conference (Apache-2.0)
+- [Caddy](https://github.com/caddyserver/caddy) — TLS termination and routing (Apache-2.0)
+- [Axum](https://github.com/tokio-rs/axum) and the broader Rust/Tokio ecosystem (MIT)
+- [hls.js](https://github.com/video-dev/hls.js) — HLS playback fallback (Apache-2.0)
+
+…and the many crates enumerated in [THIRD_PARTY_NOTICES.html](THIRD_PARTY_NOTICES.html).
