@@ -13,7 +13,7 @@ Farbstroem is a private low-latency streaming platform for color-grading review 
 ```bash
 cargo check                              # fast type check
 cargo build --release                    # production binary
-cargo test                               # run all ~70 integration tests
+cargo test                               # run all ~100 integration tests
 cargo test --test rooms_public_test      # single test file
 cargo test --test rooms_public_test join_creates_participant  # single test
 RUST_LOG=debug cargo test -- --nocapture # tests with logs
@@ -92,7 +92,7 @@ Browser (viewer page)
 - `src/ws.rs` — WebSocket hub, broadcast channels per room
 - `src/tasks.rs` — background pollers: OME stream status, room expiry, file cleanup
 - `src/routes/` — one file per resource: `rooms`, `rooms_public`, `files`, `admin_files`, `stream_keys`, `webhook`, `branding`, `metrics`, `ome`, `auth`, `admin_settings`, `rate_limit`
-- `src/credentials.rs` — single-admin credential helpers: `settings` accessors, DB-or-env password resolver, TOTP, recovery codes, WebAuthn RP builder (see `Streaming.md` security section)
+- `src/credentials.rs` — single-admin credential helpers: `settings` accessors, DB-or-env password resolver, TOTP, recovery codes, WebAuthn RP builder (see `docs/Streaming.md` security section)
 - `tests/common/mod.rs` — shared test fixtures (in-memory DB, app setup)
 
 ## Frontend structure
@@ -110,7 +110,7 @@ npm run build                     # production build (CI + prod host)
 - `frontend/viewer/` — viewer SPA modules (`main`, `types`, `state`, `session`, `screens`, `ws`, `player`, `livekit`/`conference`, `chat`, `pointer`, `layout`, plus `globals.d.ts` for the CDN-loaded LiveKit/OvenPlayer globals)
 - `frontend/landing/` — landing page
 - `frontend/shared/` — `store.ts` (tiny reactive store), `utils.ts` (typed API wrapper, toast, formatters), `branding.ts` (read-only branding loader), `components.ts` (modal helpers)
-- `www/shared/` — design system CSS (`tokens.css`, `components.css`, `utils.css`) plus a `README.md` documenting tokens and conventions
+- `www/shared/` — design system CSS (`tokens.css`, `components.css`, `utils.css`); tokens and conventions documented in `docs/Design.md`
 - `www/{admin,viewer,landing}/index.html` — HTML markup, page-specific `<style>`, and the `<script type="module">` tag pointing at the compiled bundle
 - `www/dist/` — build output (gitignored; CI / prod host produces it)
 
@@ -138,5 +138,5 @@ GitHub Actions runs on push/PR: `cargo fmt --check`, `cargo clippy`, `cargo buil
 ## Useful reference docs
 
 - `README.md` — architecture diagram, tech stack, ingest protocols
-- `Streaming.md` — security model, operational gotchas, LiveKit notes, iOS pitfalls, timezone handling
-- `backend/DEVELOPMENT.md` — backend dev loop details, test patterns, recommended tests
+- `docs/Streaming.md` — security model, operational gotchas, LiveKit notes, iOS pitfalls, timezone handling
+- `docs/Development.md` — backend dev loop details, test patterns, recommended tests

@@ -43,6 +43,7 @@ Minimum set to boot the backend alone. All values are validated at startup and t
 |---|---|---|
 | `JWT_SECRET` | 32 chars | HMAC secret for admin JWTs |
 | `OME_WEBHOOK_SECRET` | 32 chars | HMAC-SHA1 key for OME admission webhook verification |
+| `OME_API_TOKEN` | 32 chars | Auth token for calls to the OME REST API (`OME_API_URL`) |
 | `LIVEKIT_API_KEY` | required | LiveKit identifier (becomes the `iss` claim) |
 | `LIVEKIT_API_SECRET` | 32 chars | HMAC secret for LiveKit access tokens |
 | `ADMIN_PASSWORD` | 12 chars | Bcrypt-hashed once at startup |
@@ -70,7 +71,7 @@ cd backend
 cargo check                               # fastest — run before building
 watchexec -r -e rs -- cargo run            # hot reload on .rs changes
 
-cargo test                                 # all ~70 tests
+cargo test                                 # all ~100 tests
 cargo test --test rooms_public_test        # single file
 cargo test --test rooms_public_test join_creates_participant  # single test
 ```
@@ -81,7 +82,7 @@ cargo test --test rooms_public_test join_creates_participant  # single test
 
 Integration tests live in `backend/tests/` and use [`axum-test`](https://crates.io/crates/axum-test) to exercise the router against an in-process server.
 
-- [`tests/common/mod.rs`](tests/common/mod.rs) builds the `AppConfig` directly (rather than going through `AppConfig::from_env`), so the stricter startup validation does not affect test fixtures. Tests can use any secret length without exporting env vars.
+- [`tests/common/mod.rs`](../backend/tests/common/mod.rs) builds the `AppConfig` directly (rather than going through `AppConfig::from_env`), so the stricter startup validation does not affect test fixtures. Tests can use any secret length without exporting env vars.
 - Each test file owns its own SQLite database in a `tempfile::TempDir`, so tests are hermetic and can run in parallel.
 
 To debug a flaky test with logs:
@@ -114,7 +115,7 @@ For fast iteration, run the backend locally outside Docker (`cargo run`) and kee
 cargo build --release
 ```
 
-Produces `target/release/stream-backend`. The [`release` profile in Cargo.toml](Cargo.toml) enables LTO + strip, giving roughly a 9 MB statically-linked binary when built against musl via the Dockerfile.
+Produces `target/release/stream-backend`. The [`release` profile in Cargo.toml](../backend/Cargo.toml) enables LTO + strip, giving roughly a 9 MB statically-linked binary when built against musl via the Dockerfile.
 
 The production image uses a multi-stage build:
 
@@ -128,17 +129,17 @@ The resulting image is ~15 MB total.
 
 | Path | Contents |
 |---|---|
-| [`src/main.rs`](src/main.rs) | Startup: bcrypt-hash admin password, init DB pool, spawn background tasks, mount router, `axum::serve` |
-| [`src/config.rs`](src/config.rs) | `AppConfig::from_env` — fail-fast validation of secrets |
-| [`src/state.rs`](src/state.rs) | `AppState` — shared `Arc` for DB pool, config, event channels, HTTP client |
-| [`src/db.rs`](src/db.rs) | `r2d2_sqlite` pool + schema bootstrap from `schema.sql` |
-| [`src/routes/`](src/routes/) | HTTP handlers, one file per resource |
-| [`src/ws.rs`](src/ws.rs) | `/ws/room/:slug` hub — chat, presence, pointer, kick events |
-| [`src/livekit.rs`](src/livekit.rs) | Hand-rolled LiveKit client (AccessToken + RoomService calls over reqwest) |
-| [`src/tasks.rs`](src/tasks.rs) | Background pollers (OME state, room expiry, file cleanup) |
-| [`schema.sql`](schema.sql) | Source of truth for the SQLite schema |
+| [`src/main.rs`](../backend/src/main.rs) | Startup: bcrypt-hash admin password, init DB pool, spawn background tasks, mount router, `axum::serve` |
+| [`src/config.rs`](../backend/src/config.rs) | `AppConfig::from_env` — fail-fast validation of secrets |
+| [`src/state.rs`](../backend/src/state.rs) | `AppState` — shared `Arc` for DB pool, config, event channels, HTTP client |
+| [`src/db.rs`](../backend/src/db.rs) | `r2d2_sqlite` pool + schema bootstrap from `schema.sql` |
+| [`src/routes/`](../backend/src/routes/) | HTTP handlers, one file per resource |
+| [`src/ws.rs`](../backend/src/ws.rs) | `/ws/room/:slug` hub — chat, presence, pointer, kick events |
+| [`src/livekit.rs`](../backend/src/livekit.rs) | Hand-rolled LiveKit client (AccessToken + RoomService calls over reqwest) |
+| [`src/tasks.rs`](../backend/src/tasks.rs) | Background pollers (OME state, room expiry, file cleanup) |
+| [`schema.sql`](../backend/schema.sql) | Source of truth for the SQLite schema |
 
-For architectural context, security notes, and the list of project-specific pitfalls, see [../Streaming.md](../Streaming.md).
+For architectural context, security notes, and the list of project-specific pitfalls, see [../docs/Streaming.md](Streaming.md).
 
 ## Recommended tests to add
 
@@ -146,7 +147,7 @@ The integration suite already covers the happy paths for rooms, chat, files, and
 
 1. **Authorization boundary (viewer → presenter endpoints).** A viewer JWT hitting `POST /{slug}/conference/kick` or `/conference/mute` must return 403. Use the existing `seed_participant` helper with `role='viewer'` and assert the response code.
 2. **Presenter entry flow.** `POST /api/rooms/:id/enter` with an admin JWT should produce a participant row with `role='presenter' AND is_admitted=1`. Add a negative test verifying no public endpoint can reach the same state.
-3. **Kick blocks re-join by name.** After setting `is_kicked=1` for a participant, `POST /api/public/rooms/:slug/join` with the same name (case-insensitive) must return 403. Covers the check at [src/routes/rooms_public.rs](src/routes/rooms_public.rs).
+3. **Kick blocks re-join by name.** After setting `is_kicked=1` for a participant, `POST /api/public/rooms/:slug/join` with the same name (case-insensitive) must return 403. Covers the check at [src/routes/rooms_public.rs](../backend/src/routes/rooms_public.rs).
 4. **WS hub rejects kicked participants.** Opening `/ws/room/:slug` with a token belonging to an `is_kicked=1` participant must emit a `kicked` frame and close 1008.
 5. **Webhook HMAC rejection.** `POST /api/webhook/admission` with a wrong signature → 401. Same-signature but tampered body → 401.
 6. **Rate limiter.** With `STREAM_DISABLE_RATE_LIMIT` unset, fire six `POST /api/auth/login` attempts; the 6th must return 429. Requires running against the real HTTP server (not `TestServer`) so `ConnectInfo` is populated.

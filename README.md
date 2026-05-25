@@ -5,20 +5,28 @@ Private low-latency streaming platform for color-grading review sessions. Combin
 ## Architecture
 
 ```mermaid
-flowchart LR
-    OBS["OBS / encoder"] -->|SRT / RTMP / WHIP| OME[stream-ome<br/>OvenMediaEngine]
-    OME -->|WebRTC / LLHLS| Viewer["Viewer page<br/>(OvenPlayer)"]
+flowchart TB
+    Encoder["Encoder<br/>OBS · hardware"]
+    Browser["Browser<br/>OvenPlayer · LiveKit SDK · WebSocket"]
 
-    Viewer <-->|WebRTC| LK[stream-livekit<br/>LiveKit SFU]
-    LK <--> Redis[stream-redis]
+    subgraph host["Docker host — stream-net"]
+        Caddy["stream-caddy<br/>TLS + routing"]
+        Backend["stream-backend<br/>Rust/Axum + SQLite"]
+        OME["stream-ome<br/>OvenMediaEngine"]
+        LK["stream-livekit<br/>SFU"]
+        Redis[("stream-redis")]
+    end
 
-    Viewer <-->|REST + WS| Backend[stream-backend<br/>Rust / Axum]
-    Backend -->|RoomService HTTP| LK
+    Encoder -->|"SRT · RTMP"| OME
+    Browser -->|HTTPS / WSS| Caddy
+
+    Caddy -->|"/live/* · WHIP"| OME
+    Caddy -->|"/livekit/*"| LK
+    Caddy -->|"API · WS · static"| Backend
+
+    Backend -->|RoomService| LK
     Backend -->|admission webhook| OME
-    Backend <-->|SQLite WAL| DB[(/data/stream.db)]
-
-    Caddy[stream-caddy] --> Backend
-    Caddy -->|/live/*| OME
+    LK --- Redis
 ```
 
 All services run on a single Docker bridge network (`stream-net`) and reference each other by container name.
@@ -45,7 +53,7 @@ All services run on a single Docker bridge network (`stream-net`) and reference 
 ## Features
 
 - Room management with expiry, passwords, waiting rooms
-- Presenter vs viewer roles (presenter role only grantable by admin — see [security notes](Streaming.md#security-architecture))
+- Presenter vs viewer roles (presenter role only grantable by admin — see [security notes](docs/Streaming.md#security-architecture))
 - Per-room viewer delivery mode (WebRTC or LLHLS)
 - LiveKit-backed voice/video conference, screen sharing, watch-only mode
 - Presenter moderation: kick + server-side mute
@@ -82,11 +90,11 @@ rebuild for frontend changes. (Production hosts run `npm ci && npm run build` on
 `www/dist/` exists; `deploy.sh` does this for you.)
 
 Backend dev loop (`cargo check`, `watchexec`, `cargo test`) and required tools: see
-[backend/DEVELOPMENT.md](backend/DEVELOPMENT.md).
+[docs/Development.md](docs/Development.md).
 
 ## Production deployment
 
-One command on a **fresh VPS where only zStream runs**:
+One command on a **fresh VPS where only Farbstroem runs**:
 
 ```bash
 sudo ./deploy.sh stream.yourdomain.com
@@ -135,7 +143,7 @@ Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 4
 
 ```
 .
-├── backend/            Rust/Axum backend — see backend/DEVELOPMENT.md
+├── backend/            Rust/Axum backend — see docs/Development.md
 ├── frontend/           TypeScript sources (`tsc` only, no bundler) for admin/viewer/landing SPAs
 ├── caddy/Caddyfile     Container Caddy config (SITE_ADDRESS envar-driven)
 ├── livekit/            LiveKit server config
@@ -143,7 +151,7 @@ Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 4
 ├── www/                Static HTML/CSS + compiled JS (dist/) served by the backend
 ├── docker-compose.yml
 ├── .env.example        Required env vars, documented inline
-└── Streaming.md        Project memory — architecture details, pitfalls, security notes
+└── docs/               Architecture notes, security model, design system
 ```
 
 ## Tests
@@ -152,7 +160,7 @@ Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 4
 cd backend && cargo test
 ```
 
-Integration tests live in `backend/tests/` and use [`axum-test`](https://crates.io/crates/axum-test). See [backend/DEVELOPMENT.md](backend/DEVELOPMENT.md#tests) for single-file runs and common patterns.
+Integration tests live in `backend/tests/` and use [`axum-test`](https://crates.io/crates/axum-test). See [docs/Development.md](docs/Development.md#tests) for single-file runs and common patterns.
 
 ## License
 
@@ -162,7 +170,7 @@ modify, and self-host it, but if you run a modified version as a network
 service you must make your modified source available to its users.
 
 Contributions are accepted under the same license via the Developer Certificate
-of Origin — see [CONTRIBUTING.md](CONTRIBUTING.md). Attribution notices for
+of Origin — see [CONTRIBUTING.md](docs/CONTRIBUTING.md). Attribution notices for
 bundled dependencies are collected in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 

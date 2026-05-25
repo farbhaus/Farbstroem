@@ -10,7 +10,7 @@ Shared tokens, components, and utilities used by every page in `www/`. Loaded as
 | `components.css` | Reusable component classes: `.btn`, `.btn-primary`, `.btn-tab`, `.modal-overlay` + `.modal`, `.section-header`, `.badge-*`, `.empty`, form rows. |
 | `utils.css` | Tiny utility layer: `.u-hidden`, layout helpers. Keep this small — prefer real components over utility-class drift. |
 
-JS helpers (toast, fetch wrapper, branding loader, formatters, store) live under [frontend/shared/](../../frontend/shared/) as TypeScript modules and are imported per-page from the compiled output in `www/dist/shared/`.
+JS helpers (toast, fetch wrapper, branding loader, formatters, store) live under [frontend/shared/](../frontend/shared/) as TypeScript modules and are imported per-page from the compiled output in `www/dist/shared/`.
 
 ## Color tokens
 
@@ -55,10 +55,10 @@ Page-specific styling stays inline in the page's `<style>` block. If something i
 ## Conventions
 
 - **No hex colors in component CSS** — always reference a token. Page-specific accents (e.g. the `#1a1508` waiting-section background) are the rare exception and should be documented inline.
-- **No `!important`** outside of `utils.css`'s `.u-hidden`.
+- **No `!important` in shared CSS.** Even `.u-hidden` avoids it, so an inline `style.display` set from JS still wins.
 - **Class names**: descriptive, hyphenated. No BEM. No CSS-in-JS.
 - **Z-index**: only use the `--z-*` scale. New layers should extend the scale, not invent ad-hoc values.
 
 ## TypeScript build
 
-All three SPAs (admin, viewer, landing) are TypeScript, compiled with `tsc` to `www/dist/`. Sources live under `frontend/{admin,viewer,landing,shared}/`. See [frontend/package.json](../../frontend/package.json) for build commands (`build`, `watch`, `typecheck`).
+All three SPAs (admin, viewer, landing) are TypeScript, compiled with `tsc` to `www/dist/`. Sources live under `frontend/{admin,viewer,landing,shared}/`. See [frontend/package.json](../frontend/package.json) for build commands (`build`, `watch`, `typecheck`).

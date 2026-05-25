@@ -8,11 +8,11 @@ type: reference
 
 - **Purpose:** private low-latency streaming platform for color grading review sessions
 - **Audience:** Zé Maria (presenter) + clients/directors (viewers), small groups
-- **Repo:** https://github.com/zcolor/zstream (private)
+- **Repo:** https://github.com/farbhaus/Farbstroem (private)
 
 For project overview, architecture diagram, tech stack, deployment, and local dev workflow see:
-- [README.md](README.md) — what it is and how to deploy it
-- [backend/DEVELOPMENT.md](backend/DEVELOPMENT.md) — local dev loop
+- [README.md](../README.md) — what it is and how to deploy it
+- [docs/Development.md](Development.md) — local dev loop
 
 This document is focused on **what's not obvious from reading the code**: security model, operational gotchas, and the institutional knowledge that would otherwise be lost.
 
@@ -32,7 +32,7 @@ This is the "behind external reverse proxy" path documented in the README. Stock
 
 ### `stream-ome` depends on `stream-backend`
 
-Looks wrong at first glance (ingest shouldn't need the web app) but is intentional: OME's `AdmissionWebhooks.ControlServerUrl` in [ome/origin_conf/Server.xml](ome/origin_conf/Server.xml) points at `http://stream-backend:4001/api/webhook/admission`, and every incoming RTMP/SRT ingest is HMAC-verified against `OME_WEBHOOK_SECRET` by [backend/src/routes/webhook.rs](backend/src/routes/webhook.rs). If the backend is down, ingests fail closed — no unauthorised streaming. The compose `depends_on` with `condition: service_healthy` is load-bearing; keep it.
+Looks wrong at first glance (ingest shouldn't need the web app) but is intentional: OME's `AdmissionWebhooks.ControlServerUrl` in [ome/origin_conf/Server.xml](../ome/origin_conf/Server.xml) points at `http://stream-backend:4001/api/webhook/admission`, and every incoming RTMP/SRT ingest is HMAC-verified against `OME_WEBHOOK_SECRET` by [backend/src/routes/webhook.rs](../backend/src/routes/webhook.rs). If the backend is down, ingests fail closed — no unauthorised streaming. The compose `depends_on` with `condition: service_healthy` is load-bearing; keep it.
 
 ---
 
@@ -114,7 +114,7 @@ Shown after join: Camera+Mic / Mic Only / Watch Only. Choice saved to `localStor
   - **Passkeys (WebAuthn)** — `webauthn-rs`, single admin user handle. Credentials in the `admin_passkeys` table (serialized `Passkey`, counter updated in place). `POST /api/auth/passkey/start` + `/finish` mint the same admin JWT and **bypass password + TOTP** (a passkey is itself a strong factor). In-flight ceremony state is held in-memory in `AppState` (TTL `CEREMONY_TTL_SECS` = 300s; lost on restart → just retry). RP origin/ID come from `PUBLIC_ORIGIN` (must match the browser origin — `https://stream.zemariacolor.com` in prod, `http://localhost:4001` for local dev).
 - **Break-glass / lockout recovery** (single admin — there is no second account): clearing the relevant `settings` rows reverts to the env password with 2FA off. On the host: `sqlite3 stream/data/stream.db "DELETE FROM settings WHERE key IN ('admin_password_hash','totp_secret','totp_enabled','totp_recovery');"` then restart the backend. Deleting all rows from `admin_passkeys` removes passkey login. The `ADMIN_PASSWORD` env always works whenever no custom `admin_password_hash` row exists.
 - **OpenSSL note** — `webauthn-rs` hard-depends on OpenSSL; this otherwise rustls-only musl-static build vendors it (`openssl` crate `vendored` feature, compiled statically). The Dockerfile builder stage adds `perl make gcc linux-headers` for that compile; the runtime image stays unchanged (no system libssl).
-- **Secret validation at startup** (`backend/src/config.rs`): `JWT_SECRET`, `OME_WEBHOOK_SECRET`, `LIVEKIT_API_SECRET` all require ≥ 32 chars; `ADMIN_PASSWORD` ≥ 12; `LIVEKIT_API_KEY` required (no length check — it's an identifier, becomes the `iss` claim). Missing or short secrets panic at boot with a clear `FATAL:` message.
+- **Secret validation at startup** (`backend/src/config.rs`): `JWT_SECRET`, `OME_WEBHOOK_SECRET`, `LIVEKIT_API_SECRET`, `OME_API_TOKEN` all require ≥ 32 chars; `ADMIN_PASSWORD` ≥ 12; `LIVEKIT_API_KEY` required (no length check — it's an identifier, becomes the `iss` claim). Missing or short secrets panic at boot with a clear `FATAL:` message.
 - **Rate limiting** — `POST /api/auth/login` is limited to 5 requests/minute/IP (burst 2) and `POST /api/public/rooms/:slug/join` to 30 requests/minute/IP (burst 10) via `tower_governor` with `SmartIpKeyExtractor` (honours `X-Forwarded-For` / `Forwarded` from the fronting Caddy). Over-limit requests return 429 with `retry-after`. Set `STREAM_DISABLE_RATE_LIMIT=1` to disable — integration tests do this because `axum-test::TestServer` does not populate `ConnectInfo`.
 - **Error body redaction** — `AppError::Internal` and `AppError::BadGateway` log the raw `rusqlite` / `reqwest` / JWT error via `tracing::error!` but return a generic `{"error":"Internal server error"}` / `{"error":"Upstream service unavailable"}` to the client. 4xx errors keep their author-written messages (they are safe).
 - **Token redaction in logs** — the request-tracing span's `uri` field redacts `token`, `presenter_key`, and `password` query params before they reach `tracing-subscriber`. Path and other query keys remain intact so logs stay useful.
@@ -139,7 +139,7 @@ Shown after join: Camera+Mic / Mic Only / Watch Only. Choice saved to `localStor
   ```
   Without the space, LiveKit logs "Could not parse keys" and the server comes up with no auth configured.
 - **No upstream Rust LiveKit SDK** — `backend/src/livekit.rs` is a hand-rolled client: AccessToken JWT minting (`jsonwebtoken` HS256) + RoomService HTTP calls (`mute_published_track`, `remove_participant`, `delete_room`) over `reqwest`. Talks to `LIVEKIT_INTERNAL_URL` (default `http://stream-livekit:7880`) — HTTP, not WSS.
-- **LiveKit subdomain** needs `header_up Host {upstream_hostport}` in Caddy for WebSocket signaling to work through the proxy.
+- **LiveKit proxy** needs `header_up Host {upstream_hostport}` in the Caddy `/livekit/*` block for WebSocket signaling to work through the proxy.
 - **Firewall:** UDP 50000-50100 and TCP 7881 must be open for LiveKit RTC.
 - **Port range** — 100 UDP ports supports ~25-50 concurrent participants. Avoid large ranges (50000-60000) — Docker creates iptables rules per port, making `up/down` take multiple minutes.
 
@@ -173,17 +173,17 @@ The matching SSE stream at `/api/public/rooms/:slug/waiting/events/:participantI
 
 ### Frontend modularization
 
-Done. Admin, viewer, and landing are TypeScript modules under [frontend/](frontend/), compiled by `tsc` to [www/dist/](www/dist/) as plain ES modules. No bundler, no runtime npm deps — `typescript` is the only devDependency. Sources are split per subsystem:
+Done. Admin, viewer, and landing are TypeScript modules under [frontend/](../frontend/), compiled by `tsc` to [www/dist/](../www/dist/) as plain ES modules. No bundler, no runtime npm deps — `typescript` is the only devDependency. Sources are split per subsystem:
 
 - Admin: `auth`, `rooms`, `stream-keys`, `files`, `branding`, `dashboard`, `settings`, `webauthn`, `main`, `types`.
-- Viewer: `state` (central reactive store via [frontend/shared/store.ts](frontend/shared/store.ts)), `session`, `screens`, `ws` (typed discriminated `WsMessage` union + exhaustive router), `player` (OvenPlayer), `conference` (LiveKit + tile grid + cam/mic/screen + devices + presenter moderation), `chat`, `pointer`, `layout`, `main`, `types`, plus [globals.d.ts](frontend/viewer/globals.d.ts) for the CDN-loaded `OvenPlayer` and `LivekitClient` globals.
+- Viewer: `state` (central reactive store via [frontend/shared/store.ts](../frontend/shared/store.ts)), `session`, `screens`, `ws` (typed discriminated `WsMessage` union + exhaustive router), `player` (OvenPlayer), `conference` (LiveKit + tile grid + cam/mic/screen + devices + presenter moderation), `chat`, `pointer`, `layout`, `main`, `types`, plus [globals.d.ts](../frontend/viewer/globals.d.ts) for the CDN-loaded `OvenPlayer` and `LivekitClient` globals.
 - Shared: `store`, `utils`, `branding`, `components`.
 
-HTML pages reference the compiled JS via `<script type="module" src="/dist/<page>/main.js">`. Click handlers are delegated via `[data-action]` attributes (no `window.*` globals). The legacy `www/shared/utils.js` has been deleted; CSS tokens/components stay under [www/shared/](www/shared/) and are documented in [www/shared/README.md](www/shared/README.md).
+HTML pages reference the compiled JS via `<script type="module" src="/dist/<page>/main.js">`. Click handlers are delegated via `[data-action]` attributes (no `window.*` globals). The legacy `www/shared/utils.js` has been deleted; CSS tokens/components stay under [www/shared/](../www/shared/) and are documented in [docs/Design.md](Design.md).
 
 ### Docker
 - **Backend is a compiled Rust binary baked into the image** (multi-stage: `rust:1-alpine` builder → `alpine:3.20` runtime, statically linked against musl). `docker restart` does NOT pick up code changes — must `docker compose up -d --build stream-backend`.
-- **Healthchecks.** All five services have `healthcheck:` blocks in [docker-compose.yml](docker-compose.yml). Dependents use long-form `depends_on: { <svc>: { condition: service_healthy } }` so the stack waits for readiness, not just container start. `stream-ome` waits for `stream-backend` (see above); `stream-caddy` waits for both `stream-backend` and `stream-ome`; `stream-livekit` waits for `stream-redis`. `stream-backend` has a `/healthz` endpoint that deliberately does not touch the DB pool — a stuck pool should leave the service *up* so it can recover, not loop-restart.
+- **Healthchecks.** All five services have `healthcheck:` blocks in [docker-compose.yml](../docker-compose.yml). Dependents use long-form `depends_on: { <svc>: { condition: service_healthy } }` so the stack waits for readiness, not just container start. `stream-ome` waits for `stream-backend` (see above); `stream-caddy` waits for both `stream-backend` and `stream-ome`; `stream-livekit` waits for `stream-redis`. `stream-backend` has a `/healthz` endpoint that deliberately does not touch the DB pool — a stuck pool should leave the service *up* so it can recover, not loop-restart.
 - **First build is slow** — the Dockerfile pre-fetches and compiles dependencies against a stub `main.rs` so subsequent builds only recompile the application crate.
 - **`$` in `.env`** — Docker Compose processes `$` in env_file values. Use `$$` to escape.
 - **Startup race fix** — `axum::serve` is awaited only after the `bcrypt::hash` task (run in `tokio::task::spawn_blocking`) returns, so the listener never accepts before the admin password hash is ready.
