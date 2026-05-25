@@ -164,7 +164,7 @@ service you must make your modified source available to its users.
 Contributions are accepted under the same license via the Developer Certificate
 of Origin — see [CONTRIBUTING.md](CONTRIBUTING.md). Attribution notices for
 bundled dependencies are collected in
-[THIRD_PARTY_NOTICES.html](THIRD_PARTY_NOTICES.html).
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Acknowledgements
 
@@ -177,4 +177,4 @@ Farbstroem is built on the work of these open-source projects:
 - [Axum](https://github.com/tokio-rs/axum) and the broader Rust/Tokio ecosystem (MIT)
 - [hls.js](https://github.com/video-dev/hls.js) — HLS playback fallback (Apache-2.0)
 
-…and the many crates enumerated in [THIRD_PARTY_NOTICES.html](THIRD_PARTY_NOTICES.html).
+…and the many crates enumerated in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

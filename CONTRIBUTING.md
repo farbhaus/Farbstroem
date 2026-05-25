@@ -71,12 +71,12 @@ npm run typecheck
 ## Third-party notices
 
 Farbstroem bundles open-source dependencies whose attribution notices are
-collected in [THIRD_PARTY_NOTICES.html](THIRD_PARTY_NOTICES.html), regenerated
+collected in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), regenerated
 with [`cargo-about`](https://github.com/EmbarkStudios/cargo-about):
 
 ```bash
 cd backend
-cargo about generate about.hbs -o ../THIRD_PARTY_NOTICES.html
+cargo about generate about.hbs -o ../THIRD_PARTY_NOTICES.md
 ```
 
 Run this whenever dependencies change.
