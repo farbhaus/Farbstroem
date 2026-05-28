@@ -856,6 +856,92 @@ body.has-focus.strip-hidden #stage-strip {
 
     #right-panel.open { width: 280px; }
 }
+
+/* ---- Mobile-landscape side toolbars (#151) ---- */
+/* Empty containers in regular layouts; populated by setupLandscapeToolbar()
+   only when the breakpoint matches. Hidden by default. */
+.side-toolbar { display: none; }
+
+@media (max-height: 440px) and (orientation: landscape) {
+    body.landscape-mobile #top-bar,
+    body.landscape-mobile #bottom-toolbar { display: none; }
+
+    body.landscape-mobile #app { flex-direction: row; }
+
+    body.landscape-mobile .side-toolbar {
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: flex-start;
+        gap: 8px;
+        padding: 6px 7px;
+        overflow: hidden;
+        padding-top:    calc(6px + env(safe-area-inset-top, 0px));
+        padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+        background: var(--surface);
+        flex-shrink: 0;
+        overflow-y: auto;
+        z-index: 5;
+    }
+    body.landscape-mobile #left-toolbar  {
+        border-right: 1px solid var(--border);
+        order: 0;
+        padding-left: calc(7px + env(safe-area-inset-left, 0px));
+    }
+    body.landscape-mobile #right-toolbar {
+        border-left:  1px solid var(--border);
+        order: 2;
+        padding-right: calc(7px + env(safe-area-inset-right, 0px));
+    }
+    body.landscape-mobile #main-row { order: 1; flex: 1; min-width: 0; }
+
+    /* Group separators turn into thin horizontal rules between vertical stacks. */
+    body.landscape-mobile .side-toolbar .tb-sep {
+        width: 28px; height: 1px;
+        margin: 4px 0;
+    }
+    body.landscape-mobile .side-toolbar .toolbar-group {
+        flex-direction: column; gap: 3px;
+    }
+    /* Single vertically-centered cluster per side. tb-sep elements between
+       logical blocks mirror the desktop bottom toolbar's group separators.
+       margin: auto 0 absorbs leftover space above and below so the cluster
+       centres in the area below the top-cluster — at short heights it
+       gives way gracefully instead of overlapping. */
+    body.landscape-mobile .side-cluster {
+        display: flex; flex-direction: column;
+        align-items: center; gap: 4px;
+        margin: auto 0;
+    }
+    body.landscape-mobile .side-cluster > .tb-sep {
+        width: 24px; height: 1px; margin: 4px 0;
+    }
+    /* Corner cluster — sits at the top of the side bar in normal flex flow
+       so the main cluster's auto margins respect its height. */
+    body.landscape-mobile .top-cluster {
+        display: flex; flex-direction: column;
+        align-items: center; gap: 6px;
+        flex-shrink: 0;
+    }
+    /* Top-bar refugees relocated into the side bars. */
+    body.landscape-mobile .side-toolbar #ws-status,
+    body.landscape-mobile .side-toolbar #live-badge,
+    body.landscape-mobile .side-toolbar #participant-count,
+    body.landscape-mobile .side-toolbar #leave-btn {
+        font-size: 10px;
+        margin: 0;
+    }
+    /* #leave-btn has an inline `margin-left: 8px` (used in #top-right to
+       space it from its siblings). Override with !important so the
+       button sits dead-centre in the right side bar. */
+    body.landscape-mobile .side-toolbar #leave-btn { margin-left: 0 !important; }
+    /* Drop the "Connected" / "Connecting" text — the dot alone signals
+       status, and the label would force the side bar wider than its
+       button column. */
+    body.landscape-mobile .side-toolbar #ws-label { display: none; }
+    body.landscape-mobile #room-name-label { display: none; }
+    /* Seek group + volume don't fit a vertical column. */
+    body.landscape-mobile #seek-group { display: none !important; }
+    body.landscape-mobile #volume-slider { display: none; }
+}
 </style>
 </head>
 <body>
@@ -1187,6 +1273,11 @@ body.has-focus.strip-hidden #stage-strip {
             </button>
         </div>
     </div>
+
+    <!-- Mobile-landscape side toolbars. Empty by default; populated by
+         setupLandscapeToolbar() in layout.ts when the breakpoint matches. -->
+    <div id="left-toolbar"  class="side-toolbar" aria-hidden="true"></div>
+    <div id="right-toolbar" class="side-toolbar" aria-hidden="true"></div>
 
 </div><!-- /app -->
 
