@@ -5,7 +5,7 @@ Thanks for your interest in improving Farbstroem.
 ## License of contributions
 
 Farbstroem is released under the **GNU Affero General Public License v3.0**
-(see [LICENSE](../LICENSE)). By contributing, you agree that your contributions
+(see [LICENSE](LICENSE)). By contributing, you agree that your contributions
 are licensed under the same AGPL-3.0 terms.
 
 ## Developer Certificate of Origin (DCO)
@@ -52,8 +52,7 @@ The full text you are certifying:
 
 ## Development setup
 
-See [docs/Development.md](Development.md) for the Rust dev loop and
-the root [README.md](../README.md) for the full stack. Before opening a pull
+See the root [README.md](README.md) for the project. Before opening a pull
 request, please make sure the CI gates pass locally:
 
 ```bash
@@ -71,7 +70,7 @@ npm run typecheck
 ## Third-party notices
 
 Farbstroem bundles open-source dependencies whose attribution notices are
-collected in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md), regenerated
+collected in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), regenerated
 with [`cargo-about`](https://github.com/EmbarkStudios/cargo-about):
 
 ```bash

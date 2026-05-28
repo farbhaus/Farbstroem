@@ -89,9 +89,6 @@ The backend bind-mounts `./www`, so a browser refresh picks up `tsc` rebuilds �
 rebuild for frontend changes. (Production hosts run `npm ci && npm run build` once so
 `www/dist/` exists; `deploy.sh` does this for you.)
 
-Backend dev loop (`cargo check`, `watchexec`, `cargo test`) and required tools: see
-[docs/Development.md](docs/Development.md).
-
 ## Production deployment
 
 One command on a **fresh VPS where only Farbstroem runs**:
@@ -151,7 +148,7 @@ Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 4
 
 ```
 .
-├── backend/            Rust/Axum backend — see docs/Development.md
+├── backend/            Rust/Axum backend
 ├── frontend/           TypeScript sources (`tsc` only, no bundler) for admin/viewer/landing SPAs
 ├── caddy/Caddyfile     Container Caddy config (SITE_ADDRESS envar-driven)
 ├── livekit/            LiveKit server config
@@ -168,7 +165,7 @@ Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 4
 cd backend && cargo test
 ```
 
-Integration tests live in `backend/tests/` and use [`axum-test`](https://crates.io/crates/axum-test). See [docs/Development.md](docs/Development.md#tests) for single-file runs and common patterns.
+Integration tests live in `backend/tests/` and use [`axum-test`](https://crates.io/crates/axum-test).
 
 ## License
 
@@ -178,7 +175,7 @@ modify, and self-host it, but if you run a modified version as a network
 service you must make your modified source available to its users.
 
 Contributions are accepted under the same license via the Developer Certificate
-of Origin — see [CONTRIBUTING.md](docs/CONTRIBUTING.md). Attribution notices for
+of Origin — see [CONTRIBUTING.md](CONTRIBUTING.md). Attribution notices for
 bundled dependencies are collected in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 

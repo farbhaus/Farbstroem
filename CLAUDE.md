@@ -54,7 +54,31 @@ cp .env.example .env
 # Fill in secrets — generate with: openssl rand -hex 32
 ```
 
-Required variables: `JWT_SECRET`, `OME_WEBHOOK_SECRET`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `ADMIN_PASSWORD` (12+ chars, bcrypt-hashed at startup).
+**Required** (`backend/src/config.rs` panics at startup if missing or too short):
+
+| Var | Min | Purpose |
+|---|---|---|
+| `JWT_SECRET` | 32 | HMAC secret for admin JWTs |
+| `OME_WEBHOOK_SECRET` | 32 | HMAC-SHA1 key for OME admission webhook verification |
+| `OME_API_TOKEN` | 32 | Auth token for calls to the OME REST API |
+| `LIVEKIT_API_SECRET` | 32 | HMAC secret for LiveKit access tokens |
+| `ADMIN_PASSWORD` | 12 | Bcrypt-hashed once at startup |
+| `LIVEKIT_API_KEY` | — | Identifier; becomes the `iss` claim |
+
+**Optional** (with defaults):
+
+| Var | Default | Purpose |
+|---|---|---|
+| `PORT` | `4001` | Axum bind port |
+| `DB_PATH` | `/data/stream.db` | SQLite file |
+| `DATA_PATH` | `/data` | Uploads and branding |
+| `OME_API_URL` | `http://stream-ome:8081/v1` | OME admin API |
+| `LIVEKIT_INTERNAL_URL` | `http://stream-livekit:7880` | LiveKit HTTP signaling |
+| `LIVEKIT_URL` | `ws://localhost:7880` | WebSocket URL sent to browser clients |
+| `PUBLIC_ORIGIN` | `https://stream.zemariacolor.com` | WebAuthn RP origin/ID — must match the browser origin exactly. `http://localhost:4001` for local dev. |
+| `STREAM_DISABLE_RATE_LIMIT` | unset | Set to `1` to disable rate limiting (integration tests do this). |
+
+Generate secrets with `openssl rand -hex 32`.
 
 ## Architecture
 
@@ -110,11 +134,22 @@ npm run build                     # production build (CI + prod host)
 - `frontend/viewer/` — viewer SPA modules (`main`, `types`, `state`, `session`, `screens`, `ws`, `player`, `livekit`/`conference`, `chat`, `pointer`, `roster`, `layout`, plus `globals.d.ts` for the CDN-loaded LiveKit/OvenPlayer globals)
 - `frontend/landing/` — landing page
 - `frontend/shared/` — `store.ts` (tiny reactive store), `utils.ts` (typed API wrapper, toast, formatters), `branding.ts` (read-only branding loader), `components.ts` (modal helpers)
-- `www/shared/` — design system CSS (`tokens.css`, `components.css`, `utils.css`); tokens and conventions documented in `docs/Design.md`
+- `www/shared/` — design system CSS (`tokens.css`, `components.css`, `utils.css`); conventions in the [Design system](#design-system) section below
 - `www/{admin,viewer,landing}/index.html` — HTML markup, page-specific `<style>`, and the `<script type="module">` tag pointing at the compiled bundle
 - `www/dist/` — build output (gitignored; CI / prod host produces it)
 
 CDN-loaded runtime deps stay as `<script>` tags in the HTML: OvenPlayer, HLS.js, LiveKit client. No npm runtime deps.
+
+## Design system
+
+CSS tokens in [`www/shared/tokens.css`](www/shared/tokens.css), shared components in `components.css`, utilities in `utils.css`. The admin Branding API overrides `--bg/surface/text/accent/danger/green` at runtime via inline style on `:root`.
+
+Conventions:
+- Reference tokens (colors, spacing, radii, motion, z-index) — no hardcoded values in shared CSS.
+- No `!important` in shared CSS. `.u-hidden` deliberately omits it so an inline `style.display` set from JS still wins.
+- Class names: descriptive, hyphenated. No BEM. No CSS-in-JS.
+- Z-index only from the `--z-*` scale; new layers extend the scale, not invent ad-hoc values.
+- Page-specific CSS stays inline in the page's `<style>` block. Promote duplicated styles to `components.css`.
 
 ## Key implementation details
 
@@ -123,6 +158,10 @@ CDN-loaded runtime deps stay as `<script>` tags in the HTML: OvenPlayer, HLS.js,
 - Participant: `POST /api/public/rooms/:slug/join` — returns a scoped JWT for WS + file access
 - Presenter role is admin-only (`POST /api/rooms/:id/enter`), never grantable from the public join flow
 
+**Presenter entry handoff.** Admin clicks "Enter Room" → backend creates `role='presenter', is_admitted=1` → admin JS writes `{jwt, participantId}` to `localStorage['viewer_presession_{slug}']` and opens `/watch/{slug}` in a new tab → viewer reads the presession on load, moves it into `sessionStorage['viewer_session_{slug}']`, and deletes the localStorage entry. The localStorage key exists for milliseconds. No public URL grants presenter role.
+
+**Session isolation.** `viewer_session_{slug}` is in `sessionStorage` (per-tab, survives refresh, cleared on tab close); `viewer_name__/pass__{slug}` stay in `localStorage` (shared across tabs — intentional). `viewer_kicked_{slug}` is set on `{type:'kicked'}` or WS close 1008 and is checked at page load *before* WS connect, so a kicked viewer sees "Removed" instantly on refresh. If the sessionStorage flag is lost, the WS hub re-detects `is_kicked=1` and re-expels on reconnect.
+
 **Database:** All queries use prepared statements with `?N` placeholders — no string interpolation. Schema in `backend/schema.sql`, bootstrapped on every startup.
 
 **Rate limiting:** `/api/auth/login` → 5 req/min; `/api/public/rooms/:slug/join` → 30 req/min; passkey ceremonies → 30 req/min in a separate bucket so an OS prompt doesn't burn the login budget. Uses `tower_governor` with `SmartIpKeyExtractor` (honours `X-Forwarded-For` from Caddy).
@@ -130,6 +169,10 @@ CDN-loaded runtime deps stay as `<script>` tags in the HTML: OvenPlayer, HLS.js,
 **Error handling:** `AppError::Internal` and `AppError::BadGateway` return a generic message to the client; actual error is logged server-side only.
 
 **LiveKit:** Hand-rolled, no official Rust SDK. Token generation and RoomService calls are in `src/livekit.rs`.
+
+**Public participant status.** `GET /api/public/rooms/:slug/status/:participantId?token=…` returns `{admitted, kicked, room_status: 'scheduled|live|ended'}`. Companion SSE stream at `/api/public/rooms/:slug/waiting/events/:participantId` emits `admitted`, `kicked`, `room_ended`, `ping` — waiting-room clients drive the full state machine from SSE alone without holding a WS open.
+
+**Moderation audit.** Kick and mute are logged via `tracing::info!` with `room_slug`, `actor_id`, `target_id` for after-the-fact audits. If LiveKit `remove_participant` fails the backend retries once after 250 ms and `error!`s on the second failure — the DB `is_kicked=1` flag and WS force-close happen first, so UI state is correct even when LiveKit is momentarily unreachable.
 
 ## CI
 
@@ -142,7 +185,17 @@ GitHub Actions runs on push/PR (`.github/workflows/ci.yml`):
 ## Useful reference docs
 
 - `README.md` — architecture diagram, tech stack, ingest protocols
-- `docs/Development.md` — backend dev loop details, test patterns, recommended tests
+
+## Recommended tests to add
+
+Thin areas in the integration suite worth regression coverage:
+1. Viewer JWT → presenter endpoints (`/conference/kick`, `/conference/mute`) → 403.
+2. `POST /api/rooms/:id/enter` (admin JWT) produces `role='presenter' AND is_admitted=1`; no public endpoint reaches the same state.
+3. Kick blocks re-join by case-insensitive name match (`POST /api/public/rooms/:slug/join` → 403).
+4. WS hub rejects kicked participants — `{type:'kicked'}` frame, close 1008.
+5. Webhook HMAC: wrong signature → 401; tampered body → 401.
+6. Rate limiter: 6th `/api/auth/login` in a minute → 429 (requires the real HTTP server, not `TestServer`, so `ConnectInfo` is populated).
+7. Status endpoint shape: `GET /api/public/rooms/:slug/status/:pid?token=…` → `{admitted, kicked, room_status}` for each of waiting/admitted/kicked/ended.
 
 ## Gotchas
 
