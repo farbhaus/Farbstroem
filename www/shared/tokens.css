@@ -61,10 +61,12 @@
     --panel-w:     320px;
     --panel-w-max: 560px;
     --strip-w:      220px;
+    --strip-w-min:  180px;
+    --strip-w-max:  360px;
 }
 
 html, body {
-    height: 100%;
+    min-height: 100%;
     font-family: var(--ff);
     font-size: var(--fs-base);
     color: var(--text);

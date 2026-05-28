@@ -52,8 +52,7 @@ The full text you are certifying:
 
 ## Development setup
 
-See [backend/DEVELOPMENT.md](backend/DEVELOPMENT.md) for the Rust dev loop and
-the root [README.md](README.md) for the full stack. Before opening a pull
+See the root [README.md](README.md) for the project. Before opening a pull
 request, please make sure the CI gates pass locally:
 
 ```bash
@@ -71,12 +70,12 @@ npm run typecheck
 ## Third-party notices
 
 Farbstroem bundles open-source dependencies whose attribution notices are
-collected in [THIRD_PARTY_NOTICES.html](THIRD_PARTY_NOTICES.html), regenerated
+collected in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), regenerated
 with [`cargo-about`](https://github.com/EmbarkStudios/cargo-about):
 
 ```bash
 cd backend
-cargo about generate about.hbs -o ../THIRD_PARTY_NOTICES.html
+cargo about generate about.hbs -o ../THIRD_PARTY_NOTICES.md
 ```
 
 Run this whenever dependencies change.
