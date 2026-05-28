@@ -116,6 +116,14 @@ That's it. The script installs missing prerequisites (Docker + Compose, Node, op
 
 The script targets a clean box: if something already holds ports 80/443, it stops and points you at manual configuration (below) rather than failing cryptically.
 
+### Quick local smoke test
+
+```bash
+sudo ./deploy.sh 127.0.0.1
+```
+
+Brings the full stack up on the local machine for an end-to-end check of the script itself. On linux/amd64 the published backend image is pulled (instant); on ARM hosts (e.g. Apple Silicon Macs) the script builds the backend from source first. Caddy serves the site over its internal self-signed cert, so the browser will warn once. Use the dotted IP — the script's hostname check rejects bare `localhost`.
+
 ### Manual / advanced configuration
 
 Skip `deploy.sh` and configure `.env` by hand (`cp .env.example .env`). Required secrets, all enforced at startup (backend panics with a clear `FATAL:` otherwise):
