@@ -60,6 +60,19 @@ All services run on a single Docker bridge network (`stream-net`) and reference 
 - Text chat (persisted per session), file sharing, shared pointer overlay
 - Custom branding (logo + background) per deployment
 
+
+<img width="1920" height="1100" alt="1" src="https://github.com/user-attachments/assets/820d33de-1370-49be-9d23-c5a955fd644c" />
+<img width="1920" height="1100" alt="2" src="https://github.com/user-attachments/assets/423c95db-77f3-4e69-b01f-896a959d1917" />
+<img width="1920" height="1100" alt="3" src="https://github.com/user-attachments/assets/01d2391b-380e-4651-a42b-0bc9fed061a4" />
+<img width="1920" height="1100" alt="4" src="https://github.com/user-attachments/assets/19a7933d-ab91-4530-962f-2b35db0c206c" />
+<img width="1920" height="1100" alt="5" src="https://github.com/user-attachments/assets/55be556b-3c87-4279-bfee-8a42bd1bf5eb" />
+<img width="1920" height="1100" alt="6" src="https://github.com/user-attachments/assets/a6e9c95c-7f28-4f8c-b4e1-de7fdd32dcb3" />
+<img width="1920" height="1100" alt="7" src="https://github.com/user-attachments/assets/1d77247b-d5e4-4498-80e1-338ee9044aec" />
+<img width="1920" height="1100" alt="8" src="https://github.com/user-attachments/assets/ac715448-671a-4394-99c0-05390fe0637c" />
+<img width="1920" height="1100" alt="9" src="https://github.com/user-attachments/assets/7418bb42-905c-4875-b5d5-937bcf0eee48" />
+<img width="1920" height="1100" alt="10" src="https://github.com/user-attachments/assets/c74b0a23-2cbd-4a9d-9e4b-09bef8e98f15" />
+<img width="1920" height="1100" alt="11" src="https://github.com/user-attachments/assets/596351a9-ff52-4d71-bbff-c883014dd18c" />
+
 ## Ingest protocols
 
 | Protocol | Port | Notes |
