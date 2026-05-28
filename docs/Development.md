@@ -60,6 +60,7 @@ Optional:
 | `OME_API_URL` | `http://stream-ome:8081/v1` | OME admin API |
 | `LIVEKIT_INTERNAL_URL` | `http://stream-livekit:7880` | LiveKit HTTP signaling |
 | `LIVEKIT_URL` | `ws://localhost:7880` | WebSocket URL sent to browser clients |
+| `PUBLIC_ORIGIN` | `https://stream.zemariacolor.com` | WebAuthn RP origin/ID — must match the browser origin exactly. Use `http://localhost:4001` for local dev. |
 
 For local-only backend dev (no docker stack), override `DB_PATH` and `DATA_PATH` to somewhere writable, e.g. `./local-data/stream.db`.
 
@@ -138,8 +139,6 @@ The resulting image is ~15 MB total.
 | [`src/livekit.rs`](../backend/src/livekit.rs) | Hand-rolled LiveKit client (AccessToken + RoomService calls over reqwest) |
 | [`src/tasks.rs`](../backend/src/tasks.rs) | Background pollers (OME state, room expiry, file cleanup) |
 | [`schema.sql`](../backend/schema.sql) | Source of truth for the SQLite schema |
-
-For architectural context, security notes, and the list of project-specific pitfalls, see [../docs/Streaming.md](Streaming.md).
 
 ## Recommended tests to add
 

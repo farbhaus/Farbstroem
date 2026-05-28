@@ -84,7 +84,7 @@ Browser (viewer page)
 - `src/lib.rs` — re-exports the app builder so integration tests can spin up the server in-process
 - `src/config.rs` — `AppConfig::from_env`, secret length validation (fail-fast)
 - `src/state.rs` — `AppState` (Arc'd, cloned into handlers)
-- `src/db.rs` — R2D2 SQLite pool (10 connections), WAL mode, schema bootstrap from `schema.sql`
+- `src/db.rs` — R2D2 SQLite pool (8 connections), WAL mode, schema bootstrap from `schema.sql`
 - `src/error.rs` — `AppError` + `IntoResponse` impl; central error → HTTP mapping
 - `src/events.rs` — typed WS event payloads shared between hub and routes
 - `src/auth.rs` — JWT (HS256, 7d) + bcrypt helpers
@@ -92,7 +92,7 @@ Browser (viewer page)
 - `src/ws.rs` — WebSocket hub, broadcast channels per room
 - `src/tasks.rs` — background pollers: OME stream status, room expiry, file cleanup
 - `src/routes/` — one file per resource: `rooms`, `rooms_public`, `files`, `admin_files`, `stream_keys`, `webhook`, `branding`, `metrics`, `ome`, `auth`, `admin_settings`, `rate_limit`
-- `src/credentials.rs` — single-admin credential helpers: `settings` accessors, DB-or-env password resolver, TOTP, recovery codes, WebAuthn RP builder (see `docs/Streaming.md` security section)
+- `src/credentials.rs` — single-admin credential helpers: `settings` accessors, DB-or-env password resolver, TOTP, recovery codes, WebAuthn RP builder
 - `tests/common/mod.rs` — shared test fixtures (in-memory DB, app setup)
 
 ## Frontend structure
@@ -107,7 +107,7 @@ npm run build                     # production build (CI + prod host)
 ```
 
 - `frontend/admin/` — admin SPA modules (`main`, `auth`, `rooms`, `stream-keys`, `files`, `branding`, `dashboard`, `settings`, `webauthn`, `types`)
-- `frontend/viewer/` — viewer SPA modules (`main`, `types`, `state`, `session`, `screens`, `ws`, `player`, `livekit`/`conference`, `chat`, `pointer`, `layout`, plus `globals.d.ts` for the CDN-loaded LiveKit/OvenPlayer globals)
+- `frontend/viewer/` — viewer SPA modules (`main`, `types`, `state`, `session`, `screens`, `ws`, `player`, `livekit`/`conference`, `chat`, `pointer`, `roster`, `layout`, plus `globals.d.ts` for the CDN-loaded LiveKit/OvenPlayer globals)
 - `frontend/landing/` — landing page
 - `frontend/shared/` — `store.ts` (tiny reactive store), `utils.ts` (typed API wrapper, toast, formatters), `branding.ts` (read-only branding loader), `components.ts` (modal helpers)
 - `www/shared/` — design system CSS (`tokens.css`, `components.css`, `utils.css`); tokens and conventions documented in `docs/Design.md`
@@ -125,7 +125,7 @@ CDN-loaded runtime deps stay as `<script>` tags in the HTML: OvenPlayer, HLS.js,
 
 **Database:** All queries use prepared statements with `?N` placeholders — no string interpolation. Schema in `backend/schema.sql`, bootstrapped on every startup.
 
-**Rate limiting:** `/api/auth/login` → 5 req/min; `/api/public/rooms/:slug/join` → 30 req/min. Uses `tower_governor` with `SmartIpKeyExtractor` (honours `X-Forwarded-For` from Caddy).
+**Rate limiting:** `/api/auth/login` → 5 req/min; `/api/public/rooms/:slug/join` → 30 req/min; passkey ceremonies → 30 req/min in a separate bucket so an OS prompt doesn't burn the login budget. Uses `tower_governor` with `SmartIpKeyExtractor` (honours `X-Forwarded-For` from Caddy).
 
 **Error handling:** `AppError::Internal` and `AppError::BadGateway` return a generic message to the client; actual error is logged server-side only.
 
@@ -133,10 +133,45 @@ CDN-loaded runtime deps stay as `<script>` tags in the HTML: OvenPlayer, HLS.js,
 
 ## CI
 
-GitHub Actions runs on push/PR: `cargo fmt --check`, `cargo clippy`, `cargo build`, `cargo test`, `cargo audit`. See `.github/workflows/ci.yml`.
+GitHub Actions runs on push/PR (`.github/workflows/ci.yml`):
+- **build** — `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo build`, `cargo test`.
+- **audit** — `cargo audit` (advisory DB check).
+- **frontend** — `npm run typecheck`.
+- **licenses** — regenerates `THIRD_PARTY_NOTICES.md` via `cargo about` (pinned 0.9.0) and fails if the diff is non-empty.
 
 ## Useful reference docs
 
 - `README.md` — architecture diagram, tech stack, ingest protocols
-- `docs/Streaming.md` — security model, operational gotchas, LiveKit notes, iOS pitfalls, timezone handling
 - `docs/Development.md` — backend dev loop details, test patterns, recommended tests
+
+## Gotchas
+
+Non-obvious facts that aren't derivable from reading the code.
+
+**LiveKit**
+- `LIVEKIT_KEYS` must be `"key: secret"` with a **space after the colon**. Without it LiveKit silently boots with no auth and only logs "Could not parse keys". In docker-compose the line is quoted: `"LIVEKIT_KEYS=${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"`.
+- No upstream Rust SDK — `src/livekit.rs` is hand-rolled (AccessToken JWT + RoomService over `reqwest`) against `LIVEKIT_INTERNAL_URL` (HTTP, not WSS).
+- Caddy `/livekit/*` block needs `header_up Host {upstream_hostport}` for WebSocket signaling to work through the proxy.
+- Keep the UDP RTC range narrow (50000-50100) — Docker writes one iptables rule per port; wide ranges make `compose up/down` take minutes.
+
+**OvenPlayer**
+- `ovenplayer.js` does NOT bundle `hls.js` — load it separately or LLHLS fails silently.
+- `controls: false` is a silent no-op. Hide the UI via CSS `.op-ui-container { display: none !important }`.
+- Error/notification overlay sits OUTSIDE `.op-ui-container` — also hide `.op-message-container, .op-notification-container`.
+- LLHLS + Safari + H.265 fails (Safari MSE blocks HEVC) — rely on WebRTC-first with LLHLS autoFallback.
+
+**Player sizing**
+- CSS `aspect-ratio` is unreliable in flex containers — the viewer uses JS `sizePlayer()` for exact 16:9 pixel dimensions.
+- iOS orientation change: call `sizePlayer()` at 0/50/150/300/500 ms because iOS animates rotation over ~300 ms and dimensions are stale mid-transition.
+
+**iOS Safari**
+- `HTMLMediaElement.volume` is read-only — volume is hardware-only; the slider is hidden on mobile.
+- Viewport meta needs `maximum-scale=1.0, user-scalable=no` to prevent auto-zoom on rotation.
+
+**Timezones**
+- `expires_at` is stored as a UTC ISO string. Admin `datetime-local` is converted both ways. Rooms created before this fix may be off by the UTC offset — re-save them in admin to correct.
+
+**Docker / compose**
+- The backend is a baked binary — `docker restart` does NOT pick up code changes. Use `docker compose up -d --build stream-backend`.
+- `$` in `.env` values must be doubled (`$$`) — Compose interpolates `$VAR`.
+- `stream-ome` `depends_on` `stream-backend` (`condition: service_healthy`) is load-bearing: every ingest is HMAC-verified at `/api/webhook/admission`. If the backend is down, ingests fail closed (no unauthorised streaming).

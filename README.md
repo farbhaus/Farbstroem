@@ -53,7 +53,7 @@ All services run on a single Docker bridge network (`stream-net`) and reference 
 ## Features
 
 - Room management with expiry, passwords, waiting rooms
-- Presenter vs viewer roles (presenter role only grantable by admin — see [security notes](docs/Streaming.md#security-architecture))
+- Presenter vs viewer roles (presenter role only grantable by admin)
 - Per-room viewer delivery mode (WebRTC or LLHLS)
 - LiveKit-backed voice/video conference, screen sharing, watch-only mode
 - Presenter moderation: kick + server-side mute
