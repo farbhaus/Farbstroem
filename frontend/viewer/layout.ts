@@ -197,12 +197,24 @@ export function sizeStage(): void {
 }
 
 // The chat panel / focus strip animate their width over ~0.25s. sizeStage()
-// (and its fitFocusedTile axis pick) must be re-run through that window or
-// the focused tile keeps the size it had before the cell finished
-// resizing — which shows up as a stale letterbox/pillarbox.
+// (and its fitFocusedTile axis pick) must be re-run *every frame* through that
+// window, not at a few discrete points — otherwise the wrong limiting axis
+// stays active between ticks and max-width/height clamps the focused tile to a
+// non-16:9 box, the letterbox/pillarbox that "sticks" to the moving cell until
+// the next tick. sizeFocusPanels() computes its targets from stable #main-row
+// dims, so re-asserting them each frame doesn't restart the panel's own
+// transition.
+const PANEL_TRANSITION_MS = 320; // a touch over the 0.25s CSS transition
+let panelReflowUntil = 0;
 function reflowDuringPanelTransition(): void {
-  requestAnimationFrame(sizeStage);
-  for (const ms of [60, 150, 280, 420]) setTimeout(sizeStage, ms);
+  const alreadyTicking = panelReflowUntil > performance.now();
+  panelReflowUntil = performance.now() + PANEL_TRANSITION_MS;
+  if (alreadyTicking) return; // running loop will honour the extended deadline
+  const tick = (): void => {
+    sizeStage();
+    if (performance.now() < panelReflowUntil) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
 }
 
 export function toggleChat(): void {
