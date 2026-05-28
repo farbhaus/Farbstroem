@@ -14,7 +14,7 @@ flowchart TB
         Backend["stream-backend<br/>Rust/Axum + SQLite"]
         OME["stream-ome<br/>OvenMediaEngine"]
         LK["stream-livekit<br/>SFU"]
-        Redis[("stream-redis")]
+        Valkey[("stream-valkey")]
     end
 
     Encoder -->|"SRT · RTMP"| OME
@@ -26,7 +26,7 @@ flowchart TB
 
     Backend -->|RoomService| LK
     Backend -->|admission webhook| OME
-    LK --- Redis
+    LK --- Valkey
 ```
 
 All services run on a single Docker bridge network (`stream-net`) and reference each other by container name.
@@ -37,7 +37,7 @@ All services run on a single Docker bridge network (`stream-net`) and reference 
 | `stream-ome` | `airensoft/ovenmediaengine:latest` | Broadcast ingest (SRT/RTMP/WHIP) + viewer delivery (WebRTC/LLHLS) |
 | `stream-backend` | built from `backend/Dockerfile` | Rust/Axum API, WebSocket hub, SQLite, static file serving |
 | `stream-livekit` | `livekit/livekit-server:latest` | SFU for participant conference |
-| `stream-redis` | `redis:7-alpine` | Required by LiveKit |
+| `stream-valkey` | `valkey/valkey:8-alpine` | Required by LiveKit (Valkey is the BSD-3 fork of Redis 7.2) |
 
 ## Tech stack
 
