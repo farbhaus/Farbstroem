@@ -100,7 +100,7 @@ Browser (viewer page)
   └─ WebSocket — chat, presence, pointer ↔ stream-backend
 ```
 
-**Services in docker-compose:** `stream-caddy` (TLS + routing), `stream-backend`, `stream-ome`, `stream-livekit` (SFU, backed by `stream-redis`).
+**Services in docker-compose:** `stream-caddy` (TLS + routing), `stream-backend`, `stream-ome`, `stream-livekit` (SFU, backed by `stream-valkey`).
 
 ## Backend structure
 
@@ -228,3 +228,4 @@ Non-obvious facts that aren't derivable from reading the code.
 - The backend is a baked binary — `docker restart` does NOT pick up code changes. Use `docker compose up -d --build stream-backend`.
 - `$` in `.env` values must be doubled (`$$`) — Compose interpolates `$VAR`.
 - `stream-ome` `depends_on` `stream-backend` (`condition: service_healthy`) is load-bearing: every ingest is HMAC-verified at `/api/webhook/admission`. If the backend is down, ingests fail closed (no unauthorised streaming).
+- `stream-valkey` runs Valkey (BSD-3 fork of Redis 7.2). LiveKit talks to it as a plain RESP server (see `livekit/livekit.yaml`), so the swap from upstream Redis is invisible to callers.

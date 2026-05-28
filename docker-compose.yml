@@ -37,14 +37,17 @@ services:
       stream-ome:
         condition: service_healthy
 
-  stream-redis:
-    image: redis:${REDIS_TAG:-7-alpine}
-    container_name: stream-redis
+  stream-valkey:
+    # Valkey is the Linux Foundation BSD-3 fork of Redis 7.2 — Redis itself
+    # relicensed to SSPL/RSALv2 starting at 7.4. LiveKit uses it as a plain
+    # RESP coordination backend, so the swap is drop-in.
+    image: valkey/valkey:${VALKEY_TAG:-8-alpine}
+    container_name: stream-valkey
     restart: unless-stopped
     networks: [stream-net]
-    command: redis-server --save "" --loglevel warning
+    command: valkey-server --save "" --loglevel warning
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -72,7 +75,7 @@ services:
       retries: 3
       start_period: 10s
     depends_on:
-      stream-redis:
+      stream-valkey:
         condition: service_healthy
 
   stream-ome:
@@ -137,5 +140,5 @@ services:
       retries: 3
       start_period: 15s
     depends_on:
-      stream-redis:
+      stream-valkey:
         condition: service_healthy

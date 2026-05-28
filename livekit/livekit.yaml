@@ -5,6 +5,6 @@ rtc:
   port_range_end: 50100
   use_external_ip: true
 redis:
-  address: stream-redis:6379
+  address: stream-valkey:6379
 logging:
   level: info
