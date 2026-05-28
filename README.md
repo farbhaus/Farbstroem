@@ -5,20 +5,28 @@ Private low-latency streaming platform for color-grading review sessions. Combin
 ## Architecture
 
 ```mermaid
-flowchart LR
-    OBS["OBS / encoder"] -->|SRT / RTMP / WHIP| OME[stream-ome<br/>OvenMediaEngine]
-    OME -->|WebRTC / LLHLS| Viewer["Viewer page<br/>(OvenPlayer)"]
+flowchart TB
+    Encoder["Encoder<br/>OBS · hardware"]
+    Browser["Browser<br/>OvenPlayer · LiveKit SDK · WebSocket"]
 
-    Viewer <-->|WebRTC| LK[stream-livekit<br/>LiveKit SFU]
-    LK <--> Redis[stream-redis]
+    subgraph host["Docker host — stream-net"]
+        Caddy["stream-caddy<br/>TLS + routing"]
+        Backend["stream-backend<br/>Rust/Axum + SQLite"]
+        OME["stream-ome<br/>OvenMediaEngine"]
+        LK["stream-livekit<br/>SFU"]
+        Redis[("stream-redis")]
+    end
 
-    Viewer <-->|REST + WS| Backend[stream-backend<br/>Rust / Axum]
-    Backend -->|RoomService HTTP| LK
+    Encoder -->|"SRT · RTMP"| OME
+    Browser -->|HTTPS / WSS| Caddy
+
+    Caddy -->|"/live/* · WHIP"| OME
+    Caddy -->|"/livekit/*"| LK
+    Caddy -->|"API · WS · static"| Backend
+
+    Backend -->|RoomService| LK
     Backend -->|admission webhook| OME
-    Backend <-->|SQLite WAL| DB[(/data/stream.db)]
-
-    Caddy[stream-caddy] --> Backend
-    Caddy -->|/live/*| OME
+    LK --- Redis
 ```
 
 All services run on a single Docker bridge network (`stream-net`) and reference each other by container name.
@@ -45,12 +53,25 @@ All services run on a single Docker bridge network (`stream-net`) and reference 
 ## Features
 
 - Room management with expiry, passwords, waiting rooms
-- Presenter vs viewer roles (presenter role only grantable by admin — see [security notes](Streaming.md#security-architecture))
+- Presenter vs viewer roles (presenter role only grantable by admin)
 - Per-room viewer delivery mode (WebRTC or LLHLS)
 - LiveKit-backed voice/video conference, screen sharing, watch-only mode
 - Presenter moderation: kick + server-side mute
 - Text chat (persisted per session), file sharing, shared pointer overlay
 - Custom branding (logo + background) per deployment
+
+
+<img width="1920" height="1100" alt="1" src="https://github.com/user-attachments/assets/820d33de-1370-49be-9d23-c5a955fd644c" />
+<img width="1920" height="1100" alt="2" src="https://github.com/user-attachments/assets/423c95db-77f3-4e69-b01f-896a959d1917" />
+<img width="1920" height="1100" alt="3" src="https://github.com/user-attachments/assets/01d2391b-380e-4651-a42b-0bc9fed061a4" />
+<img width="1920" height="1100" alt="4" src="https://github.com/user-attachments/assets/19a7933d-ab91-4530-962f-2b35db0c206c" />
+<img width="1920" height="1100" alt="5" src="https://github.com/user-attachments/assets/55be556b-3c87-4279-bfee-8a42bd1bf5eb" />
+<img width="1920" height="1100" alt="6" src="https://github.com/user-attachments/assets/a6e9c95c-7f28-4f8c-b4e1-de7fdd32dcb3" />
+<img width="1920" height="1100" alt="7" src="https://github.com/user-attachments/assets/1d77247b-d5e4-4498-80e1-338ee9044aec" />
+<img width="1920" height="1100" alt="8" src="https://github.com/user-attachments/assets/ac715448-671a-4394-99c0-05390fe0637c" />
+<img width="1920" height="1100" alt="9" src="https://github.com/user-attachments/assets/7418bb42-905c-4875-b5d5-937bcf0eee48" />
+<img width="1920" height="1100" alt="10" src="https://github.com/user-attachments/assets/c74b0a23-2cbd-4a9d-9e4b-09bef8e98f15" />
+<img width="1920" height="1100" alt="11" src="https://github.com/user-attachments/assets/596351a9-ff52-4d71-bbff-c883014dd18c" />
 
 ## Ingest protocols
 
@@ -81,12 +102,9 @@ The backend bind-mounts `./www`, so a browser refresh picks up `tsc` rebuilds �
 rebuild for frontend changes. (Production hosts run `npm ci && npm run build` once so
 `www/dist/` exists; `deploy.sh` does this for you.)
 
-Backend dev loop (`cargo check`, `watchexec`, `cargo test`) and required tools: see
-[backend/DEVELOPMENT.md](backend/DEVELOPMENT.md).
-
 ## Production deployment
 
-One command on a **fresh VPS where only zStream runs**:
+One command on a **fresh VPS where only Farbstroem runs**:
 
 ```bash
 sudo ./deploy.sh stream.yourdomain.com
@@ -107,6 +125,14 @@ That's it. The script installs missing prerequisites (Docker + Compose, Node, op
 | `--yes` | Skip confirmation prompts (unattended) |
 
 The script targets a clean box: if something already holds ports 80/443, it stops and points you at manual configuration (below) rather than failing cryptically.
+
+### Quick local smoke test
+
+```bash
+sudo ./deploy.sh 127.0.0.1
+```
+
+Brings the full stack up on the local machine for an end-to-end check of the script itself. On linux/amd64 the published backend image is pulled (instant); on ARM hosts (e.g. Apple Silicon Macs) the script builds the backend from source first. Caddy serves the site over its internal self-signed cert, so the browser will warn once. Use the dotted IP — the script's hostname check rejects bare `localhost`.
 
 ### Manual / advanced configuration
 
@@ -135,7 +161,7 @@ Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 4
 
 ```
 .
-├── backend/            Rust/Axum backend — see backend/DEVELOPMENT.md
+├── backend/            Rust/Axum backend
 ├── frontend/           TypeScript sources (`tsc` only, no bundler) for admin/viewer/landing SPAs
 ├── caddy/Caddyfile     Container Caddy config (SITE_ADDRESS envar-driven)
 ├── livekit/            LiveKit server config
@@ -143,7 +169,7 @@ Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 4
 ├── www/                Static HTML/CSS + compiled JS (dist/) served by the backend
 ├── docker-compose.yml
 ├── .env.example        Required env vars, documented inline
-└── Streaming.md        Project memory — architecture details, pitfalls, security notes
+└── docs/               Architecture notes, security model, design system
 ```
 
 ## Tests
@@ -152,7 +178,7 @@ Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 4
 cd backend && cargo test
 ```
 
-Integration tests live in `backend/tests/` and use [`axum-test`](https://crates.io/crates/axum-test). See [backend/DEVELOPMENT.md](backend/DEVELOPMENT.md#tests) for single-file runs and common patterns.
+Integration tests live in `backend/tests/` and use [`axum-test`](https://crates.io/crates/axum-test).
 
 ## License
 
@@ -164,7 +190,7 @@ service you must make your modified source available to its users.
 Contributions are accepted under the same license via the Developer Certificate
 of Origin — see [CONTRIBUTING.md](CONTRIBUTING.md). Attribution notices for
 bundled dependencies are collected in
-[THIRD_PARTY_NOTICES.html](THIRD_PARTY_NOTICES.html).
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Acknowledgements
 
@@ -177,4 +203,4 @@ Farbstroem is built on the work of these open-source projects:
 - [Axum](https://github.com/tokio-rs/axum) and the broader Rust/Tokio ecosystem (MIT)
 - [hls.js](https://github.com/video-dev/hls.js) — HLS playback fallback (Apache-2.0)
 
-…and the many crates enumerated in [THIRD_PARTY_NOTICES.html](THIRD_PARTY_NOTICES.html).
+…and the many crates enumerated in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

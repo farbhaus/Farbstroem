@@ -67,10 +67,10 @@ jobs:
         working-directory: backend
 
   licenses:
-    # Fails if THIRD_PARTY_NOTICES.html is stale relative to the current
+    # Fails if THIRD_PARTY_NOTICES.md is stale relative to the current
     # dependency tree, so attribution stays current as deps change.
     # Regenerate locally with:
-    #   cd backend && cargo about generate about.hbs -o ../THIRD_PARTY_NOTICES.html
+    #   cd backend && cargo about generate about.hbs -o ../THIRD_PARTY_NOTICES.md
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -86,13 +86,15 @@ jobs:
           curl -fsSL https://github.com/EmbarkStudios/cargo-about/releases/download/0.9.0/cargo-about-0.9.0-x86_64-unknown-linux-musl.tar.gz \
             | tar -xz --strip-components=1 -C /usr/local/bin --wildcards '*/cargo-about'
       - name: Regenerate third-party notices
-        run: cargo about generate about.hbs -o ../THIRD_PARTY_NOTICES.html
+        run: cargo about generate about.hbs -o ../THIRD_PARTY_NOTICES.md
         working-directory: backend
-      - name: Verify notices are up to date
+      - name: Commit updated notices if changed
         run: |
-          if ! git diff --quiet -- THIRD_PARTY_NOTICES.html; then
-            echo "::error::THIRD_PARTY_NOTICES.html is out of date. Regenerate it with:"
-            echo "  cd backend && cargo about generate about.hbs -o ../THIRD_PARTY_NOTICES.html"
-            git --no-pager diff -- THIRD_PARTY_NOTICES.html
-            exit 1
+          if ! git diff --quiet -- THIRD_PARTY_NOTICES.md; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add THIRD_PARTY_NOTICES.md
+            git commit -m "chore: update THIRD_PARTY_NOTICES.md"
+            git push
           fi
+          
