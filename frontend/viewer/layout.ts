@@ -319,9 +319,9 @@ function restoreAll(): void {
   moveAnchors.clear();
 }
 
-function makeCluster(kind: 'main' | 'top' = 'main'): HTMLDivElement {
+function makeCluster(): HTMLDivElement {
   const d = document.createElement('div');
-  d.className = kind === 'top' ? 'top-cluster' : 'side-cluster';
+  d.className = 'side-cluster';
   return d;
 }
 
@@ -365,33 +365,47 @@ function applyLandscapeLayout(active: boolean): void {
     const liveBadge = document.getElementById('live-badge');
     const leaveBtn = document.getElementById('leave-btn');
 
-    // Corner cluster (absolutely positioned via CSS): session status and
-    // room meta at the upper corners.
-    const lTop = makeCluster('top');
-    appendBlocks(lTop, [[wsStatus, participantCount]]);
-    left.appendChild(lTop);
-
-    const rTop = makeCluster('top');
-    appendBlocks(rTop, [[liveBadge, leaveBtn]]);
-    right.appendChild(rTop);
-
-    // Main vertically-centered cluster per side. Logical blocks (matching
-    // the desktop bottom toolbar's grouping) are separated by tb-sep.
+    // Main control columns. Logical blocks mirror the desktop bottom toolbar's
+    // grouping.
     const lCluster = makeCluster();
     appendBlocks(lCluster, [
       [camGroup],                  // media inputs (cam/mic/screen)
-      [pointer],                   // interaction
       [focusBtn, confToggle],      // layout toggles (focus + strip)
     ]);
-    left.appendChild(lCluster);
-
     const rCluster = makeCluster();
     appendBlocks(rCluster, [
       [playerControls, resyncBtn, fullscreenBtn], // play/mute + reload + fullscreen
       [chatToggle],                               // chat panel toggle
-      [deviceBtn],                                // settings (gear)
     ]);
-    right.appendChild(rCluster);
+
+    // Outer lane per bar: status indicator + button(s) on the screen edge. Top
+    // items pack up; the bottom button (left: pointer, right: gear) is pinned
+    // to the BOTTOM (CSS margin-top:auto) so the notch's mid band — empty
+    // between them — tucks in harmlessly (no safe-area reserve needed).
+    const lOuter = document.createElement('div');
+    lOuter.className = 'side-outer';
+    moveTo(wsStatus, lOuter);
+    moveTo(participantCount, lOuter);
+    moveTo(pointer, lOuter);      // pointer pinned to the bottom
+
+    const rOuter = document.createElement('div');
+    rOuter.className = 'side-outer';
+    moveTo(liveBadge, rOuter);
+    moveTo(leaveBtn, rOuter);
+    moveTo(deviceBtn, rOuter);
+
+    // .side-row aligns the outer lane to the top of the control column.
+    const lRow = document.createElement('div');
+    lRow.className = 'side-row';
+    lRow.appendChild(lOuter);
+    lRow.appendChild(lCluster);
+    left.appendChild(lRow);
+
+    const rRow = document.createElement('div');
+    rRow.className = 'side-row';
+    rRow.appendChild(rCluster);
+    rRow.appendChild(rOuter);
+    right.appendChild(rRow);
 
     body.classList.add('landscape-mobile');
   } else {
@@ -435,10 +449,14 @@ export function initLayout(): void {
   setupLandscapeToolbar();
 
   window.addEventListener('resize', sizeStage);
-  screen.orientation?.addEventListener('change', () => {
+  // iOS animates rotation over ~300ms and reports stale dimensions mid-flight,
+  // so re-fit on a delayed cadence after the orientation settles.
+  const onRotate = (): void => {
     sizeStage();
     for (const ms of [50, 150, 300, 500]) setTimeout(sizeStage, ms);
-  });
+  };
+  screen.orientation?.addEventListener('change', onRotate);
+  window.addEventListener('orientationchange', onRotate);
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', sizeStage);
   }
