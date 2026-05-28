@@ -54,73 +54,110 @@ function fitFocusedTile(stage: HTMLElement): void {
 
 // In focus mode the player is height-limited and centres in its grid cell,
 // leaving grey leftover space on either side. Absorb that leftover into
-// the chat panel (issue #125) so the gap between player and chat matches
-// the gap to the strip. Resets the inline width whenever the conditions
-// don't apply so the CSS default (var(--panel-w)) takes over.
+// the chat panel and the side strip (issue #125 originally for chat;
+// issue #151 extends it to the strip) so the gap between player and the
+// neighbouring panels stays constant.
 //
-// Target chat width is computed from #main-row dimensions plus the
-// discrete --strip-w / .strip-hidden state — NOT from computed grid
-// columns, because those return interpolated values during the strip's
-// CSS transition. Reading interpolated values caused the chat target to
+// Strategy: chat absorbs first up to --panel-w-max, then any residual
+// goes to the strip up to --strip-w-max.
+//
+// Target widths are computed from #main-row dimensions plus the discrete
+// --strip-w / .strip-hidden state — NOT from computed grid columns,
+// because those return interpolated values during the strip's CSS
+// transition. Reading interpolated values caused the chat target to
 // chase a moving cellW each tick, restarting chat's own width transition
 // and making the player resize mid-animation.
 const MOBILE_BP = 640;
 const STAGE_PAD = 16; // 8px on each side
 const COL_GAP = 8;
 const CHAT_MARGIN_R = 8;
-function sizeChatPanel(stage: HTMLElement): void {
+function sizeFocusPanels(stage: HTMLElement): void {
   const panel = document.getElementById('right-panel');
-  if (!panel) return;
-  const open = panel.classList.contains('open');
   const focus = document.body.classList.contains('has-focus');
   const desktop = window.innerWidth > MOBILE_BP;
-  if (!open || !focus || !desktop) {
-    panel.style.width = '';
+  if (!focus || !desktop) {
+    if (panel) panel.style.width = '';
+    stage.style.gridTemplateColumns = '';
     return;
   }
   const tile = focusedTile(stage);
   const mainRow = stage.parentElement;
   if (!tile || !mainRow) {
-    panel.style.width = '';
+    if (panel) panel.style.width = '';
+    stage.style.gridTemplateColumns = '';
     return;
   }
 
+  const open = !!panel?.classList.contains('open');
   const root = getComputedStyle(document.documentElement);
-  const base = parseFloat(root.getPropertyValue('--panel-w')) || 320;
-  const max = parseFloat(root.getPropertyValue('--panel-w-max')) || 560;
-  const stripFull = parseFloat(root.getPropertyValue('--strip-w')) || 220;
+  const chatBase = parseFloat(root.getPropertyValue('--panel-w')) || 320;
+  const chatMax = parseFloat(root.getPropertyValue('--panel-w-max')) || 560;
+  const stripBase = parseFloat(root.getPropertyValue('--strip-w')) || 220;
+  const stripMin = parseFloat(root.getPropertyValue('--strip-w-min')) || 180;
+  const stripMax = parseFloat(root.getPropertyValue('--strip-w-max')) || 360;
   const stripHidden = document.body.classList.contains('strip-hidden');
   // When the strip is hidden the CSS also collapses the column gap to 0
   // (see `body.has-focus.strip-hidden #stage`), so drop it here too.
-  const strip = stripHidden ? 0 : stripFull;
+  const strip = stripHidden ? 0 : stripBase;
   const colGap = stripHidden ? 0 : COL_GAP;
+  // When chat is closed the right panel collapses out of flow.
+  const chatW = open ? chatBase : 0;
+  const chatMarginR = open ? CHAT_MARGIN_R : 0;
 
-  // Final cell width assuming chat sits at its base — independent of any
-  // in-flight strip or chat-width transitions.
+  // Final cell width assuming both panels sit at their base widths —
+  // independent of any in-flight transitions.
   const mainW = mainRow.clientWidth;
-  const finalCellW = mainW - base - CHAT_MARGIN_R - STAGE_PAD - strip - colGap;
+  const finalCellW = mainW - chatW - chatMarginR - STAGE_PAD - strip - colGap;
   // Stage vertical sizing isn't affected by horizontal transitions, so
   // clientHeight is stable.
   const cellH = stage.clientHeight - STAGE_PAD;
-  if (!(finalCellW > 0) || !(cellH > 0)) return;
+  if (!(finalCellW > 0) || !(cellH > 0)) {
+    if (panel) panel.style.width = '';
+    stage.style.gridTemplateColumns = '';
+    return;
+  }
 
   const aspect = readFocusAspect(tile);
   const playerW = cellH * aspect;
+  // Signed leftover relative to bases. Positive = room to grow; negative =
+  // we need to *narrow* the strip below its base to keep the tile at full
+  // height.
   const leftover = finalCellW - playerW;
-  const extra = Math.max(0, Math.min(max - base, leftover));
-  panel.style.width = `${Math.round(base + extra)}px`;
+
+  let chatExtra = 0;
+  let stripExtra = 0;
+  if (leftover >= 0) {
+    // Plenty of room: chat absorbs first, strip absorbs residual.
+    chatExtra = open ? Math.min(chatMax - chatBase, leftover) : 0;
+    stripExtra = stripHidden
+      ? 0
+      : Math.min(stripMax - stripBase, leftover - chatExtra);
+  } else if (!stripHidden) {
+    // Tight: chat stays at its base; auto-narrow the strip (down to
+    // --strip-w-min) so the player tile keeps its height-limited size.
+    stripExtra = Math.max(-(stripBase - stripMin), leftover);
+  }
+
+  if (panel) {
+    panel.style.width = open ? `${Math.round(chatBase + chatExtra)}px` : '';
+  }
+  // Leave .strip-hidden to its CSS rule (collapses to `0 1fr`).
+  if (stripHidden || stripExtra === 0) {
+    stage.style.gridTemplateColumns = '';
+  } else {
+    stage.style.gridTemplateColumns = `${Math.round(stripBase + stripExtra)}px 1fr`;
+  }
 }
 
 export function sizeStage(): void {
   const stage = document.getElementById('stage');
   if (!stage) return;
   if (document.body.classList.contains('has-focus')) {
-    stage.style.gridTemplateColumns = '';
-    sizeChatPanel(stage);
+    sizeFocusPanels(stage);
     fitFocusedTile(stage);
     return;
   }
-  sizeChatPanel(stage);
+  sizeFocusPanels(stage);
   // Visible tiles only — hidden #tile-stream / #tile-share don't take grid cells.
   const tiles = Array.from(stage.querySelectorAll<HTMLElement>(':scope > .tile')).filter(
     (el) => !el.classList.contains('hidden') && el.offsetParent !== null,
@@ -252,6 +289,135 @@ function setupFullscreen(): void {
   document.addEventListener('webkitfullscreenchange', onFsChange);
 }
 
+// Mobile landscape splits the bottom toolbar into two vertical side bars
+// and folds the top bar's items into them so the player gets the full
+// viewport height (#151). DOM-move (not clone) so existing event listeners
+// keep working. Original {parent, nextSibling} positions are recorded on
+// first move and used to restore when leaving the breakpoint.
+type Anchor = { parent: ParentNode; next: Node | null };
+const moveAnchors = new Map<Element, Anchor>();
+
+function moveTo(el: Element | null, dest: Element | null): void {
+  if (!el || !dest) return;
+  if (!moveAnchors.has(el)) {
+    moveAnchors.set(el, { parent: el.parentNode!, next: el.nextSibling });
+  }
+  dest.appendChild(el);
+}
+
+function restoreAll(): void {
+  // Restore in reverse insert order so nextSibling references resolve
+  // correctly even when multiple siblings moved out of the same parent.
+  const entries = Array.from(moveAnchors.entries()).reverse();
+  for (const [el, a] of entries) {
+    if (a.next && a.next.parentNode === a.parent) {
+      a.parent.insertBefore(el, a.next);
+    } else {
+      a.parent.appendChild(el);
+    }
+  }
+  moveAnchors.clear();
+}
+
+function makeCluster(kind: 'main' | 'top' = 'main'): HTMLDivElement {
+  const d = document.createElement('div');
+  d.className = kind === 'top' ? 'top-cluster' : 'side-cluster';
+  return d;
+}
+
+function makeSep(): HTMLDivElement {
+  const d = document.createElement('div');
+  d.className = 'tb-sep';
+  return d;
+}
+
+// Append a sequence of "logical blocks" to a side-bar cluster, inserting
+// tb-sep separators between blocks — mirrors the desktop bottom toolbar's
+// group separators.
+function appendBlocks(cluster: HTMLDivElement, blocks: (Element | null)[][]): void {
+  let first = true;
+  for (const block of blocks) {
+    const items = block.filter((el): el is Element => !!el);
+    if (items.length === 0) continue;
+    if (!first) cluster.appendChild(makeSep());
+    for (const el of items) moveTo(el, cluster);
+    first = false;
+  }
+}
+
+function applyLandscapeLayout(active: boolean): void {
+  const body = document.body;
+  if (active === body.classList.contains('landscape-mobile')) return;
+  const left = document.getElementById('left-toolbar');
+  const right = document.getElementById('right-toolbar');
+  if (active && left && right) {
+    const camGroup = document.getElementById('cam-btn')?.parentElement ?? null;
+    const pointer = document.getElementById('pointer-btn');
+    const focusBtn = document.getElementById('focus-btn');
+    const confToggle = document.getElementById('conf-toggle');
+    const chatToggle = document.getElementById('chat-toggle');
+    const playerControls = document.getElementById('player-controls');
+    const deviceBtn = document.getElementById('device-btn');
+    const resyncBtn = document.getElementById('resync-btn');
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    const wsStatus = document.getElementById('ws-status');
+    const participantCount = document.getElementById('participant-count');
+    const liveBadge = document.getElementById('live-badge');
+    const leaveBtn = document.getElementById('leave-btn');
+
+    // Corner cluster (absolutely positioned via CSS): session status and
+    // room meta at the upper corners.
+    const lTop = makeCluster('top');
+    appendBlocks(lTop, [[wsStatus, participantCount]]);
+    left.appendChild(lTop);
+
+    const rTop = makeCluster('top');
+    appendBlocks(rTop, [[liveBadge, leaveBtn]]);
+    right.appendChild(rTop);
+
+    // Main vertically-centered cluster per side. Logical blocks (matching
+    // the desktop bottom toolbar's grouping) are separated by tb-sep.
+    const lCluster = makeCluster();
+    appendBlocks(lCluster, [
+      [camGroup],                  // media inputs (cam/mic/screen)
+      [pointer],                   // interaction
+      [focusBtn, confToggle],      // layout toggles (focus + strip)
+    ]);
+    left.appendChild(lCluster);
+
+    const rCluster = makeCluster();
+    appendBlocks(rCluster, [
+      [playerControls, resyncBtn, fullscreenBtn], // play/mute + reload + fullscreen
+      [chatToggle],                               // chat panel toggle
+      [deviceBtn],                                // settings (gear)
+    ]);
+    right.appendChild(rCluster);
+
+    body.classList.add('landscape-mobile');
+  } else {
+    restoreAll();
+    // Drop the cluster wrappers — they're disposable; on next entry we
+    // build fresh ones.
+    if (left) left.replaceChildren();
+    if (right) right.replaceChildren();
+    body.classList.remove('landscape-mobile');
+  }
+  // Stage dimensions changed — re-run sizing.
+  requestAnimationFrame(sizeStage);
+}
+
+function setupLandscapeToolbar(): void {
+  const mql = window.matchMedia('(max-height: 440px) and (orientation: landscape)');
+  const apply = (): void => applyLandscapeLayout(mql.matches);
+  apply();
+  // MediaQueryList is the most reliable signal; resize/orientationchange are
+  // belt-and-braces for older Safari versions where MQL.change can miss
+  // mid-rotation states.
+  mql.addEventListener?.('change', apply);
+  window.addEventListener('resize', apply);
+  screen.orientation?.addEventListener('change', apply);
+}
+
 export function initLayout(): void {
   document.getElementById('chat-toggle')?.addEventListener('click', toggleChat);
   document.getElementById('chat-close')?.addEventListener('click', () => {
@@ -266,6 +432,7 @@ export function initLayout(): void {
   });
 
   setupFullscreen();
+  setupLandscapeToolbar();
 
   window.addEventListener('resize', sizeStage);
   screen.orientation?.addEventListener('change', () => {

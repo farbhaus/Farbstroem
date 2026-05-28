@@ -61,6 +61,8 @@
     --panel-w:     320px;
     --panel-w-max: 560px;
     --strip-w:      220px;
+    --strip-w-min:  180px;
+    --strip-w-max:  360px;
 }
 
 html, body {
