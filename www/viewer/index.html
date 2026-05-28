@@ -771,16 +771,27 @@ body.has-focus.strip-hidden #stage-strip {
 
 /* ---- Responsive ---- */
 @media (max-width: 640px) {
-    #top-bar { padding: 0 10px; }
-    #top-center { gap: 6px; }
+    /* Omit the brand logo (frees room for Leave) and spread the remaining items
+       evenly across the full width instead of clustering them at the two edges:
+       flatten the left/right groups so every item is a direct flex child, then
+       distribute with space-between. */
+    #top-bar { padding: 0 14px; justify-content: space-between; }
+    #top-left { display: none; }
+    #top-center, #top-right { display: contents; }
+    .top-sep { display: none; }
+    #leave-btn { margin-left: 0 !important; }
 
-    /* Toolbar — keep desktop button size and bar padding; only allow wrapping
-       to a second row on narrow viewports. */
+    /* Toolbar — keep desktop button size; allow wrapping to a second row on
+       narrow viewports, with a little vertical padding and gap so the buttons
+       aren't jammed against the bar edges or each other. */
     #bottom-toolbar {
         height: auto; min-height: calc(var(--toolbar-h) + env(safe-area-inset-bottom, 0px));
         flex-wrap: wrap;
+        gap: 6px;
+        padding-top: 8px;
+        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     }
-    .toolbar-group { display: flex; gap: 2px; }
+    .toolbar-group { display: flex; gap: 4px; }
     /* Force row break before player controls */
     #tb-break { display: block; order: 9; flex-basis: 100%; height: 2px; }
     #player-controls { order: 10; }
@@ -871,8 +882,8 @@ body.has-focus.strip-hidden #stage-strip {
     body.landscape-mobile .side-toolbar {
         display: flex; flex-direction: column;
         align-items: center; justify-content: flex-start;
-        gap: 8px;
-        padding: 6px 7px;
+        gap: 4px;
+        padding: 6px 3px;
         overflow: hidden;
         padding-top:    calc(6px + env(safe-area-inset-top, 0px));
         padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
@@ -881,46 +892,62 @@ body.has-focus.strip-hidden #stage-strip {
         overflow-y: auto;
         z-index: 5;
     }
+    /* Both bars hug the screen edge — no safe-area reserve. */
     body.landscape-mobile #left-toolbar  {
         border-right: 1px solid var(--border);
         order: 0;
-        padding-left: calc(7px + env(safe-area-inset-left, 0px));
+        padding-left: 3px;
     }
     body.landscape-mobile #right-toolbar {
         border-left:  1px solid var(--border);
         order: 2;
-        padding-right: calc(7px + env(safe-area-inset-right, 0px));
+        padding-right: 3px;
     }
     body.landscape-mobile #main-row { order: 1; flex: 1; min-width: 0; }
 
-    /* Group separators turn into thin horizontal rules between vertical stacks. */
-    body.landscape-mobile .side-toolbar .tb-sep {
-        width: 28px; height: 1px;
-        margin: 4px 0;
-    }
-    body.landscape-mobile .side-toolbar .toolbar-group {
-        flex-direction: column; gap: 3px;
-    }
-    /* Single vertically-centered cluster per side. tb-sep elements between
-       logical blocks mirror the desktop bottom toolbar's group separators.
-       margin: auto 0 absorbs leftover space above and below so the cluster
-       centres in the area below the top-cluster — at short heights it
-       gives way gracefully instead of overlapping. */
+    /* Controls fill the full-height bar with even spacing (space-between), so
+       the first button tops out level with the outer lane's top items and the
+       last button bottoms out level with the outer lane's pinned button
+       (pointer left, gear right). gap is the minimum; overflow-y is the safety
+       net on a very short viewport. */
     body.landscape-mobile .side-cluster {
         display: flex; flex-direction: column;
-        align-items: center; gap: 4px;
-        margin: auto 0;
+        align-items: center; justify-content: space-between; gap: 7px;
+        margin: 0;
     }
-    body.landscape-mobile .side-cluster > .tb-sep {
-        width: 24px; height: 1px; margin: 4px 0;
+    /* Flatten the cam/mic/screen and play/mute groups so every button is its
+       own flex item — otherwise the tight sub-group jams together while the
+       single buttons spread, giving the uneven look. Flattened, space-between
+       distributes them all uniformly. */
+    body.landscape-mobile .side-cluster .toolbar-group { display: contents; }
+    /* No group dividers in the side bars — even spacing carries the rhythm. */
+    body.landscape-mobile .side-cluster > .tb-sep { display: none; }
+    /* Fill the full bar height so both lanes can distribute top-to-bottom:
+       align-items:stretch makes the control column and the outer lane full
+       height; the column spreads its buttons (space-between) and the lane pins
+       its top buttons up and the gear down. */
+    body.landscape-mobile .side-row {
+        display: flex; flex-direction: row;
+        align-items: stretch; justify-content: center;
+        gap: 7px;
+        flex: 1; min-height: 0;
     }
-    /* Corner cluster — sits at the top of the side bar in normal flex flow
-       so the main cluster's auto margins respect its height. */
-    body.landscape-mobile .top-cluster {
+    /* Outer lane on the screen edge: status indicator stacked above its button
+       — connected dot + Participants (left), Live badge + Leave + gear (right).
+       Full bar height (the row stretches it), with the top buttons packed up
+       and the gear pinned to the bottom (margin-top:auto). The notch's mid band
+       — empty between them — tucks in harmlessly. */
+    body.landscape-mobile .side-outer {
         display: flex; flex-direction: column;
-        align-items: center; gap: 6px;
+        align-items: center; gap: 7px;
         flex-shrink: 0;
     }
+    /* Pin the bottom button to the bottom of the lane: pointer (left), gear (right). */
+    body.landscape-mobile .side-outer #device-btn,
+    body.landscape-mobile .side-outer #pointer-btn { margin-top: auto; }
+    /* Widen Leave to the Live badge's width (the lane's widest item). */
+    body.landscape-mobile .side-outer #live-badge,
+    body.landscape-mobile .side-outer #leave-btn { align-self: stretch; }
     /* Top-bar refugees relocated into the side bars. */
     body.landscape-mobile .side-toolbar #ws-status,
     body.landscape-mobile .side-toolbar #live-badge,
@@ -929,10 +956,21 @@ body.has-focus.strip-hidden #stage-strip {
         font-size: 10px;
         margin: 0;
     }
-    /* #leave-btn has an inline `margin-left: 8px` (used in #top-right to
-       space it from its siblings). Override with !important so the
-       button sits dead-centre in the right side bar. */
-    body.landscape-mobile .side-toolbar #leave-btn { margin-left: 0 !important; }
+    /* #leave-btn has inline `margin-left: 8px`, `padding: 3px 10px` and
+       `font-size: 11px` (tuned for #top-right). Override with !important so
+       the button sits dead-centre and stays narrow enough not to widen the
+       side bar past its icon column. */
+    body.landscape-mobile .side-toolbar #leave-btn {
+        margin-left: 0 !important;
+        padding: 4px 6px !important;
+        font-size: 9px !important;
+    }
+    /* Keep the Live badge inside the slim column too. */
+    body.landscape-mobile .side-toolbar #live-badge {
+        padding: 2px 5px;
+        font-size: 8px;
+        letter-spacing: 0.04em;
+    }
     /* Drop the "Connected" / "Connecting" text — the dot alone signals
        status, and the label would force the side bar wider than its
        button column. */
@@ -1104,17 +1142,17 @@ body.has-focus.strip-hidden #stage-strip {
             <div class="brand-wordmark-sm brand-fallback u-hidden">Farbström</div>
         </div>
         <div id="top-center">
-            <div id="ws-status"><div id="ws-dot"></div><span id="ws-label">Connecting</span></div>
-            <span class="top-sep">&middot;</span>
             <span id="room-name-label"></span>
+            <span class="top-sep">&middot;</span>
+            <div id="ws-status"><div id="ws-dot"></div><span id="ws-label">Connecting</span></div>
         </div>
         <div id="top-right">
+            <span id="live-badge"><svg viewBox="0 0 8 8" width="8" height="8" style="fill:var(--green);stroke:none"><circle cx="4" cy="4" r="4"/></svg> Live</span>
             <span id="participant-count" title="Participants">
                 <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 <span id="participant-num">0</span>
                 <span class="notif-dot" id="roster-dot"></span>
             </span>
-            <span id="live-badge"><svg viewBox="0 0 8 8" width="8" height="8" style="fill:var(--green);stroke:none"><circle cx="4" cy="4" r="4"/></svg> Live</span>
             <button id="leave-btn" title="Leave session" style="background:none;border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:3px 10px;font:inherit;font-size:11px;cursor:pointer;margin-left:8px;">Leave</button>
         </div>
     </div>
