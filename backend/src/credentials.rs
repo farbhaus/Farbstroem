@@ -125,7 +125,7 @@ pub fn gen_recovery_codes() -> Result<(Vec<String>, Vec<String>), AppError> {
 // ---- WebAuthn -------------------------------------------------------------
 
 /// Build the WebAuthn relying party from the public origin. The RP ID is the
-/// host of `public_origin` (e.g. `stream.zemariacolor.com` / `localhost`).
+/// host of `public_origin` (e.g. `stream.yourdomain.com` / `localhost`).
 /// Panics on a malformed origin — a misconfigured deployment should fail fast.
 pub fn build_webauthn(public_origin: &str) -> Webauthn {
     let url = Url::parse(public_origin)

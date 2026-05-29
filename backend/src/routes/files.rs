@@ -1,4 +1,5 @@
 use axum::{
+    body::Body,
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{header, StatusCode},
     response::IntoResponse,
@@ -9,6 +10,7 @@ use rusqlite::{params, OptionalExtension};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
+use tokio_util::io::ReaderStream;
 
 use tracing::info;
 
@@ -427,9 +429,18 @@ async fn download_file(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
-    let data = tokio::fs::read(&file_data)
+    // Stream the blob from disk instead of buffering it whole — a 2.5 GB
+    // upload would otherwise spike backend RSS per concurrent download
+    // (mirrors the streaming upload path in uploads.rs).
+    let file = tokio::fs::File::open(&file_data)
         .await
         .map_err(|_| AppError::NotFound("File not found".into()))?;
+    let len = file
+        .metadata()
+        .await
+        .map(|m| m.len())
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let body = Body::from_stream(ReaderStream::new(file));
 
     let is_display = matches!(query.display.as_deref(), Some("1" | "true"));
     let disposition = if is_display {
@@ -455,12 +466,15 @@ async fn download_file(
         [
             (header::CONTENT_TYPE, served_mime),
             (header::CONTENT_DISPOSITION, disposition),
+            // Explicit length so the streamed body isn't chunked and the
+            // browser's download progress bar works.
+            (header::CONTENT_LENGTH, len.to_string()),
             (
                 header::HeaderName::from_static("x-content-type-options"),
                 "nosniff".to_string(),
             ),
         ],
-        data,
+        body,
     ))
 }
 

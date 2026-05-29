@@ -79,6 +79,13 @@ async fn get_asset(
         [
             (header::CONTENT_TYPE, mime),
             (header::CACHE_CONTROL, "public, max-age=3600".into()),
+            // Defense-in-depth: never let the browser sniff a served asset
+            // into something executable, even though uploads are now
+            // restricted to PNG/JPEG.
+            (
+                header::HeaderName::from_static("x-content-type-options"),
+                "nosniff".to_string(),
+            ),
         ],
         data,
     ))
@@ -104,6 +111,23 @@ async fn upload_asset(
                 .content_type()
                 .unwrap_or("application/octet-stream")
                 .to_string();
+            // Strict per-asset image allowlist. Branding assets are served
+            // publicly and the CSP allows inline scripts, so an HTML/SVG
+            // upload served back with its own content-type would be
+            // same-origin stored XSS. SVG is deliberately excluded (it can
+            // embed <script>); logo is PNG-only, background is JPEG-only.
+            let allowed = match asset.as_str() {
+                "logo" => mime == "image/png",
+                "bg" => mime == "image/jpeg" || mime == "image/jpg",
+                _ => false,
+            };
+            if !allowed {
+                return Err(AppError::BadRequest(if asset == "logo" {
+                    "Logo must be a PNG".into()
+                } else {
+                    "Background must be a JPEG".into()
+                }));
+            }
             let data = field
                 .bytes()
                 .await

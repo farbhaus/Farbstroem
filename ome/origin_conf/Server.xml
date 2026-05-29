@@ -89,7 +89,7 @@
             </Names>
         </Host>
         <API>
-            <AccessToken>${env:OME_API_TOKEN:ome-default-token}</AccessToken>
+            <AccessToken>${env:OME_API_TOKEN:default}</AccessToken>
             <CrossDomains>
                 <Url>*</Url>
             </CrossDomains>
@@ -120,7 +120,7 @@
             -->
             <AdmissionWebhooks>
                 <ControlServerUrl>http://stream-backend:4001/api/webhook/admission</ControlServerUrl>
-                <SecretKey>${env:OME_WEBHOOK_SECRET:webhook-default-secret}</SecretKey>
+                <SecretKey>${env:OME_WEBHOOK_SECRET:default}</SecretKey>
                 <Timeout>5000</Timeout>
                 <Enables>
                     <!-- Validate all ingest connections (stream key auth) -->
