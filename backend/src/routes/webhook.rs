@@ -2,7 +2,7 @@ use axum::{body::Bytes, extract::State, http::HeaderMap, routing::post, Json, Ro
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use hmac::{Hmac, Mac};
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use serde_json::{json, Value};
 use sha1::Sha1;
 use std::sync::Arc;
@@ -79,11 +79,28 @@ async fn webhook_handler(
     let stream_key = extract_stream_key(url)
         .ok_or_else(|| AppError::BadRequest("Cannot extract stream key".into()))?;
 
-    // Look up stream key and update rooms
+    // Authorize the ingest: the key must be one an admin explicitly created.
+    // The HMAC check above only proves the request came from OME — this is the
+    // actual stream-key gate. An unrecognised key (e.g. someone guessing
+    // "stream") is denied with {"allowed": false}, which OME honours by
+    // rejecting the publish. For a known key, mark any rooms it's assigned to
+    // live.
     let events = state.events.clone();
     let conn = state.db.get()?;
-    let slugs = tokio::task::spawn_blocking(move || {
-        // Find rooms with this stream key
+    let (key_known, slugs) = tokio::task::spawn_blocking(move || {
+        let key_known = conn
+            .query_row(
+                "SELECT 1 FROM stream_keys WHERE key_token = ?1",
+                params![stream_key],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some();
+        if !key_known {
+            return Ok::<_, rusqlite::Error>((false, Vec::new()));
+        }
+
+        // Find rooms with this stream key and mark them live.
         let mut stmt = conn.prepare(
             "SELECT r.id, r.slug FROM rooms r \
              JOIN stream_keys sk ON sk.id = r.stream_key_id \
@@ -103,10 +120,19 @@ async fn webhook_handler(
             )?;
             slugs.push(slug.clone());
         }
-        Ok::<_, rusqlite::Error>(slugs)
+        Ok((true, slugs))
     })
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
+
+    // Deny ingests whose key was never created in the admin.
+    if !key_known {
+        tracing::warn!(
+            action = "admission_denied",
+            "ingest rejected: unknown stream key"
+        );
+        return Ok(Json(json!({ "allowed": false })));
+    }
 
     // Emit room:live events
     for slug in &slugs {

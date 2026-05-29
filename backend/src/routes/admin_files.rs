@@ -1,4 +1,5 @@
 use axum::{
+    body::Body,
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{header, StatusCode},
     response::IntoResponse,
@@ -9,6 +10,7 @@ use rusqlite::{params, OptionalExtension};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
+use tokio_util::io::ReaderStream;
 
 use tracing::info;
 
@@ -590,9 +592,17 @@ async fn serve_file(
 
     let (stored, name, mime) = row;
     let path = format!("{}/files/{}", state.config.data_path, stored);
-    let data = tokio::fs::read(&path)
+    // Stream from disk rather than buffering the whole blob in memory —
+    // library files can be multi-GB and several admins may pull at once.
+    let file = tokio::fs::File::open(&path)
         .await
         .map_err(|_| AppError::NotFound("File not found".into()))?;
+    let len = file
+        .metadata()
+        .await
+        .map(|m| m.len())
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let body = Body::from_stream(ReaderStream::new(file));
 
     // Downloads force attachment; preview requests serve inline but only for
     // whitelisted MIME types to prevent hostile renders.
@@ -607,12 +617,15 @@ async fn serve_file(
         [
             (header::CONTENT_TYPE, mime),
             (header::CONTENT_DISPOSITION, final_disposition),
+            // Explicit length so the body isn't chunked and download
+            // progress works in the browser.
+            (header::CONTENT_LENGTH, len.to_string()),
             (
                 header::HeaderName::from_static("x-content-type-options"),
                 "nosniff".to_string(),
             ),
         ],
-        data,
+        body,
     ))
 }
 
