@@ -78,6 +78,18 @@ async function uploadBrandingAsset(asset: 'logo' | 'bg'): Promise<void> {
   const input = getInput(`${asset}-file-input`);
   const file = input.files?.[0];
   if (!file) return;
+  // Mirror the backend allowlist so a wrong type fails with an inline message
+  // instead of a 400. Logo: PNG only. Background: JPEG only. SVG is rejected
+  // (it can carry inline scripts). The backend remains the real gate.
+  const okType =
+    asset === 'logo'
+      ? file.type === 'image/png'
+      : file.type === 'image/jpeg' || file.type === 'image/jpg';
+  if (!okType) {
+    input.value = '';
+    toast(asset === 'logo' ? 'Logo must be a PNG' : 'Background must be a JPEG');
+    return;
+  }
   const fd = new FormData();
   fd.append('file', file);
   const res = await fetch(`/api/admin/branding/${asset}`, {

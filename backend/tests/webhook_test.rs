@@ -56,13 +56,14 @@ async fn webhook_returns_401_wrong_signature() {
 }
 
 // ---------------------------------------------------------------------------
-// Unknown stream key (valid signature, key not in DB)
+// Unknown stream key (valid signature, key not in DB) -> denied
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn webhook_returns_allowed_for_unknown_stream_key() {
-    // The current implementation returns {allowed: true} even when no rooms
-    // match the stream key. It simply does not set any room to "live".
+async fn webhook_denies_unknown_stream_key() {
+    // A correctly-signed request whose stream key was never created in the
+    // admin must be denied — this is the actual ingest authorization, not just
+    // the HMAC check. OME honours {allowed: false} by rejecting the publish.
     let state = common::test_state();
     let server = common::test_app(state);
 
@@ -70,6 +71,35 @@ async fn webhook_returns_allowed_for_unknown_stream_key() {
         "request": {
             "direction": "incoming",
             "url": "rtmp://host/live/unknown-key-12345"
+        }
+    });
+    let body_bytes = serde_json::to_vec(&body).unwrap();
+    let sig = sign_webhook(TEST_WEBHOOK_SECRET, &body_bytes);
+
+    let res = server
+        .post("/api/webhook/admission")
+        .add_header("x-ome-signature", sig.as_str())
+        .add_header(header::CONTENT_TYPE, "application/json")
+        .bytes(body_bytes.into())
+        .await;
+    assert_eq!(res.status_code(), 200);
+
+    let resp: Value = res.json();
+    assert_eq!(resp["allowed"], false);
+}
+
+#[tokio::test]
+async fn webhook_allows_known_key_without_room() {
+    // A valid admin-created key is allowed even when it isn't assigned to any
+    // room yet (no room to set live, but the ingest is authorized).
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+    let (_sk_id, key_token) = common::seed_stream_key(&state, "Unassigned Key");
+
+    let body = json!({
+        "request": {
+            "direction": "incoming",
+            "url": format!("rtmp://host/live/{}", key_token)
         }
     });
     let body_bytes = serde_json::to_vec(&body).unwrap();

@@ -64,9 +64,14 @@ services:
       - "LIVEKIT_KEYS=${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
     command: --config /livekit.yaml
     ports:
-      - "7880:7880"                    # signaling (local dev direct access)
-      - "7881:7881"                    # TCP media fallback
-      - "50000-50100:50000-50100/udp"  # WebRTC media
+      # Signaling — loopback only. Browsers reach it via Caddy (wss://<domain>
+      # /livekit → stream-livekit:7880 on stream-net); the backend uses the
+      # internal DNS name. Publishing it on all interfaces would expose plaintext
+      # WS signaling to the internet, bypassing Caddy's TLS. 127.0.0.1 keeps
+      # direct access for local debugging (incl. via SSH tunnel on a host).
+      - "127.0.0.1:7880:7880"
+      - "7881:7881"                    # TCP media fallback (client↔SFU direct)
+      - "50000-50100:50000-50100/udp"  # WebRTC media (client↔SFU direct)
     healthcheck:
       # LiveKit alpine image ships BusyBox which includes nc.
       test: ["CMD-SHELL", "nc -z 127.0.0.1 7880 || exit 1"]

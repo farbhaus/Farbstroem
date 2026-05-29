@@ -5,4 +5,10 @@ ignore = [
     # jsonwebtoken 10's `rust_crypto` feature. Revisit when `rsa`
     # ships a fix or when we switch jsonwebtoken to `aws_lc_rs`.
     "RUSTSEC-2023-0071",
+    # RUSTSEC-2026-0097: `rand` is unsound only when a custom `log` logger
+    # itself calls `rand::rng()` (re-entrancy). This app logs via `tracing`,
+    # not a custom `log` logger, so the unsound path is unreachable. Pulled in
+    # via webauthn-rs / governor / tungstenite / rsa. Revisit on a `rand`
+    # (or those crates') bump.
+    "RUSTSEC-2026-0097",
 ]

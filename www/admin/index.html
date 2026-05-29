@@ -528,7 +528,7 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
             <div class="room-card-header">
                 <div class="room-card-info">
                     <div class="room-card-name">Logo</div>
-                    <div class="room-card-meta">Shown in the top bar and on all overlay screens. PNG or SVG recommended. Max 5 MB.</div>
+                    <div class="room-card-meta">Shown in the top bar and on all overlay screens. PNG only. Max 5 MB.</div>
                 </div>
                 <div class="room-card-actions">
                     <button class="btn btn-sm" id="logo-upload-btn">Upload</button>
@@ -538,7 +538,7 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
             <div class="room-card-body u-p-card-tight">
                 <img id="logo-preview" src="" alt="Logo preview" style="max-height:48px;display:none;opacity:0.8;margin-bottom:4px;">
                 <span id="logo-empty" style="font-size:13px;color:var(--dim)">No custom logo — using default.</span>
-                <input type="file" id="logo-file-input" accept="image/*" class="u-hidden">
+                <input type="file" id="logo-file-input" accept="image/png" class="u-hidden">
             </div>
         </div>
 
@@ -546,7 +546,7 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
             <div class="room-card-header">
                 <div class="room-card-info">
                     <div class="room-card-name">Background Image</div>
-                    <div class="room-card-meta">Shown on the join, waiting, and kicked screens. Max 5 MB.</div>
+                    <div class="room-card-meta">Shown on the join, waiting, and kicked screens. JPEG only. Max 5 MB.</div>
                 </div>
                 <div class="room-card-actions">
                     <button class="btn btn-sm" id="bg-upload-btn">Upload</button>
@@ -556,7 +556,7 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
             <div class="room-card-body u-p-card-tight">
                 <img id="bg-preview" src="" alt="Background preview" style="max-height:100px;max-width:100%;object-fit:cover;border-radius:6px;display:none;margin-bottom:4px;">
                 <span id="bg-empty" style="font-size:13px;color:var(--dim)">No custom background — using default.</span>
-                <input type="file" id="bg-file-input" accept="image/*" class="u-hidden">
+                <input type="file" id="bg-file-input" accept="image/jpeg" class="u-hidden">
             </div>
         </div>
 
