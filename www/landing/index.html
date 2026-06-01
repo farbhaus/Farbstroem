@@ -21,6 +21,13 @@ body {
 .landing-title { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
 .landing-sub { font-size: 13px; color: var(--dim); margin-bottom: 32px; line-height: 1.5; }
 .landing-error { color: var(--danger); font-size: 12px; margin-top: 10px; min-height: 16px; }
+
+/* Mobile (700px = shared breakpoint, see tokens.css): trim the card's generous
+   desktop padding/spacing so it sits comfortably on a phone. */
+@media (max-width: 700px) {
+    .panel-box { padding: 32px 24px; }
+    .landing-sub { margin-bottom: 24px; }
+}
 </style>
 </head>
 <body>

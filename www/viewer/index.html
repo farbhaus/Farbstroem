@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Farbström</title>
 <script src="https://cdn.jsdelivr.net/npm/ovenplayer/dist/ovenplayer.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5/dist/hls.min.js"></script>
@@ -770,7 +770,7 @@ body.has-focus.strip-hidden #stage-strip {
 }
 
 /* ---- Responsive ---- */
-@media (max-width: 640px) {
+@media (max-width: 700px) {
     /* Omit the brand logo (frees room for Leave) and spread the remaining items
        evenly across the full width instead of clustering them at the two edges:
        flatten the left/right groups so every item is a direct flex child, then
@@ -833,7 +833,6 @@ body.has-focus.strip-hidden #stage-strip {
         flex-direction: row;
         height: 104px;
         overflow-x: auto; overflow-y: hidden;
-        -webkit-overflow-scrolling: touch;
     }
     /* Override desktop strip-hidden (which collapses a column) — on mobile
        the strip occupies a row, so collapse the row instead. */
@@ -841,17 +840,24 @@ body.has-focus.strip-hidden #stage-strip {
         grid-template-columns: 1fr;
         grid-template-rows: 0 1fr;
     }
+    /* 16:9 comes from the base .tile rule; height is definite (fixed-height
+       strip row) so width:auto resolves correctly. */
     body.has-focus #stage-strip .tile {
         flex: 0 0 auto;
         width: auto; height: 100%;
-        aspect-ratio: 16 / 9;
     }
 
     /* Join / waiting boxes fit small screens */
     .join-box, .waiting-box, #landing-screen .panel-box { width: calc(100vw - 32px); padding: 32px 24px; }
 }
 
-/* Mobile landscape — maximize stage area */
+/* ---- Mobile-landscape side toolbars (#151) ---- */
+/* .side-toolbar are empty containers in regular layouts; populated by
+   setupLandscapeToolbar() only when the breakpoint matches. Hidden by default. */
+.side-toolbar { display: none; }
+
+/* Mobile landscape — maximize stage area, and (when body.landscape-mobile is
+   active) split the toolbars into the vertical side bars (#151). */
 @media (max-height: 440px) and (orientation: landscape) {
     #top-bar { height: 36px; }
     /* iOS reserves a bottom safe-area for the home indicator; the toolbar's
@@ -866,14 +872,7 @@ body.has-focus.strip-hidden #stage-strip {
     }
 
     #right-panel.open { width: 280px; }
-}
 
-/* ---- Mobile-landscape side toolbars (#151) ---- */
-/* Empty containers in regular layouts; populated by setupLandscapeToolbar()
-   only when the breakpoint matches. Hidden by default. */
-.side-toolbar { display: none; }
-
-@media (max-height: 440px) and (orientation: landscape) {
     body.landscape-mobile #top-bar,
     body.landscape-mobile #bottom-toolbar { display: none; }
 
