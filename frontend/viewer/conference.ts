@@ -814,7 +814,23 @@ async function presenterMute(targetId: string): Promise<void> {
 export function initConference(): void {
   document.getElementById('cam-btn')?.addEventListener('click', toggleCamera);
   document.getElementById('mic-btn')?.addEventListener('click', toggleMic);
-  document.getElementById('screen-btn')?.addEventListener('click', toggleScreenShare);
+  // Screen share can't work on iOS (every iOS browser is WebKit, and even those
+  // that expose getDisplayMedia — e.g. Firefox iOS — reject it at call time).
+  // Detect iOS directly rather than trusting feature detection, and also cover
+  // browsers that simply lack the API. Hide the button instead of letting it fail.
+  const ua = navigator.userAgent;
+  const isIOS =
+    /iPad|iPhone|iPod/.test(ua) ||
+    // iPadOS 13+ reports as "Macintosh"; disambiguate via touch support.
+    (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const screenBtn = document.getElementById('screen-btn');
+  if (screenBtn && (isIOS || !navigator.mediaDevices?.getDisplayMedia)) {
+    // Inline style beats the `.tb-btn { display: flex }` rule in the page's
+    // inline <style> (`.u-hidden` would lose that cascade battle).
+    screenBtn.style.display = 'none';
+  } else {
+    screenBtn?.addEventListener('click', toggleScreenShare);
+  }
 
   document.getElementById('focus-btn')?.addEventListener('click', () => {
     const { focusedTile, role } = viewerStore.get();

@@ -3,6 +3,12 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Disable double-tap-to-zoom on touch devices. iOS Safari ignores
+   `user-scalable=no`/`maximum-scale`, so this is the only reliable way to stop
+   a tap (e.g. on a button) from zooming the page. `manipulation` still allows
+   scrolling and pinch-zoom. Set on the root so it applies to every descendant. */
+html { touch-action: manipulation; }
+
 :root {
     /* Color */
     --bg:       #171717;
