@@ -460,7 +460,7 @@ function syncPlayerControls(): void {
   if (iconMuted) iconMuted.style.display = muted ? '' : 'none';
   const muteBtn = document.getElementById('mute-btn');
   muteBtn?.classList.toggle('muted', muted);
-  if (muteBtn) muteBtn.title = muted ? 'Unmute' : 'Mute';
+  if (muteBtn) muteBtn.title = muted ? 'Unmute (M)' : 'Mute (M)';
 
   const slider = document.getElementById('volume-slider') as HTMLInputElement;
   slider.value = String(player.getVolume());
