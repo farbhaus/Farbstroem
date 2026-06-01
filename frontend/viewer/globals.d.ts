@@ -29,8 +29,23 @@ interface OvenPlayerInstance {
 // Only the bits the viewer touches are typed.
 declare const LivekitClient: LivekitClientNS;
 
+// Subset of LiveKit's AudioCaptureOptions we configure. voiceIsolation is a
+// stronger, browser-native noise/voice isolation (Chrome ML) that supersedes
+// noiseSuppression when supported; unsupported browsers ignore it.
+interface AudioCaptureOptions {
+  echoCancellation?: boolean;
+  noiseSuppression?: boolean;
+  autoGainControl?: boolean;
+  voiceIsolation?: boolean;
+  deviceId?: string;
+}
+
+interface RoomOptions {
+  audioCaptureDefaults?: AudioCaptureOptions;
+}
+
 interface LivekitClientNS {
-  Room: new () => LkRoom;
+  Room: new (options?: RoomOptions) => LkRoom;
   RoomEvent: {
     ParticipantConnected: string;
     ParticipantDisconnected: string;
@@ -72,7 +87,7 @@ interface LkPublication {
 
 interface LkLocalParticipant {
   setCameraEnabled(on: boolean): Promise<void>;
-  setMicrophoneEnabled(on: boolean): Promise<void>;
+  setMicrophoneEnabled(on: boolean, options?: AudioCaptureOptions): Promise<void>;
   setScreenShareEnabled(on: boolean): Promise<void>;
   getTrackPublication(source: string): LkPublication | undefined;
 }

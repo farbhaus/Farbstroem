@@ -65,7 +65,7 @@ async fn list_rooms(
     let conn = state.db.get()?;
     let rooms = tokio::task::spawn_blocking(move || {
         let mut stmt = conn.prepare(
-            "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, \
+            "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, r.noise_reduction, r.echo_cancellation, \
              r.expires_at, r.status, r.stream_key_id, r.created_at, \
              r.started_at, r.ended_at, r.presenter_key, r.password_hash, \
              (SELECT COUNT(*) FROM participants p \
@@ -81,6 +81,8 @@ async fn list_rooms(
             "slug",
             "delivery_mode",
             "waiting_room",
+            "noise_reduction",
+            "echo_cancellation",
             "expires_at",
             "status",
             "stream_key_id",
@@ -113,7 +115,7 @@ async fn get_room(
     let conn = state.db.get()?;
     let room = tokio::task::spawn_blocking(move || {
         let mut stmt = conn.prepare(
-            "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, \
+            "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, r.noise_reduction, r.echo_cancellation, \
              r.expires_at, r.status, r.stream_key_id, r.created_at, \
              r.started_at, r.ended_at, r.presenter_key, r.password_hash, \
              sk.key_token, sk.name as stream_key_name \
@@ -127,6 +129,8 @@ async fn get_room(
             "slug",
             "delivery_mode",
             "waiting_room",
+            "noise_reduction",
+            "echo_cancellation",
             "expires_at",
             "status",
             "stream_key_id",
@@ -158,6 +162,8 @@ struct CreateRoomBody {
     password: Option<String>,
     delivery_mode: Option<String>,
     waiting_room: Option<bool>,
+    noise_reduction: Option<bool>,
+    echo_cancellation: Option<bool>,
     expires_at: Option<String>,
     stream_key_id: Option<String>,
 }
@@ -181,6 +187,9 @@ async fn create_room(
     } else {
         0
     };
+    // Participant-audio defaults are ON unless the admin unticks them.
+    let noise_reduction: i32 = i32::from(body.noise_reduction.unwrap_or(true));
+    let echo_cancellation: i32 = i32::from(body.echo_cancellation.unwrap_or(true));
     let expires_at = body.expires_at.map(|s| normalize_datetime(&s));
     let stream_key_id = body.stream_key_id;
 
@@ -202,8 +211,9 @@ async fn create_room(
         tokio::task::spawn_blocking(move || {
             conn.execute(
                 "INSERT INTO rooms (id, name, slug, password_hash, presenter_key, \
-                 delivery_mode, waiting_room, expires_at, stream_key_id) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 delivery_mode, waiting_room, noise_reduction, echo_cancellation, \
+                 expires_at, stream_key_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 rusqlite::params![
                     id,
                     name,
@@ -212,12 +222,14 @@ async fn create_room(
                     presenter_key,
                     delivery_mode,
                     waiting_room,
+                    noise_reduction,
+                    echo_cancellation,
                     expires_at,
                     stream_key_id,
                 ],
             )?;
             let mut stmt = conn.prepare(
-                "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, \
+                "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, r.noise_reduction, r.echo_cancellation, \
                  r.expires_at, r.status, r.stream_key_id, r.created_at, \
                  r.started_at, r.ended_at, r.presenter_key, r.password_hash, \
                  sk.key_token, sk.name as stream_key_name \
@@ -231,6 +243,8 @@ async fn create_room(
                 "slug",
                 "delivery_mode",
                 "waiting_room",
+                "noise_reduction",
+                "echo_cancellation",
                 "expires_at",
                 "status",
                 "stream_key_id",
@@ -318,6 +332,17 @@ async fn update_room(
         params.push(Box::new(val));
     }
 
+    for (key, col) in [
+        ("noise_reduction", "noise_reduction"),
+        ("echo_cancellation", "echo_cancellation"),
+    ] {
+        if let Some(v) = body.get(key) {
+            let val: i32 = i32::from(v.as_bool().unwrap_or(true));
+            set_clauses.push(format!("{col} = ?{}", set_clauses.len() + 1));
+            params.push(Box::new(val));
+        }
+    }
+
     // expires_at: null clears, string sets, absent keeps
     if body.get("expires_at").is_some() {
         let val = body
@@ -359,7 +384,7 @@ async fn update_room(
         let conn = state.db.get()?;
         let room = tokio::task::spawn_blocking(move || {
             let mut stmt = conn.prepare(
-                "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, \
+                "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, r.noise_reduction, r.echo_cancellation, \
                  r.expires_at, r.status, r.stream_key_id, r.created_at, \
                  r.started_at, r.ended_at, r.presenter_key, r.password_hash, \
                  sk.key_token, sk.name as stream_key_name \
@@ -373,6 +398,8 @@ async fn update_room(
                 "slug",
                 "delivery_mode",
                 "waiting_room",
+                "noise_reduction",
+                "echo_cancellation",
                 "expires_at",
                 "status",
                 "stream_key_id",
@@ -412,7 +439,7 @@ async fn update_room(
         conn.execute(&sql, all_params.as_slice())?;
 
         let mut stmt = conn.prepare(
-            "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, \
+            "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, r.noise_reduction, r.echo_cancellation, \
              r.expires_at, r.status, r.stream_key_id, r.created_at, \
              r.started_at, r.ended_at, r.presenter_key, r.password_hash, \
              sk.key_token, sk.name as stream_key_name \
@@ -426,6 +453,8 @@ async fn update_room(
             "slug",
             "delivery_mode",
             "waiting_room",
+            "noise_reduction",
+            "echo_cancellation",
             "expires_at",
             "status",
             "stream_key_id",
@@ -536,7 +565,7 @@ async fn reactivate_room(
             rusqlite::params![id],
         )?;
         let mut stmt = conn.prepare(
-            "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, \
+            "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, r.noise_reduction, r.echo_cancellation, \
              r.expires_at, r.status, r.stream_key_id, r.created_at, \
              r.started_at, r.ended_at, r.presenter_key, r.password_hash, \
              sk.key_token, sk.name as stream_key_name \
@@ -550,6 +579,8 @@ async fn reactivate_room(
             "slug",
             "delivery_mode",
             "waiting_room",
+            "noise_reduction",
+            "echo_cancellation",
             "expires_at",
             "status",
             "stream_key_id",
@@ -769,7 +800,7 @@ async fn rotate_presenter_key(
     let conn = state.db.get()?;
     let room = tokio::task::spawn_blocking(move || {
         let mut stmt = conn.prepare(
-            "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, \
+            "SELECT r.id, r.name, r.slug, r.delivery_mode, r.waiting_room, r.noise_reduction, r.echo_cancellation, \
              r.expires_at, r.status, r.stream_key_id, r.created_at, \
              r.started_at, r.ended_at, r.presenter_key, r.password_hash, \
              sk.key_token, sk.name as stream_key_name \
@@ -783,6 +814,8 @@ async fn rotate_presenter_key(
             "slug",
             "delivery_mode",
             "waiting_room",
+            "noise_reduction",
+            "echo_cancellation",
             "expires_at",
             "status",
             "stream_key_id",

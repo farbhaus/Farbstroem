@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS rooms (
     presenter_key TEXT,
     delivery_mode TEXT NOT NULL DEFAULT 'webrtc',
     waiting_room  INTEGER NOT NULL DEFAULT 0,
+    noise_reduction   INTEGER NOT NULL DEFAULT 1,
+    echo_cancellation INTEGER NOT NULL DEFAULT 1,
     expires_at    DATETIME,
     status        TEXT NOT NULL DEFAULT 'pending',
     stream_key_id TEXT REFERENCES stream_keys(id) ON DELETE SET NULL,

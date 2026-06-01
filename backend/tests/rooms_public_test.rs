@@ -119,6 +119,37 @@ async fn join_succeeds() {
     assert!(body.get("token").is_some());
     assert_eq!(body["admitted"], true);
     assert_eq!(body["role"], "viewer");
+    // Seeded rooms default both audio settings ON.
+    assert_eq!(body["noise_reduction_default"], true);
+    assert_eq!(body["echo_cancellation_default"], true);
+}
+
+#[tokio::test]
+async fn join_exposes_per_room_audio_defaults() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+
+    let room_id = common::seed_room(&state, "Music Room", "music-room-abc123");
+    // Admin turned noise reduction off for this room; echo stays on.
+    state
+        .db
+        .get()
+        .unwrap()
+        .execute(
+            "UPDATE rooms SET noise_reduction = 0 WHERE id = ?1",
+            rusqlite::params![room_id],
+        )
+        .unwrap();
+
+    let res = server
+        .post("/api/public/rooms/music-room-abc123/join")
+        .json(&json!({ "name": "Alice" }))
+        .await;
+    assert_eq!(res.status_code(), 200);
+
+    let body: Value = res.json();
+    assert_eq!(body["noise_reduction_default"], false);
+    assert_eq!(body["echo_cancellation_default"], true);
 }
 
 #[tokio::test]

@@ -822,6 +822,14 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
             <input type="checkbox" id="room-waiting">
             <label for="room-waiting">Enable waiting room (approve viewers before they see the stream)</label>
         </div>
+        <div class="form-row checkbox">
+            <input type="checkbox" id="room-noise-reduction" checked>
+            <label for="room-noise-reduction">Noise reduction on by default (participants can still toggle it)</label>
+        </div>
+        <div class="form-row checkbox">
+            <input type="checkbox" id="room-echo-cancellation" checked>
+            <label for="room-echo-cancellation">Echo cancellation on by default (participants can still toggle it)</label>
+        </div>
         <div class="modal-footer">
             <button class="btn" id="room-modal-cancel">Cancel</button>
             <button class="btn btn-primary" id="room-modal-save">Save</button>

@@ -77,6 +77,52 @@ async fn create_room_succeeds() {
     assert_eq!(body["delivery_mode"], "webrtc");
     assert!(body.get("presenter_key").is_some());
     assert_eq!(body["name"], "Test Room");
+    // Participant-audio defaults are ON unless the admin opts out.
+    assert_eq!(body["noise_reduction"], 1);
+    assert_eq!(body["echo_cancellation"], 1);
+}
+
+#[tokio::test]
+async fn create_room_audio_defaults_off_round_trips() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+    let token = common::admin_token(&state);
+    let (name, val) = auth_header(&token);
+
+    let res = server
+        .post("/api/rooms")
+        .add_header(name.clone(), val.clone())
+        .json(&json!({
+            "name": "Quiet Room",
+            "noise_reduction": false,
+            "echo_cancellation": false,
+        }))
+        .await;
+    assert_eq!(res.status_code(), 200);
+    let body: Value = res.json();
+    let room_id = body["id"].as_str().unwrap().to_string();
+    assert_eq!(body["noise_reduction"], 0);
+    assert_eq!(body["echo_cancellation"], 0);
+
+    // Re-fetch to confirm it persisted.
+    let res = server
+        .get(&format!("/api/rooms/{}", room_id))
+        .add_header(name.clone(), val.clone())
+        .await;
+    let body: Value = res.json();
+    assert_eq!(body["noise_reduction"], 0);
+    assert_eq!(body["echo_cancellation"], 0);
+
+    // Toggling one back on via update leaves the other untouched.
+    let res = server
+        .put(&format!("/api/rooms/{}", room_id))
+        .add_header(name, val)
+        .json(&json!({ "noise_reduction": true }))
+        .await;
+    assert_eq!(res.status_code(), 200);
+    let body: Value = res.json();
+    assert_eq!(body["noise_reduction"], 1);
+    assert_eq!(body["echo_cancellation"], 0);
 }
 
 // ---------------------------------------------------------------------------
