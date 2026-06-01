@@ -23,6 +23,7 @@ import {
   configurePlayer,
 } from './player.js';
 import { configurePointer, initPointer } from './pointer.js';
+import { initShortcuts } from './shortcuts.js';
 import {
   configureJoinOutcome,
   configureScreens,
@@ -261,6 +262,7 @@ function init(): void {
   initConference();
   initLandingForm();
   initJoinForm();
+  initShortcuts();
 
   document.getElementById('leave-btn')?.addEventListener('click', leaveRoom);
   document.getElementById('left-rejoin-btn')?.addEventListener('click', () => location.reload());
