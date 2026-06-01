@@ -12,6 +12,33 @@ import type { LivekitTokenResponse, RosterEntry, TileId, WsClientMessage } from 
 
 let livekitRoom: LkRoom | null = null;
 let activeScreenShareId: string | null = null; // participant.identity or 'local'
+
+// ---- Audio capture preferences (per-room override over admin default) ----
+// Keys are slug-scoped so a participant's toggle sticks for this room only.
+// Absent → fall back to the room's admin default (viewerStore noise/echoDefault);
+// '1'/'0' → explicit participant override.
+const noiseKey = (): string => `viewer_noise_reduction_${slug}`;
+const echoKey = (): string => `viewer_echo_cancel_${slug}`;
+const noiseReductionOn = (): boolean => {
+  const v = localStorage.getItem(noiseKey());
+  return v === null ? viewerStore.get().noiseDefault : v !== '0';
+};
+const echoCancelOn = (): boolean => {
+  const v = localStorage.getItem(echoKey());
+  return v === null ? viewerStore.get().echoDefault : v !== '0';
+};
+
+// Capture constraints applied whenever the mic track is (re)published.
+// voiceIsolation is the stronger, browser-native isolation that supersedes
+// noiseSuppression where supported; ignored elsewhere.
+function audioCaptureOpts(): AudioCaptureOptions {
+  return {
+    echoCancellation: echoCancelOn(),
+    noiseSuppression: noiseReductionOn(),
+    voiceIsolation: noiseReductionOn(),
+    autoGainControl: true,
+  };
+}
 let activeScreenShareTrack: LkTrack | null = null;
 let selfMuteInFlight = false;
 
@@ -234,7 +261,7 @@ export async function initLiveKit(): Promise<void> {
   if (!res.ok) throw new Error('Could not get LiveKit token');
   const { token: lkToken, url: lkUrl } = (await res.json()) as LivekitTokenResponse;
 
-  const room = new LivekitClient.Room();
+  const room = new LivekitClient.Room({ audioCaptureDefaults: audioCaptureOpts() });
   livekitRoom = room;
 
   room.on(LivekitClient.RoomEvent.ParticipantConnected, () => syncConferenceTiles());
@@ -285,7 +312,7 @@ export async function initLiveKit(): Promise<void> {
 
   const { cameraOn, micOn } = viewerStore.get();
   if (cameraOn) await room.localParticipant.setCameraEnabled(true);
-  if (micOn) await room.localParticipant.setMicrophoneEnabled(true);
+  if (micOn) await room.localParticipant.setMicrophoneEnabled(true, audioCaptureOpts());
 
   updateSelfTile();
 }
@@ -605,7 +632,7 @@ async function toggleMic(): Promise<void> {
   setConfBtns({ active: cameraOn, disabled: true }, { disabled: true });
   try {
     if (livekitRoom) {
-      await livekitRoom.localParticipant.setMicrophoneEnabled(next);
+      await livekitRoom.localParticipant.setMicrophoneEnabled(next, audioCaptureOpts());
       updateSelfTile();
     } else if (next) {
       await initLiveKit();
@@ -766,6 +793,9 @@ async function openDevicePicker(): Promise<void> {
         micTrack.mediaStreamTrack.getSettings().deviceId || '';
     }
   }
+
+  (document.getElementById('device-noise') as HTMLInputElement).checked = noiseReductionOn();
+  (document.getElementById('device-echo') as HTMLInputElement).checked = echoCancelOn();
 }
 
 // ---- Presenter moderation ----
@@ -814,7 +844,23 @@ async function presenterMute(targetId: string): Promise<void> {
 export function initConference(): void {
   document.getElementById('cam-btn')?.addEventListener('click', toggleCamera);
   document.getElementById('mic-btn')?.addEventListener('click', toggleMic);
-  document.getElementById('screen-btn')?.addEventListener('click', toggleScreenShare);
+  // Screen share can't work on iOS (every iOS browser is WebKit, and even those
+  // that expose getDisplayMedia — e.g. Firefox iOS — reject it at call time).
+  // Detect iOS directly rather than trusting feature detection, and also cover
+  // browsers that simply lack the API. Hide the button instead of letting it fail.
+  const ua = navigator.userAgent;
+  const isIOS =
+    /iPad|iPhone|iPod/.test(ua) ||
+    // iPadOS 13+ reports as "Macintosh"; disambiguate via touch support.
+    (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const screenBtn = document.getElementById('screen-btn');
+  if (screenBtn && (isIOS || !navigator.mediaDevices?.getDisplayMedia)) {
+    // Inline style beats the `.tb-btn { display: flex }` rule in the page's
+    // inline <style> (`.u-hidden` would lose that cascade battle).
+    screenBtn.style.display = 'none';
+  } else {
+    screenBtn?.addEventListener('click', toggleScreenShare);
+  }
 
   document.getElementById('focus-btn')?.addEventListener('click', () => {
     const { focusedTile, role } = viewerStore.get();
@@ -895,6 +941,27 @@ export function initConference(): void {
       console.error('[device switch speaker]', err);
     }
   });
+
+  // Audio-processing toggles. Persist the pref, then — if a mic track is live —
+  // cycle it so the new capture constraints take effect immediately.
+  const onAudioPrefChange = (key: string) => async (e: Event): Promise<void> => {
+    localStorage.setItem(key, (e.target as HTMLInputElement).checked ? '1' : '0');
+    if (!livekitRoom || !viewerStore.get().micOn) return;
+    // Guard the brief mute during re-capture so syncLocalMuteState doesn't
+    // mistake it for a presenter force-mute and raise the breathing alert.
+    selfMuteInFlight = true;
+    try {
+      await livekitRoom.localParticipant.setMicrophoneEnabled(false);
+      await livekitRoom.localParticipant.setMicrophoneEnabled(true, audioCaptureOpts());
+    } catch (err) {
+      console.error('[audio pref]', err);
+      toast(deviceErrorMessage(err, 'mic'));
+    } finally {
+      selfMuteInFlight = false;
+    }
+  };
+  document.getElementById('device-noise')?.addEventListener('change', (e) => void onAudioPrefChange(noiseKey())(e));
+  document.getElementById('device-echo')?.addEventListener('change', (e) => void onAudioPrefChange(echoKey())(e));
 
   // Presenter moderation, delegated at #app level — tiles live in #stage
   // (focused) or #stage-strip (unfocused). One listener handles both.

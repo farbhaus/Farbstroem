@@ -210,6 +210,10 @@ function openRoomModal(id: string | null): void {
     (document.getElementById('room-password') as HTMLInputElement).value = '';
     (document.getElementById('room-delivery') as HTMLSelectElement).value = r.delivery_mode;
     (document.getElementById('room-waiting') as HTMLInputElement).checked = !!r.waiting_room;
+    (document.getElementById('room-noise-reduction') as HTMLInputElement).checked =
+      !!r.noise_reduction;
+    (document.getElementById('room-echo-cancellation') as HTMLInputElement).checked =
+      !!r.echo_cancellation;
     const expiresInput = document.getElementById('room-expires') as HTMLInputElement;
     if (r.expires_at) {
       // expires_at is stored as UTC "YYYY-MM-DD HH:MM:SS" with no zone marker.
@@ -228,6 +232,8 @@ function openRoomModal(id: string | null): void {
     (document.getElementById('room-password') as HTMLInputElement).value = '';
     (document.getElementById('room-delivery') as HTMLSelectElement).value = 'webrtc';
     (document.getElementById('room-waiting') as HTMLInputElement).checked = false;
+    (document.getElementById('room-noise-reduction') as HTMLInputElement).checked = true;
+    (document.getElementById('room-echo-cancellation') as HTMLInputElement).checked = true;
     (document.getElementById('room-expires') as HTMLInputElement).value = '';
     if (skSelect) skSelect.value = '';
     const clearRow = document.getElementById('clear-password-row');
@@ -253,6 +259,10 @@ async function saveRoom(): Promise<void> {
     .checked;
   const delivery_mode = (document.getElementById('room-delivery') as HTMLSelectElement).value;
   const waiting_room = (document.getElementById('room-waiting') as HTMLInputElement).checked;
+  const noise_reduction = (document.getElementById('room-noise-reduction') as HTMLInputElement)
+    .checked;
+  const echo_cancellation = (document.getElementById('room-echo-cancellation') as HTMLInputElement)
+    .checked;
   const expiresRaw = (document.getElementById('room-expires') as HTMLInputElement).value;
   const expires_at = expiresRaw
     ? new Date(expiresRaw).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '')
@@ -272,6 +282,8 @@ async function saveRoom(): Promise<void> {
     name,
     delivery_mode,
     waiting_room,
+    noise_reduction,
+    echo_cancellation,
     expires_at,
     stream_key_id: streamKeyId || null,
     ...(clearPassword ? { password: '' } : password ? { password } : {}),

@@ -97,6 +97,15 @@
 .form-row select:focus,
 .form-row textarea:focus { border-color: var(--accent); box-shadow: var(--ring-accent); }
 .form-row input::placeholder { color: var(--faint); }
+/* iOS renders native date/time inputs at an intrinsic width that ignores
+   width:100% and overflows the modal. Resetting the appearance lets them honour
+   the box width like any other input. */
+.form-row input[type="datetime-local"],
+.form-row input[type="date"],
+.form-row input[type="time"] {
+    -webkit-appearance: none; appearance: none;
+    max-width: 100%; min-width: 0;
+}
 
 /* Generic inputs outside .form-row — for places that use raw <input>, <select>, <textarea>. */
 .input, .select, .textarea {
@@ -117,7 +126,7 @@
     margin: 0; text-transform: none; letter-spacing: 0;
     font-size: 13px; font-weight: 400; color: var(--text);
 }
-.form-row.checkbox input { width: auto; }
+.form-row.checkbox input { width: auto; accent-color: var(--accent); }
 
 /* ---- Centered card (landing / login / join / waiting) ---- */
 .panel-box {

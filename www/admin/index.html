@@ -340,27 +340,44 @@ main { padding: 32px; padding-top: calc(var(--nav-h) + 32px); }
     .files-list-head { display: none; }
 }
 
-/* ---- Responsive ---- */
+/* ---- Responsive (700px = shared mobile breakpoint, see tokens.css) ---- */
 @media (max-width: 700px) {
-    /* Nav: stack brand + tabs + actions vertically */
+    /* Nav: logo + sign-out on the top row, tabs wrapped below.
+       Static (not fixed) so it flows above content and never overlaps it.
+       max(...) padding keeps clear of the notch in landscape (viewport-fit=cover). */
     nav {
+        position: static;
         height: auto;
-        flex-direction: column;
-        align-items: stretch;
-        padding: 12px 16px 0;
-        gap: 0;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        padding: 12px 16px;
+        padding-left: max(16px, env(safe-area-inset-left));
+        padding-right: max(16px, env(safe-area-inset-right));
+        gap: 10px 8px;
     }
-    .brand { padding: 0 0 10px; }
-    .nav-tabs { border-bottom: 1px solid var(--border); padding-bottom: 2px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .btn-tab { white-space: nowrap; }
-    .nav-right { padding: 10px 0; gap: 8px; }
-    :root { --nav-h: 108px; }
+    .brand { margin-right: auto; }
+    .nav-tabs {
+        order: 1; flex-basis: 100%; flex-wrap: wrap;
+        border-top: 1px solid var(--border); padding-top: 10px; gap: 6px;
+    }
+    /* Three tabs per row: Rooms/Stream Keys/Files, then Dashboard/Branding/Settings. */
+    .btn-tab { flex: 1 1 calc(33.333% - 4px); white-space: nowrap; padding: 8px 10px; }
+    .nav-right { gap: 8px; }
 
-    main { padding: 16px; }
+    main {
+        padding: 16px;
+        padding-left: max(16px, env(safe-area-inset-left));
+        padding-right: max(16px, env(safe-area-inset-right));
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
+    }
     .content-wrap { max-width: 100%; }
 
     /* Cards */
     .room-card-header { flex-wrap: wrap; gap: 10px; padding: 16px; }
+    /* Full-width name+meta so "/slug · Key · Expires" uses the whole card
+       instead of being squeezed into a narrow column beside the badges. */
+    .room-card-info { flex-basis: 100%; }
     .room-card-badges { order: 2; }
     .room-card-actions { order: 3; flex-wrap: wrap; gap: 6px; }
     .room-card-body { padding: 14px 16px; }
@@ -374,15 +391,31 @@ main { padding: 32px; padding-top: calc(var(--nav-h) + 32px); }
     .key-card-header { flex-wrap: wrap; gap: 8px; padding: 14px 16px; }
     .key-card-body { padding: 14px 16px; }
 
-    /* Form grid: single column */
+    /* Form grid: single column. min-width:0 lets the native datetime-local
+       input shrink to the modal width instead of forcing horizontal scroll.
+       Tighter row spacing keeps the whole form within one phone screen. */
     .form-grid { grid-template-columns: 1fr; }
     .form-grid .form-row[style*="grid-column"] { grid-column: auto !important; }
+    .form-row { min-width: 0; margin-bottom: 12px; }
+    .form-row.checkbox { margin-bottom: 12px; }
+    .form-row input, .form-row select, .form-row textarea { min-width: 0; }
 
     /* Login box */
     .login-box { width: calc(100vw - 32px); padding: 36px 24px; }
 
-    /* Modal */
-    .modal { padding: 24px 16px; }
+    /* Modal: size to the dynamic viewport (dvh) so the iOS URL bar can't push
+       it taller than the screen — that overshoot is what made it "move" and
+       show scrollbars. overflow-x:hidden kills any residual horizontal bar;
+       overscroll-behavior:contain stops scroll from leaking to the page behind. */
+    .modal {
+        padding: 20px 16px;
+        max-height: calc(100vh - 24px);
+        max-height: calc(100dvh - 24px);
+        overflow-x: hidden;
+        overscroll-behavior: contain;
+    }
+    .modal-header { margin-bottom: 18px; }
+    .modal-footer { margin-top: 18px; }
 
     /* Waiting section */
     .waiting-section { padding: 14px 16px; }
@@ -429,7 +462,6 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
 <nav id="main-nav" class="u-hidden">
     <div class="brand">
         <img id="brand-logo" alt="" class="u-hidden">
-        <!-- <span id="brand-text">Admin</span> -->
     </div>
     <div class="nav-tabs">
         <button class="btn btn-tab active" data-tab="rooms">Rooms</button>
@@ -789,6 +821,14 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
         <div class="form-row checkbox">
             <input type="checkbox" id="room-waiting">
             <label for="room-waiting">Enable waiting room (approve viewers before they see the stream)</label>
+        </div>
+        <div class="form-row checkbox">
+            <input type="checkbox" id="room-noise-reduction" checked>
+            <label for="room-noise-reduction">Noise reduction on by default (participants can still toggle it)</label>
+        </div>
+        <div class="form-row checkbox">
+            <input type="checkbox" id="room-echo-cancellation" checked>
+            <label for="room-echo-cancellation">Echo cancellation on by default (participants can still toggle it)</label>
         </div>
         <div class="modal-footer">
             <button class="btn" id="room-modal-cancel">Cancel</button>

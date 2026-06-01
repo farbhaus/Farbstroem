@@ -48,7 +48,7 @@ async fn room_info(
     let conn = state.db.get()?;
     let room = tokio::task::spawn_blocking(move || {
         let mut stmt = conn.prepare(
-            "SELECT id, name, slug, delivery_mode, waiting_room, \
+            "SELECT id, name, slug, delivery_mode, waiting_room, noise_reduction, echo_cancellation, \
              CASE WHEN password_hash IS NOT NULL AND password_hash != '' THEN 1 ELSE 0 END as has_password, \
              CASE WHEN stream_key_id IS NOT NULL THEN 1 ELSE 0 END as has_stream_key, \
              status \
@@ -60,6 +60,8 @@ async fn room_info(
             "slug",
             "delivery_mode",
             "waiting_room",
+            "noise_reduction",
+            "echo_cancellation",
             "has_password",
             "has_stream_key",
             "status",
@@ -104,7 +106,7 @@ async fn join_room(
         let mut stmt = conn.prepare(
             "SELECT r.id, r.name, r.slug, r.password_hash, r.presenter_key, \
              r.delivery_mode, r.waiting_room, r.status, r.expires_at, \
-             sk.key_token \
+             sk.key_token, r.noise_reduction, r.echo_cancellation \
              FROM rooms r \
              LEFT JOIN stream_keys sk ON sk.id = r.stream_key_id \
              WHERE r.slug = ?1",
@@ -122,6 +124,8 @@ async fn join_room(
                     row.get::<_, String>(7)?,         // status
                     row.get::<_, Option<String>>(8)?, // expires_at
                     row.get::<_, Option<String>>(9)?, // stream key_token
+                    row.get::<_, i32>(10)?,           // noise_reduction
+                    row.get::<_, i32>(11)?,           // echo_cancellation
                 ))
             })
             .map_err(|e| match e {
@@ -144,6 +148,8 @@ async fn join_room(
         status,
         expires_at,
         stream_key,
+        noise_reduction,
+        echo_cancellation,
     ) = room_data;
 
     // 410 if ended
@@ -271,6 +277,8 @@ async fn join_room(
         "admitted": is_admitted == 1,
         "delivery_mode": delivery_mode,
         "waiting_room": waiting_room != 0,
+        "noise_reduction_default": noise_reduction != 0,
+        "echo_cancellation_default": echo_cancellation != 0,
         "stream_key": stream_key,
         "room_name": room_name,
         "status": status,

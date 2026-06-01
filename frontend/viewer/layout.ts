@@ -67,7 +67,10 @@ function fitFocusedTile(stage: HTMLElement): void {
 // transition. Reading interpolated values caused the chat target to
 // chase a moving cellW each tick, restarting chat's own width transition
 // and making the player resize mid-animation.
-const MOBILE_BP = 640;
+// Mobile breakpoint. Must stay in sync with the `@media (max-width: 700px)`
+// rules in www/viewer/index.html (and the shared 700px breakpoint documented in
+// www/shared/tokens.css).
+const MOBILE_BP = 700;
 const STAGE_PAD = 16; // 8px on each side
 const COL_GAP = 8;
 const CHAT_MARGIN_R = 8;

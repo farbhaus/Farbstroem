@@ -27,6 +27,10 @@ export interface ViewerState {
   role: Role;
   deliveryMode: DeliveryMode;
   streamKey: string | null;
+  // Per-room admin defaults for participant audio processing. Seed the NR/ER
+  // toggles unless the participant has overridden them for this room.
+  noiseDefault: boolean;
+  echoDefault: boolean;
   // Conference local state
   cameraOn: boolean;
   micOn: boolean;
@@ -51,6 +55,8 @@ export const viewerStore = createStore<ViewerState>({
   role: 'viewer',
   deliveryMode: 'webrtc',
   streamKey: null,
+  noiseDefault: true,
+  echoDefault: true,
   cameraOn: false,
   micOn: false,
   screenOn: false,

@@ -59,6 +59,7 @@ All services run on a single Docker bridge network (`stream-net`) and reference 
 - Presenter moderation: kick + server-side mute
 - Text chat (persisted per session), file sharing, shared pointer overlay
 - Custom branding (logo + background) per deployment
+- Keyboard shortcuts for the viewer toolbar (see below)
 
 
 <img width="1920" height="1100" alt="1" src="https://github.com/user-attachments/assets/820d33de-1370-49be-9d23-c5a955fd644c" />
@@ -72,6 +73,23 @@ All services run on a single Docker bridge network (`stream-net`) and reference 
 <img width="1920" height="1100" alt="9" src="https://github.com/user-attachments/assets/7418bb42-905c-4875-b5d5-937bcf0eee48" />
 <img width="1920" height="1100" alt="10" src="https://github.com/user-attachments/assets/c74b0a23-2cbd-4a9d-9e4b-09bef8e98f15" />
 <img width="1920" height="1100" alt="11" src="https://github.com/user-attachments/assets/596351a9-ff52-4d71-bbff-c883014dd18c" />
+
+## Keyboard shortcuts
+
+Single-key shortcuts on the viewer page (`/watch/{slug}`). Ignored while typing
+in a text field; modifier combos (Ctrl/Cmd/Alt) are left to the browser. The key
+is also shown in each button's hover tooltip.
+
+| Key | Action |
+|---|---|
+| `Q` | Toggle camera |
+| `W` | Toggle microphone |
+| `E` | Toggle pointer *(focus view only)* |
+| `F` | Enter/exit fullscreen |
+| `M` | Mute/unmute the stream |
+| `X` | Toggle focus view |
+| `C` | Toggle chat panel |
+| `V` | Toggle call strip *(focus view only)* |
 
 ## Ingest protocols
 

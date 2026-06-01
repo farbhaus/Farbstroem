@@ -1,7 +1,24 @@
 /* Farbstroem design tokens — single source of truth.
    Overridable at runtime by /api/branding via utils.js applyBranding(). */
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after {
+    box-sizing: border-box; margin: 0; padding: 0;
+    /* No grey tap-flash box on iOS/Android touch. */
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Disable double-tap-to-zoom on touch devices. iOS Safari ignores
+   `user-scalable=no`/`maximum-scale`, so this is the only reliable way to stop
+   a tap (e.g. on a button) from zooming the page. `manipulation` still allows
+   scrolling and pinch-zoom. Set on the root so it applies to every descendant. */
+html { touch-action: manipulation; }
+
+/* Responsive breakpoints (documented constants — CSS @media cannot read custom
+   properties, so these live as literals in each page's media queries):
+     700px  — mobile. Used by viewer + admin + landing, and mirrored in JS as
+              MOBILE_BP in frontend/viewer/layout.ts (keep them in sync).
+     1000px — admin file-table "tablet" tier (collapses the files list columns).
+     max-height:440px landscape — viewer short-viewport landscape layout. */
 
 :root {
     /* Color */

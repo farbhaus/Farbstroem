@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Farbström</title>
 <script src="https://cdn.jsdelivr.net/npm/ovenplayer/dist/ovenplayer.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5/dist/hls.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.19/dist/livekit-client.umd.min.js"></script>
 <link rel="stylesheet" href="/shared/tokens.css">
 <link rel="stylesheet" href="/shared/components.css">
 <link rel="stylesheet" href="/shared/utils.css">
@@ -127,6 +127,12 @@ html, body { overflow: hidden; }
     padding-right: 28px;
 }
 .device-picker-row select:focus { border-color: var(--dim); }
+.device-picker-check {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    font-size: 13px; color: var(--text); margin-bottom: 0;
+    text-transform: none; letter-spacing: normal; font-weight: 400;
+}
+.device-picker-check input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 
 /* ---- "Show" button next to "Get" on shared files (presenter-only) ---- */
 .file-row-show {
@@ -770,7 +776,7 @@ body.has-focus.strip-hidden #stage-strip {
 }
 
 /* ---- Responsive ---- */
-@media (max-width: 640px) {
+@media (max-width: 700px) {
     /* Omit the brand logo (frees room for Leave) and spread the remaining items
        evenly across the full width instead of clustering them at the two edges:
        flatten the left/right groups so every item is a direct flex child, then
@@ -833,7 +839,6 @@ body.has-focus.strip-hidden #stage-strip {
         flex-direction: row;
         height: 104px;
         overflow-x: auto; overflow-y: hidden;
-        -webkit-overflow-scrolling: touch;
     }
     /* Override desktop strip-hidden (which collapses a column) — on mobile
        the strip occupies a row, so collapse the row instead. */
@@ -841,17 +846,24 @@ body.has-focus.strip-hidden #stage-strip {
         grid-template-columns: 1fr;
         grid-template-rows: 0 1fr;
     }
+    /* 16:9 comes from the base .tile rule; height is definite (fixed-height
+       strip row) so width:auto resolves correctly. */
     body.has-focus #stage-strip .tile {
         flex: 0 0 auto;
         width: auto; height: 100%;
-        aspect-ratio: 16 / 9;
     }
 
     /* Join / waiting boxes fit small screens */
     .join-box, .waiting-box, #landing-screen .panel-box { width: calc(100vw - 32px); padding: 32px 24px; }
 }
 
-/* Mobile landscape — maximize stage area */
+/* ---- Mobile-landscape side toolbars (#151) ---- */
+/* .side-toolbar are empty containers in regular layouts; populated by
+   setupLandscapeToolbar() only when the breakpoint matches. Hidden by default. */
+.side-toolbar { display: none; }
+
+/* Mobile landscape — maximize stage area, and (when body.landscape-mobile is
+   active) split the toolbars into the vertical side bars (#151). */
 @media (max-height: 440px) and (orientation: landscape) {
     #top-bar { height: 36px; }
     /* iOS reserves a bottom safe-area for the home indicator; the toolbar's
@@ -866,14 +878,7 @@ body.has-focus.strip-hidden #stage-strip {
     }
 
     #right-panel.open { width: 280px; }
-}
 
-/* ---- Mobile-landscape side toolbars (#151) ---- */
-/* Empty containers in regular layouts; populated by setupLandscapeToolbar()
-   only when the breakpoint matches. Hidden by default. */
-.side-toolbar { display: none; }
-
-@media (max-height: 440px) and (orientation: landscape) {
     body.landscape-mobile #top-bar,
     body.landscape-mobile #bottom-toolbar { display: none; }
 
@@ -1096,6 +1101,18 @@ body.has-focus.strip-hidden #stage-strip {
             <label>Speaker</label>
             <select id="device-speaker"></select>
         </div>
+        <div class="device-picker-row">
+            <label class="device-picker-check">
+                <input type="checkbox" id="device-noise" checked>
+                Reduce background noise
+            </label>
+        </div>
+        <div class="device-picker-row">
+            <label class="device-picker-check">
+                <input type="checkbox" id="device-echo" checked>
+                Echo cancellation
+            </label>
+        </div>
         <div style="text-align:right;margin-top:16px">
             <button class="conf-prompt-btn" id="device-picker-close" style="width:auto;padding:8px 24px">Done</button>
         </div>
@@ -1253,10 +1270,10 @@ body.has-focus.strip-hidden #stage-strip {
     <!-- Bottom toolbar -->
     <div id="bottom-toolbar">
         <div class="toolbar-group">
-            <button class="tb-btn" id="cam-btn" title="Camera">
+            <button class="tb-btn" id="cam-btn" title="Camera (Q)">
                 <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
             </button>
-            <button class="tb-btn" id="mic-btn" title="Microphone">
+            <button class="tb-btn" id="mic-btn" title="Microphone (W)">
                 <svg viewBox="0 0 24 24"><rect x="9" y="1" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
             </button>
             <button class="tb-btn" id="screen-btn" title="Share Screen">
@@ -1265,19 +1282,19 @@ body.has-focus.strip-hidden #stage-strip {
         </div>
         <div class="tb-sep"></div>
         <div class="toolbar-group">
-            <button class="tb-btn" id="pointer-btn" title="Pointer">
+            <button class="tb-btn" id="pointer-btn" title="Pointer (E)">
                 <svg viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6" stroke-linecap="round"/></svg>
             </button>
-            <button class="tb-btn" id="focus-btn" title="Toggle focus view">
+            <button class="tb-btn" id="focus-btn" title="Toggle focus view (X)">
                 <!-- Shown in grid view (click to enter focus): strip-and-main icon. -->
                 <svg class="fb-icon-focus" viewBox="0 0 24 24"><rect x="3" y="4" width="3" height="5" rx="0.5"/><rect x="3" y="10.5" width="3" height="5" rx="0.5"/><rect x="3" y="17" width="3" height="3" rx="0.5"/><rect x="8" y="4" width="13" height="16" rx="1"/></svg>
                 <!-- Shown in focus view (click to return to grid): 2x2 grid icon. -->
                 <svg class="fb-icon-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
             </button>
-            <button class="tb-btn" id="conf-toggle" title="Show/hide strip">
+            <button class="tb-btn" id="conf-toggle" title="Show/hide strip (V)">
                 <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </button>
-            <button class="tb-btn" id="chat-toggle" title="Chat">
+            <button class="tb-btn" id="chat-toggle" title="Chat (C)">
                 <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             </button>
         </div>
@@ -1306,7 +1323,7 @@ body.has-focus.strip-hidden #stage-strip {
             <button class="tb-btn" id="resync-btn" title="Resync">
                 <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             </button>
-            <button class="tb-btn" id="fullscreen-btn" title="Fullscreen">
+            <button class="tb-btn" id="fullscreen-btn" title="Fullscreen (F)">
                 <svg viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
             </button>
         </div>
