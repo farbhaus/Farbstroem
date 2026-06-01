@@ -46,15 +46,12 @@ export async function loadBranding(): Promise<void> {
   if (data.hasLogo && logoPreview) logoPreview.src = '/api/branding/logo?' + Date.now();
 
   const brandImg = document.getElementById('brand-logo') as HTMLImageElement | null;
-  const brandText = document.getElementById('brand-text');
   if (brandImg) {
     if (data.hasLogo) {
       brandImg.src = '/api/branding/logo?' + Date.now();
       brandImg.style.display = '';
-      if (brandText) brandText.style.display = 'none';
     } else {
       brandImg.style.display = 'none';
-      if (brandText) brandText.style.display = '';
     }
   }
 

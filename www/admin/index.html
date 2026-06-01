@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Farbström — Admin</title>
 <link rel="stylesheet" href="/shared/tokens.css">
 <link rel="stylesheet" href="/shared/components.css">
@@ -340,10 +340,11 @@ main { padding: 32px; padding-top: calc(var(--nav-h) + 32px); }
     .files-list-head { display: none; }
 }
 
-/* ---- Responsive ---- */
+/* ---- Responsive (700px = shared mobile breakpoint, see tokens.css) ---- */
 @media (max-width: 700px) {
     /* Nav: logo + sign-out on the top row, tabs wrapped below.
-       Static (not fixed) so it flows above content and never overlaps it. */
+       Static (not fixed) so it flows above content and never overlaps it.
+       max(...) padding keeps clear of the notch in landscape (viewport-fit=cover). */
     nav {
         position: static;
         height: auto;
@@ -351,6 +352,8 @@ main { padding: 32px; padding-top: calc(var(--nav-h) + 32px); }
         flex-wrap: wrap;
         align-items: center;
         padding: 12px 16px;
+        padding-left: max(16px, env(safe-area-inset-left));
+        padding-right: max(16px, env(safe-area-inset-right));
         gap: 10px 8px;
     }
     .brand { margin-right: auto; }
@@ -362,7 +365,12 @@ main { padding: 32px; padding-top: calc(var(--nav-h) + 32px); }
     .btn-tab { flex: 1 1 calc(33.333% - 4px); white-space: nowrap; padding: 8px 10px; }
     .nav-right { gap: 8px; }
 
-    main { padding: 16px; }
+    main {
+        padding: 16px;
+        padding-left: max(16px, env(safe-area-inset-left));
+        padding-right: max(16px, env(safe-area-inset-right));
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
+    }
     .content-wrap { max-width: 100%; }
 
     /* Cards */
@@ -454,7 +462,6 @@ input[id^="color-"][id$="-hex"]:focus { border-color: var(--accent); box-shadow:
 <nav id="main-nav" class="u-hidden">
     <div class="brand">
         <img id="brand-logo" alt="" class="u-hidden">
-        <!-- <span id="brand-text">Admin</span> -->
     </div>
     <div class="nav-tabs">
         <button class="btn btn-tab active" data-tab="rooms">Rooms</button>
