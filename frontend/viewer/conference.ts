@@ -13,13 +13,20 @@ import type { LivekitTokenResponse, RosterEntry, TileId, WsClientMessage } from 
 let livekitRoom: LkRoom | null = null;
 let activeScreenShareId: string | null = null; // participant.identity or 'local'
 
-// ---- Audio capture preferences (global, default on) ----
-// Persisted device-level toggles, shared across rooms like the device choice.
-// Stored as '1'/'0'; absent means on.
-const NOISE_KEY = 'viewer_noise_reduction';
-const ECHO_KEY = 'viewer_echo_cancel';
-const noiseReductionOn = (): boolean => localStorage.getItem(NOISE_KEY) !== '0';
-const echoCancelOn = (): boolean => localStorage.getItem(ECHO_KEY) !== '0';
+// ---- Audio capture preferences (per-room override over admin default) ----
+// Keys are slug-scoped so a participant's toggle sticks for this room only.
+// Absent → fall back to the room's admin default (viewerStore noise/echoDefault);
+// '1'/'0' → explicit participant override.
+const noiseKey = (): string => `viewer_noise_reduction_${slug}`;
+const echoKey = (): string => `viewer_echo_cancel_${slug}`;
+const noiseReductionOn = (): boolean => {
+  const v = localStorage.getItem(noiseKey());
+  return v === null ? viewerStore.get().noiseDefault : v !== '0';
+};
+const echoCancelOn = (): boolean => {
+  const v = localStorage.getItem(echoKey());
+  return v === null ? viewerStore.get().echoDefault : v !== '0';
+};
 
 // Capture constraints applied whenever the mic track is (re)published.
 // voiceIsolation is the stronger, browser-native isolation that supersedes
@@ -953,8 +960,8 @@ export function initConference(): void {
       selfMuteInFlight = false;
     }
   };
-  document.getElementById('device-noise')?.addEventListener('change', (e) => void onAudioPrefChange(NOISE_KEY)(e));
-  document.getElementById('device-echo')?.addEventListener('change', (e) => void onAudioPrefChange(ECHO_KEY)(e));
+  document.getElementById('device-noise')?.addEventListener('change', (e) => void onAudioPrefChange(noiseKey())(e));
+  document.getElementById('device-echo')?.addEventListener('change', (e) => void onAudioPrefChange(echoKey())(e));
 
   // Presenter moderation, delegated at #app level — tiles live in #stage
   // (focused) or #stage-strip (unfocused). One listener handles both.

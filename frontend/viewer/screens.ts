@@ -212,6 +212,8 @@ export async function loadRoomInfo(): Promise<RoomInfoOutcome> {
         role,
         deliveryMode: roomInfo.delivery_mode || savedSession.deliveryMode || 'webrtc',
         streamKey: savedSession.streamKey,
+        noiseDefault: !!roomInfo.noise_reduction,
+        echoDefault: !!roomInfo.echo_cancellation,
       });
 
       // Re-check admission on resume. A participant who refreshed while in
@@ -308,6 +310,8 @@ export async function doJoin(): Promise<RoomInfoOutcome> {
       role: data.role || 'viewer',
       deliveryMode: data.delivery_mode,
       streamKey: data.stream_key,
+      noiseDefault: data.noise_reduction_default,
+      echoDefault: data.echo_cancellation_default,
     });
 
     saveSession({

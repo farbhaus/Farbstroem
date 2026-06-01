@@ -28,6 +28,9 @@ export interface RoomInfo {
   has_password: boolean;
   has_stream_key: boolean;
   waiting_room: boolean;
+  // Per-room participant-audio defaults (0/1 from row_to_json).
+  noise_reduction: boolean | number;
+  echo_cancellation: boolean | number;
 }
 
 export interface JoinResponse {
@@ -39,6 +42,8 @@ export interface JoinResponse {
   status: RoomStatus;
   admitted: boolean;
   waiting_room: boolean;
+  noise_reduction_default: boolean;
+  echo_cancellation_default: boolean;
   error?: string;
 }
 

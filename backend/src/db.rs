@@ -361,6 +361,23 @@ pub fn init_pool(db_path: &str, data_path: &str) -> DbPool {
         ).expect("Failed migration: add rooms.presenter_key");
     }
 
+    // Per-room participant-audio defaults (issue #160). Default ON to preserve
+    // the previous always-on behavior for existing rooms.
+    for col in ["noise_reduction", "echo_cancellation"] {
+        let has_col: bool = conn
+            .prepare("PRAGMA table_info(rooms)")
+            .expect("PRAGMA table_info(rooms) failed (audio defaults check)")
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("PRAGMA table_info(rooms) query_map failed (audio defaults check)")
+            .any(|name| name.as_deref() == Ok(col));
+        if !has_col {
+            conn.execute_batch(&format!(
+                "ALTER TABLE rooms ADD COLUMN {col} INTEGER NOT NULL DEFAULT 1"
+            ))
+            .unwrap_or_else(|_| panic!("Failed migration: add rooms.{col}"));
+        }
+    }
+
     migrate_session_files_library(&conn);
     repair_room_files_fk(&conn);
     migrate_session_files_room_id_setnull(&conn);

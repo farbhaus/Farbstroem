@@ -13,6 +13,8 @@ export interface Room {
   status: RoomStatus;
   delivery_mode: DeliveryMode;
   waiting_room: boolean | number;
+  noise_reduction: boolean | number;
+  echo_cancellation: boolean | number;
   expires_at: string | null;
   password_hash: string | null;
   presenter_key: string;

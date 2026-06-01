@@ -126,7 +126,7 @@
     margin: 0; text-transform: none; letter-spacing: 0;
     font-size: 13px; font-weight: 400; color: var(--text);
 }
-.form-row.checkbox input { width: auto; }
+.form-row.checkbox input { width: auto; accent-color: var(--accent); }
 
 /* ---- Centered card (landing / login / join / waiting) ---- */
 .panel-box {
