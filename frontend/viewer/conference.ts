@@ -12,6 +12,26 @@ import type { LivekitTokenResponse, RosterEntry, TileId, WsClientMessage } from 
 
 let livekitRoom: LkRoom | null = null;
 let activeScreenShareId: string | null = null; // participant.identity or 'local'
+
+// ---- Audio capture preferences (global, default on) ----
+// Persisted device-level toggles, shared across rooms like the device choice.
+// Stored as '1'/'0'; absent means on.
+const NOISE_KEY = 'viewer_noise_reduction';
+const ECHO_KEY = 'viewer_echo_cancel';
+const noiseReductionOn = (): boolean => localStorage.getItem(NOISE_KEY) !== '0';
+const echoCancelOn = (): boolean => localStorage.getItem(ECHO_KEY) !== '0';
+
+// Capture constraints applied whenever the mic track is (re)published.
+// voiceIsolation is the stronger, browser-native isolation that supersedes
+// noiseSuppression where supported; ignored elsewhere.
+function audioCaptureOpts(): AudioCaptureOptions {
+  return {
+    echoCancellation: echoCancelOn(),
+    noiseSuppression: noiseReductionOn(),
+    voiceIsolation: noiseReductionOn(),
+    autoGainControl: true,
+  };
+}
 let activeScreenShareTrack: LkTrack | null = null;
 let selfMuteInFlight = false;
 
@@ -234,7 +254,7 @@ export async function initLiveKit(): Promise<void> {
   if (!res.ok) throw new Error('Could not get LiveKit token');
   const { token: lkToken, url: lkUrl } = (await res.json()) as LivekitTokenResponse;
 
-  const room = new LivekitClient.Room();
+  const room = new LivekitClient.Room({ audioCaptureDefaults: audioCaptureOpts() });
   livekitRoom = room;
 
   room.on(LivekitClient.RoomEvent.ParticipantConnected, () => syncConferenceTiles());
@@ -285,7 +305,7 @@ export async function initLiveKit(): Promise<void> {
 
   const { cameraOn, micOn } = viewerStore.get();
   if (cameraOn) await room.localParticipant.setCameraEnabled(true);
-  if (micOn) await room.localParticipant.setMicrophoneEnabled(true);
+  if (micOn) await room.localParticipant.setMicrophoneEnabled(true, audioCaptureOpts());
 
   updateSelfTile();
 }
@@ -605,7 +625,7 @@ async function toggleMic(): Promise<void> {
   setConfBtns({ active: cameraOn, disabled: true }, { disabled: true });
   try {
     if (livekitRoom) {
-      await livekitRoom.localParticipant.setMicrophoneEnabled(next);
+      await livekitRoom.localParticipant.setMicrophoneEnabled(next, audioCaptureOpts());
       updateSelfTile();
     } else if (next) {
       await initLiveKit();
@@ -766,6 +786,9 @@ async function openDevicePicker(): Promise<void> {
         micTrack.mediaStreamTrack.getSettings().deviceId || '';
     }
   }
+
+  (document.getElementById('device-noise') as HTMLInputElement).checked = noiseReductionOn();
+  (document.getElementById('device-echo') as HTMLInputElement).checked = echoCancelOn();
 }
 
 // ---- Presenter moderation ----
@@ -911,6 +934,27 @@ export function initConference(): void {
       console.error('[device switch speaker]', err);
     }
   });
+
+  // Audio-processing toggles. Persist the pref, then — if a mic track is live —
+  // cycle it so the new capture constraints take effect immediately.
+  const onAudioPrefChange = (key: string) => async (e: Event): Promise<void> => {
+    localStorage.setItem(key, (e.target as HTMLInputElement).checked ? '1' : '0');
+    if (!livekitRoom || !viewerStore.get().micOn) return;
+    // Guard the brief mute during re-capture so syncLocalMuteState doesn't
+    // mistake it for a presenter force-mute and raise the breathing alert.
+    selfMuteInFlight = true;
+    try {
+      await livekitRoom.localParticipant.setMicrophoneEnabled(false);
+      await livekitRoom.localParticipant.setMicrophoneEnabled(true, audioCaptureOpts());
+    } catch (err) {
+      console.error('[audio pref]', err);
+      toast(deviceErrorMessage(err, 'mic'));
+    } finally {
+      selfMuteInFlight = false;
+    }
+  };
+  document.getElementById('device-noise')?.addEventListener('change', (e) => void onAudioPrefChange(NOISE_KEY)(e));
+  document.getElementById('device-echo')?.addEventListener('change', (e) => void onAudioPrefChange(ECHO_KEY)(e));
 
   // Presenter moderation, delegated at #app level — tiles live in #stage
   // (focused) or #stage-strip (unfocused). One listener handles both.
