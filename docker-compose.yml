@@ -28,7 +28,7 @@ services:
       - LIVEKIT_URL=ws://localhost:7880
       - PUBLIC_ORIGIN=${PUBLIC_ORIGIN:-https://stream.zemariacolor.com}
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://localhost:4001/healthz || exit 1]
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:4001/healthz || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
