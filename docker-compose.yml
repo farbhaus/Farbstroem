@@ -88,15 +88,17 @@ services:
     container_name: stream-ome
     restart: unless-stopped
     networks: [stream-net]
-    # Explicit env list — OME only needs these three (see
+    # Explicit env list — OME only needs these four (see
     # ome/origin_conf/Server.xml: ${env:OME_API_TOKEN},
-    # ${env:OME_HOST_IP}, ${env:OME_WEBHOOK_SECRET}). The previous
+    # ${env:OME_HOST_IP}, ${env:OME_WEBHOOK_SECRET},
+    # ${env:OME_SIGNED_POLICY_SECRET}). The previous
     # `env_file: .env` was over-scoped and leaked JWT_SECRET, LIVEKIT_*,
     # ADMIN_PASSWORD into a third-party container.
     environment:
       - OME_HOST_IP=${DOMAIN:-localhost}
       - OME_API_TOKEN=${OME_API_TOKEN}
       - OME_WEBHOOK_SECRET=${OME_WEBHOOK_SECRET}
+      - OME_SIGNED_POLICY_SECRET=${OME_SIGNED_POLICY_SECRET}
     volumes:
       - ./ome/origin_conf:/opt/ovenmediaengine/bin/origin_conf
     ports:

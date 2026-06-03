@@ -99,6 +99,33 @@ is also shown in each button's hover tooltip.
 | RTMP | `1935/tcp` | Universal encoder support. URL: `rtmp://<host>:1935/live`, stream name = stream key |
 | WHIP | via Caddy `/live/*` | OBS 30+, browser-based encoders |
 
+### Native SRT playback (Farbplay room link)
+
+The native HDR SRT viewer [Farbplay] connects from a room link instead of a raw SRT URL.
+It `GET`s `https://<host>/api/watch/<slug>` (the `/watch/<slug>` path with `/api` prepended),
+which returns the SRT target plus a short-lived, HMAC-signed `streamid`:
+
+```jsonc
+{
+  "srt": { "host": "stream.example.com", "port": 9998,
+           "streamid": "default/live/<key>?policy=<b64url>&signature=<b64url-hmac>",
+           "latency": 500 },
+  "ttlSeconds": 30,
+  "title": "Project X"
+}
+```
+
+OME's `<SignedPolicy>` (in `ome/origin_conf/Server.xml`, scoped to the SRT publisher) validates
+the signature + `url_expire` on connect, so each token expires ~30 s after minting; the app
+re-fetches on every (re)connect. The signing key is `OME_SIGNED_POLICY_SECRET` (shared between the
+backend and OME). Returns `404` for unknown/expired rooms and `403` for password-protected rooms
+(Farbplay can't supply a password, so password rooms are not reachable via the bare link).
+
+> **Security note:** SignedPolicy here provides *expiry / replay-limiting*, not secrecy. The OME
+> stream name is the ingest stream key (`OutputStreamName=${OriginStreamName}`), so the key appears
+> in the `streamid` in plaintext — and is already handed to web viewers on join. Treat the room
+> link as a capability and keep slugs unguessable.
+
 ## Local development
 
 No deploy script for dev. Fill the secrets (the backend refuses empty/short ones — the
