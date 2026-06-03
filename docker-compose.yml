@@ -1,149 +1,35 @@
-networks:
-  stream-net:
-
-volumes:
-  caddy_data:
-  caddy_config:
-
 services:
-  stream-caddy:
-    # Tags are overridable so operators can pin a known-good version in .env
-    # (mirrors BACKEND_TAG). Defaults track the floating upstream tag — fine
-    # for dev, but production hosts should pin in .env to avoid surprise
-    # upgrades on `docker compose pull`.
-    image: caddy:${CADDY_TAG:-2-alpine}
-    container_name: stream-caddy
+  farbstroem:
+    build: .
+    container_name: farbstroem
     restart: unless-stopped
-    networks: [stream-net]
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
       - "${HTTPS_PORT:-443}:443/udp"
+      - "1935:1935"
+      - "9999:9999/udp"
+      - "9998:9998/udp"
+      - "3478:3478"
+      - "10000-10009:10000-10009/udp"
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    environment:
-      - SITE_ADDRESS=${SITE_ADDRESS:-localhost}
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost/"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    depends_on:
-      stream-backend:
-        condition: service_healthy
-      stream-ome:
-        condition: service_healthy
-
-  stream-valkey:
-    # Valkey is the Linux Foundation BSD-3 fork of Redis 7.2 — Redis itself
-    # relicensed to SSPL/RSALv2 starting at 7.4. LiveKit uses it as a plain
-    # RESP coordination backend, so the swap is drop-in.
-    image: valkey/valkey:${VALKEY_TAG:-8-alpine}
-    container_name: stream-valkey
-    restart: unless-stopped
-    networks: [stream-net]
-    command: valkey-server --save "" --loglevel warning
-    healthcheck:
-      test: ["CMD", "valkey-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
-
-  stream-livekit:
-    image: livekit/livekit-server:${LIVEKIT_TAG:-latest}
-    container_name: stream-livekit
-    restart: unless-stopped
-    networks: [stream-net]
-    volumes:
-      - ./livekit/livekit.yaml:/livekit.yaml
-    environment:
-      - "LIVEKIT_KEYS=${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
-    command: --config /livekit.yaml
-    ports:
-      # Signaling — loopback only. Browsers reach it via Caddy (wss://<domain>
-      # /livekit → stream-livekit:7880 on stream-net); the backend uses the
-      # internal DNS name. Publishing it on all interfaces would expose plaintext
-      # WS signaling to the internet, bypassing Caddy's TLS. 127.0.0.1 keeps
-      # direct access for local debugging (incl. via SSH tunnel on a host).
-      - "127.0.0.1:7880:7880"
-      - "7881:7881"                    # TCP media fallback (client↔SFU direct)
-      - "50000-50100:50000-50100/udp"  # WebRTC media (client↔SFU direct)
-    healthcheck:
-      # LiveKit alpine image ships BusyBox which includes nc.
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 7880 || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 10s
-    depends_on:
-      stream-valkey:
-        condition: service_healthy
-
-  stream-ome:
-    image: airensoft/ovenmediaengine:${OME_TAG:-latest}
-    container_name: stream-ome
-    restart: unless-stopped
-    networks: [stream-net]
-    # Explicit env list — OME only needs these three (see
-    # ome/origin_conf/Server.xml: ${env:OME_API_TOKEN},
-    # ${env:OME_HOST_IP}, ${env:OME_WEBHOOK_SECRET}). The previous
-    # `env_file: .env` was over-scoped and leaked JWT_SECRET, LIVEKIT_*,
-    # ADMIN_PASSWORD into a third-party container.
-    environment:
-      - OME_HOST_IP=${DOMAIN:-localhost}
-      - OME_API_TOKEN=${OME_API_TOKEN}
-      - OME_WEBHOOK_SECRET=${OME_WEBHOOK_SECRET}
-    volumes:
-      - ./ome/origin_conf:/opt/ovenmediaengine/bin/origin_conf
-    ports:
-      - "1935:1935"                    # RTMP ingest
-      - "9999:9999/udp"                # SRT ingest
-      - "9998:9998/udp"                # SRT playback
-      - "3478:3478"                    # TURN
-      - "10000-10009:10000-10009/udp"  # ICE candidates
-    healthcheck:
-      # OME's Ubuntu base has bash, so /dev/tcp probe works; the API port 8081
-      # is used by stream-backend for OME status polling, so this mirrors
-      # production reachability.
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8081' || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    depends_on:
-      stream-backend:
-        condition: service_healthy
-
-  stream-backend:
-    image: zcolor/farbstroem-backend:${BACKEND_TAG:-latest}
-    container_name: stream-backend
-    restart: unless-stopped
-    networks: [stream-net]
+      - ./data:/data
+      - ./www:/www
     env_file: .env
     environment:
       - PORT=4001
       - DB_PATH=/data/stream.db
       - DATA_PATH=/data
-      - OME_API_URL=http://stream-ome:8081/v1
-      - LIVEKIT_INTERNAL_URL=http://stream-livekit:7880
-      - PROC_PATH=/host/proc
-    volumes:
-      - ./data:/data
-      - ./www:/www
-      - /proc:/host/proc:ro
+      - OME_API_URL=http://localhost:8081/v1
+      - LIVEKIT_INTERNAL_URL=http://localhost:7880
+      - LIVEKIT_URL=ws://localhost:7880
+      - PUBLIC_ORIGIN=${PUBLIC_ORIGIN:-https://stream.zemariacolor.com}
     healthcheck:
-      # /healthz is a static "ok" that does not touch the DB pool, so a stuck
-      # pool still leaves the container marked unhealthy via the 4001 listener
-      # failing rather than timing out on SQLite.
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:4001/healthz || exit 1"]
-      interval: 10s
-      timeout: 3s
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:4001/healthz || exit 1]
+      interval: 15s
+      timeout: 5s
       retries: 3
-      start_period: 15s
-    depends_on:
-      stream-valkey:
-        condition: service_healthy
+      start_period: 30s
