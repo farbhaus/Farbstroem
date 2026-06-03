@@ -43,21 +43,29 @@ struct WatchQuery {
 
 /// Mint an OME SignedPolicy streamid for SRT playback.
 ///
-/// `base = "default/live/<stream>"`, then `?policy=<b64url(json)>` is appended
-/// and an HMAC-SHA1 signature over that string is appended as
-/// `&signature=<b64url(hmac)>`. OME validates the HMAC + `url_expire` on connect.
+/// The client transmits only the path form `default/live/<stream>?policy=…&signature=…`
+/// as the SRT `streamid`, but OME reconstructs the request URL as
+/// `srt://default/live/<stream>?policy=…` (scheme + vhost as host) and signs
+/// **that** — so the HMAC must be computed over the `srt://`-prefixed URL, not
+/// the bare path. OME then validates the HMAC + `url_expire` on connect.
+/// (Verified against OME v0.20.5 by matching its logged `expected` signature.)
 fn sign_streamid(secret: &str, stream_name: &str, expire_ms: u128) -> Result<String, AppError> {
-    let base = format!("default/live/{}", stream_name);
+    let path = format!("default/live/{}", stream_name);
     let policy_json = json!({ "url_expire": expire_ms }).to_string();
     let policy = URL_SAFE_NO_PAD.encode(policy_json);
-    let signed = format!("{}?policy={}", base, policy);
 
+    // String OME signs (includes the srt:// scheme).
+    let signed_url = format!("srt://{}?policy={}", path, policy);
     let mut mac = HmacSha1::new_from_slice(secret.as_bytes())
         .map_err(|e| AppError::Internal(format!("HMAC init error: {}", e)))?;
-    mac.update(signed.as_bytes());
+    mac.update(signed_url.as_bytes());
     let signature = URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
 
-    Ok(format!("{}&signature={}", signed, signature))
+    // Streamid the client actually sends (path form, no scheme).
+    Ok(format!(
+        "{}?policy={}&signature={}",
+        path, policy, signature
+    ))
 }
 
 /// GET /:slug — return SRT connection details for a room (public).

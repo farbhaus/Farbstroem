@@ -51,11 +51,12 @@ fn set_room_expiry(
     .unwrap();
 }
 
-/// Recompute the expected HMAC-SHA1 signature for a `signed` streamid prefix
-/// (`default/live/<key>?policy=<...>`), to validate the endpoint's signing.
-fn expected_signature(secret: &str, signed: &str) -> String {
+/// Recompute the expected HMAC-SHA1 signature for the path-form prefix
+/// (`default/live/<key>?policy=<...>`). OME signs the `srt://`-prefixed URL, so
+/// the recompute must prepend the scheme just like the endpoint does.
+fn expected_signature(secret: &str, signed_path: &str) -> String {
     let mut mac = HmacSha1::new_from_slice(secret.as_bytes()).unwrap();
-    mac.update(signed.as_bytes());
+    mac.update(format!("srt://{}", signed_path).as_bytes());
     URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes())
 }
 
