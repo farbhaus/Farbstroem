@@ -61,27 +61,32 @@ export function renderRoster(): void {
   }
 
   // Connected Farbplay (SRT) viewers: admitted participants with a live SSE
-  // connection but no WS presence. Shown in a dedicated host-only section (the
-  // markup is `.host-only`, and non-presenters never receive the list anyway).
+  // connection but no WS presence. Shown to everyone in a dedicated section so
+  // the roster matches the participant count; the Kick control is host-only.
+  // The whole section is hidden when there are no app viewers.
   const presentIds = new Set(roster.map((p) => p.id));
   const srtViewers = admitted.filter((p) => p.id !== self && !presentIds.has(p.id));
+  const sSection = document.getElementById('roster-srt-section');
   const sEl = document.getElementById('roster-srt');
   const sCount = document.getElementById('roster-srt-count');
-  if (sEl && sCount) {
+  if (sSection && sEl && sCount) {
+    sSection.style.display = srtViewers.length === 0 ? 'none' : '';
     sCount.textContent = String(srtViewers.length);
-    sEl.innerHTML =
-      srtViewers.length === 0
-        ? `<div class="roster-empty">No app viewers.</div>`
-        : srtViewers
-            .map(
-              (p) => `
+    sEl.innerHTML = srtViewers
+      .map(
+        (p) => `
         <div class="roster-row" data-id="${esc(p.id)}">
           <span class="roster-name">${esc(p.name)}</span>
-          <button class="btn-mini danger" data-action="roster-kick" data-id="${esc(p.id)}">Kick</button>
+          ${isPresenter() ? `<button class="btn-mini danger" data-action="roster-kick" data-id="${esc(p.id)}">Kick</button>` : ''}
         </div>`,
-            )
-            .join('');
+      )
+      .join('');
   }
+
+  // Participant-count badge: WS-present (browser) participants plus connected
+  // Farbplay viewers, so the button matches what the roster box shows.
+  const numEl = document.getElementById('participant-num');
+  if (numEl) numEl.textContent = String(roster.length + srtViewers.length);
 
   const wEl = document.getElementById('roster-waiting');
   const wCount = document.getElementById('roster-waiting-count');

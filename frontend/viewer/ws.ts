@@ -67,11 +67,9 @@ function setWsStatus(state: string, label: string): void {
 
 function updateRoster(participants: RosterEntry[]): void {
   const list = Array.isArray(participants) ? participants : [];
+  // The participant-count badge is set in renderRoster (it also counts Farbplay
+  // viewers); setting viewerStore.roster triggers renderRoster via subscription.
   viewerStore.set({ roster: list });
-  // Badge counts WS-present (browser) participants. Farbplay/SRT viewers are a
-  // separate, host-only roster section and are not included here.
-  const numEl = document.getElementById('participant-num');
-  if (numEl) numEl.textContent = String(list.length);
   pruneCursorsToRoster(new Set(list.map((p) => p.id)));
   syncConferenceTiles();
 }
