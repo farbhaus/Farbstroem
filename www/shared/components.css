@@ -191,6 +191,7 @@
 .badge-ended   { background: #2a1515; color: var(--danger); }
 .badge-webrtc  { background: #111828; color: #6688ee; }
 .badge-llhls   { background: #1f1a0a; color: #ccaa33; }
+.badge-srt     { background: #1a0f22; color: #aa77ee; }
 .badge-source  { background: #0d2211; color: var(--green); }
 
 /* ---- Toast ---- */

@@ -15,6 +15,7 @@ use tokio_stream::StreamExt;
 use crate::error::AppError;
 use crate::events::{KickedEvent, ModerationChangedEvent};
 use crate::livekit::LiveKitClient;
+use crate::presence;
 use crate::routes::rate_limit;
 use crate::state::AppState;
 
@@ -341,6 +342,25 @@ struct WaitingEventsQuery {
     token: Option<String>,
 }
 
+/// Holds an SRT viewer's presence entry for the lifetime of their admission
+/// SSE stream. When the stream is dropped (client disconnect / network loss)
+/// this deregisters them and nudges the host roster to refresh — so a Farbplay
+/// viewer disappears from the roster within ~the SSE poll interval of leaving.
+struct SsePresenceGuard {
+    slug: String,
+    participant_id: String,
+    moderation_changed: tokio::sync::broadcast::Sender<ModerationChangedEvent>,
+}
+
+impl Drop for SsePresenceGuard {
+    fn drop(&mut self) {
+        presence::remove(&self.slug, &self.participant_id);
+        let _ = self.moderation_changed.send(ModerationChangedEvent {
+            slug: self.slug.clone(),
+        });
+    }
+}
+
 // GET /:slug/waiting/events/:participantId?token= - SSE for waiting room
 async fn waiting_events(
     State(state): State<Arc<AppState>>,
@@ -371,6 +391,22 @@ async fn waiting_events(
     })
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
+
+    // Register SRT presence for the lifetime of this SSE connection. Browser
+    // waiting-room clients are registered too, but they stay is_admitted=0 until
+    // they leave the waiting room, so they're filtered out of the host's
+    // admitted (SRT-viewer) list. Nudge the roster now so an admitted viewer
+    // who (re)opens the SSE appears immediately.
+    presence::add(&slug, &participant_id);
+    let _ = state
+        .events
+        .moderation_changed
+        .send(ModerationChangedEvent { slug: slug.clone() });
+    let guard = SsePresenceGuard {
+        slug: slug.clone(),
+        participant_id: participant_id.clone(),
+        moderation_changed: state.events.moderation_changed.clone(),
+    };
 
     let stream = tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
         std::time::Duration::from_secs(2),
@@ -425,6 +461,13 @@ async fn waiting_events(
             // Participant not found (deleted) - send ping; client will handle
             _ => Ok(Event::default().event("ping").data(json!({}).to_string())),
         }
+    });
+
+    // Carry the presence guard with the stream so it deregisters the viewer when
+    // the SSE connection is dropped (the stream is dropped on client disconnect).
+    let stream = stream.map(move |ev| {
+        let _keep = &guard;
+        ev
     });
 
     Ok(Sse::new(stream))

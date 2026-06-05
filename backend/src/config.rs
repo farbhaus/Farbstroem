@@ -4,6 +4,10 @@ use std::env;
 pub struct AppConfig {
     pub jwt_secret: String,
     pub ome_webhook_secret: String,
+    /// HMAC-SHA1 key for minting OME SignedPolicy streamids (SRT playback via
+    /// the Farbplay room-link flow). Must match `<SignedPolicy><SecretKey>` in
+    /// the OME `Server.xml`.
+    pub ome_signed_policy_secret: String,
     pub ome_api_url: String,
     pub ome_api_token: String,
     pub livekit_api_key: String,
@@ -18,6 +22,25 @@ pub struct AppConfig {
     /// origin; the RP ID is the host parsed from it. Set to
     /// `http://localhost:4001` for local dev so passkeys work.
     pub public_origin: String,
+    /// Public hostname native SRT clients (Farbplay) connect to. Defaults to
+    /// the host parsed from `PUBLIC_ORIGIN`.
+    pub srt_public_host: String,
+    /// Public UDP port for OME SRT playback. Defaults to `9998`.
+    pub srt_public_port: u16,
+    /// SRT latency (ms) advertised to clients. Defaults to `500`.
+    pub srt_latency_ms: u32,
+}
+
+/// Extract the host portion of a URL-ish origin (`https://host:port/path` →
+/// `host`), without pulling in the `url` crate. Strips an optional scheme,
+/// then any port and path.
+fn host_from_origin(origin: &str) -> String {
+    let after_scheme = origin.split("://").last().unwrap_or(origin);
+    after_scheme
+        .split(['/', ':'])
+        .next()
+        .unwrap_or(after_scheme)
+        .to_string()
 }
 
 /// Require an env var to be set, panicking with a clear message if not.
@@ -39,6 +62,7 @@ impl AppConfig {
         // Signing keys — all used as HMAC secrets, enforce 32-char minimum.
         let jwt_secret = required_min_len("JWT_SECRET", 32);
         let ome_webhook_secret = required_min_len("OME_WEBHOOK_SECRET", 32);
+        let ome_signed_policy_secret = required_min_len("OME_SIGNED_POLICY_SECRET", 32);
         let livekit_api_secret = required_min_len("LIVEKIT_API_SECRET", 32);
         let ome_api_token = required_min_len("OME_API_TOKEN", 32);
 
@@ -49,9 +73,13 @@ impl AppConfig {
         // secret — require presence but don't enforce length.
         let livekit_api_key = required("LIVEKIT_API_KEY");
 
+        let public_origin =
+            env::var("PUBLIC_ORIGIN").unwrap_or_else(|_| "http://localhost:4001".into());
+
         Self {
             jwt_secret,
             ome_webhook_secret,
+            ome_signed_policy_secret,
             ome_api_url: env::var("OME_API_URL")
                 .unwrap_or_else(|_| "http://stream-ome:8081/v1".into()),
             ome_api_token,
@@ -66,8 +94,17 @@ impl AppConfig {
                 .unwrap_or(4001),
             db_path: env::var("DB_PATH").unwrap_or_else(|_| "/data/stream.db".into()),
             data_path: env::var("DATA_PATH").unwrap_or_else(|_| "/data".into()),
-            public_origin: env::var("PUBLIC_ORIGIN")
-                .unwrap_or_else(|_| "http://localhost:4001".into()),
+            srt_public_host: env::var("SRT_PUBLIC_HOST")
+                .unwrap_or_else(|_| host_from_origin(&public_origin)),
+            srt_public_port: env::var("SRT_PUBLIC_PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(9998),
+            srt_latency_ms: env::var("SRT_LATENCY_MS")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(500),
+            public_origin,
         }
     }
 }

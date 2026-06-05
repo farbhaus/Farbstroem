@@ -60,6 +60,7 @@ cp .env.example .env
 |---|---|---|
 | `JWT_SECRET` | 32 | HMAC secret for admin JWTs |
 | `OME_WEBHOOK_SECRET` | 32 | HMAC-SHA1 key for OME admission webhook verification |
+| `OME_SIGNED_POLICY_SECRET` | 32 | HMAC-SHA1 key for OME SignedPolicy SRT-playback tokens (`/api/watch/:slug`). Must match `<SignedPolicy><SecretKey>` in `ome/origin_conf/Server.xml`. |
 | `OME_API_TOKEN` | 32 | Auth token for calls to the OME REST API |
 | `LIVEKIT_API_SECRET` | 32 | HMAC secret for LiveKit access tokens |
 | `ADMIN_PASSWORD` | 12 | Bcrypt-hashed once at startup |
@@ -76,6 +77,9 @@ cp .env.example .env
 | `LIVEKIT_INTERNAL_URL` | `http://stream-livekit:7880` | LiveKit HTTP signaling |
 | `LIVEKIT_URL` | `ws://localhost:7880` | WebSocket URL sent to browser clients |
 | `PUBLIC_ORIGIN` | `https://stream.zemariacolor.com` | WebAuthn RP origin/ID — must match the browser origin exactly. `http://localhost:4001` for local dev. |
+| `SRT_PUBLIC_HOST` | host of `PUBLIC_ORIGIN` | SRT host returned by `/api/watch/:slug`. |
+| `SRT_PUBLIC_PORT` | `9998` | SRT playback UDP port returned by `/api/watch/:slug`. |
+| `SRT_LATENCY_MS` | `500` | SRT latency advertised to clients. |
 | `STREAM_DISABLE_RATE_LIMIT` | unset | Set to `1` to disable rate limiting (integration tests do this). |
 
 Generate secrets with `openssl rand -hex 32`.
@@ -173,6 +177,8 @@ Conventions:
 **Public participant status.** `GET /api/public/rooms/:slug/status/:participantId?token=…` returns `{admitted, kicked, room_status: 'scheduled|live|ended'}`. Companion SSE stream at `/api/public/rooms/:slug/waiting/events/:participantId` emits `admitted`, `kicked`, `room_ended`, `ping` — waiting-room clients drive the full state machine from SSE alone without holding a WS open.
 
 **Moderation audit.** Kick and mute are logged via `tracing::info!` with `room_slug`, `actor_id`, `target_id` for after-the-fact audits. If LiveKit `remove_participant` fails the backend retries once after 250 ms and `error!`s on the second failure — the DB `is_kicked=1` flag and WS force-close happen first, so UI state is correct even when LiveKit is momentarily unreachable.
+
+**Farbplay room-link SRT playback** (`src/routes/watch.rs`, GitHub #165). `GET /api/watch/:slug?participantId=&token=` lets the native SRT viewer (Farbplay) connect from a room link instead of a raw `srt://` URL. The flow mirrors the browser viewer: Farbplay first `POST /api/public/rooms/:slug/join`s to become a `participants` row (password is checked there, not here), waits on the existing admission SSE (`…/waiting/events/:pid`) if the room has a waiting room, then calls this **admission-gated** endpoint. It returns `{srt: {host, port, streamid, latency}, ttlSeconds, title}` where `streamid` is `default/live/<key_token>?policy=<b64url>&signature=<b64url-hmac-sha1>`, signed with `OME_SIGNED_POLICY_SECRET` and expiring after ~30 s (`url_expire`). **OME signs the `srt://`-prefixed URL** (`srt://default/live/<key>?policy=…`, scheme + vhost as host), so the backend must HMAC that form even though the client sends only the path. OME validates it via the `<SignedPolicy>` block (scoped to the SRT publisher only). The signed streamid is minted **only for an admitted, non-kicked participant**: missing `participantId`/`token` or kicked/not-yet-admitted → **403**; unknown participant / wrong token / wrong slug / ended / expired / no stream key → **404**. A kicked viewer therefore can't reconnect (the backstop behind the SSE self-disconnect; no server-side SRT sever today — contract O1/O2). **Security caveat:** this gives expiry/replay-limiting, *not* secrecy — Farbstroem's OME stream name *is* the ingest stream key (`OutputStreamName=${OriginStreamName}`), so the key is in the streamid in plaintext (and is already handed to web viewers on join). Decoupling the playback identity from the ingest key is a separate follow-up.
 
 ## CI
 
