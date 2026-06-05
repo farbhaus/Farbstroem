@@ -80,6 +80,16 @@ function refreshStatusOverlay(playerPlaying?: boolean): void {
     return;
   }
 
+  // App-only delivery: the broadcast plays in the native Farbplay app (SRT /
+  // H.265), never in the browser. The room is call-only here — no stream tile
+  // and no offline/live overlay; the layout is the participant grid. (A
+  // presenter-displayed file, handled above, still takes over the stage.)
+  if (getState().deliveryMode === 'srt') {
+    offline.classList.remove('visible');
+    badge.classList.remove('visible');
+    return;
+  }
+
   // If the caller didn't tell us, read the live player's state directly.
   const pState =
     playerPlaying ??
@@ -112,6 +122,14 @@ function refreshStatusOverlay(playerPlaying?: boolean): void {
 function handleStreamAssigned(newKey: string): void {
   updateSavedStreamKey(newKey);
   setState({ streamKey: newKey });
+  // App-only (SRT) rooms stay call-only in the browser — no stream tile.
+  if (getState().deliveryMode === 'srt') {
+    document.getElementById('tile-stream')?.classList.add('hidden');
+    setRoomStatus(getState().status);
+    syncConferenceTiles();
+    requestAutoFocus();
+    return;
+  }
   document.getElementById('tile-stream')?.classList.remove('hidden');
   initPlayer();
   setRoomStatus(getState().status);
@@ -144,10 +162,12 @@ function showApp(initialStatus?: RoomStatus): void {
 
   setRoomStatus(initialStatus || 'pending');
 
-  // Set up the stream tile presence based on whether a stream key exists,
-  // mount OvenPlayer (or not), seed the participant tiles, then let
-  // auto-focus pick the natural target (share > stream > grid).
-  if (getState().streamKey) {
+  // Set up the stream tile presence based on whether the broadcast plays in
+  // this browser, mount OvenPlayer (or not), seed the participant tiles, then
+  // let auto-focus pick the natural target (share > stream > grid). For
+  // app-only (SRT) rooms there is no browser broadcast — it's a call-only room,
+  // so the stream tile stays hidden and the layout defaults to the grid.
+  if (getState().streamKey && getState().deliveryMode !== 'srt') {
     document.getElementById('tile-stream')?.classList.remove('hidden');
     initPlayer();
   } else {

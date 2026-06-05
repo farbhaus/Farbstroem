@@ -4,7 +4,7 @@
 // JSON objects assembled in the route handler.
 
 export type RoomStatus = 'live' | 'idle' | 'ended' | 'scheduled';
-export type DeliveryMode = 'webrtc' | 'llhls';
+export type DeliveryMode = 'webrtc' | 'llhls' | 'srt';
 
 export interface Room {
   id: string;

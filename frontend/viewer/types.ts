@@ -5,7 +5,7 @@
 
 export type Role = 'presenter' | 'viewer';
 export type RoomStatus = 'pending' | 'live' | 'ended';
-export type DeliveryMode = 'webrtc' | 'llhls';
+export type DeliveryMode = 'webrtc' | 'llhls' | 'srt';
 // A tile in the unified viewer stage. 'stream' is the unified OvenPlayer
 // stage tile (live broadcast OR a presenter-displayed file), 'share' is
 // the active screenshare, anything else is a LiveKit participant identity.
