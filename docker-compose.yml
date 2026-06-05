@@ -1,6 +1,10 @@
+# Single-container deployment — BASE file (deploy hosts: pulls the published
+# image). Local dev auto-merges docker-compose.override.yml, which builds from
+# source and bind-mounts ./www for live frontend edits. Deploy hosts select the
+# base only:  docker compose -f docker-compose.yml up -d
 services:
   farbstroem:
-    build: .
+    image: zcolor/farbstroem:${FARBSTROEM_TAG:-latest}
     container_name: farbstroem
     restart: unless-stopped
     ports:
@@ -17,7 +21,20 @@ services:
       - "50000-50100:50000-50100/udp"
     volumes:
       - ./data:/data
-      - ./www:/www
+      # Caddy's auto-HTTPS material (internal CA + Let's Encrypt certs). Persist
+      # it so recreates don't re-issue certs (Let's Encrypt rate limits) or
+      # regenerate the local CA. (www/dist is baked into the image; the local
+      # override re-adds ./www for live editing.)
+      - caddy_data:/root/.local/share/caddy
+      - caddy_config:/root/.config/caddy
+      # Host /proc for the admin dashboard's resource metrics (PROC_PATH).
+      - /proc:/host/proc:ro
+    # .env supplies secrets plus SITE_ADDRESS / DOMAIN (default: localhost).
+    # Browser-facing URLs (PUBLIC_ORIGIN, LIVEKIT_URL) are intentionally NOT set
+    # here — entrypoint.sh derives them from SITE_ADDRESS so they always match
+    # the Caddy-served origin. To deploy on a domain, set SITE_ADDRESS=your.domain
+    # in .env. The vars below are internal (container-local) and never reach the
+    # browser, so they stay hardcoded to localhost.
     env_file: .env
     environment:
       - PORT=4001
@@ -25,11 +42,18 @@ services:
       - DATA_PATH=/data
       - OME_API_URL=http://localhost:8081/v1
       - LIVEKIT_INTERNAL_URL=http://localhost:7880
-      - LIVEKIT_URL=ws://localhost:7880
-      - PUBLIC_ORIGIN=${PUBLIC_ORIGIN:-https://stream.zemariacolor.com}
+      - PROC_PATH=/host/proc
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://localhost:4001/healthz || exit 1"]
+      # Honest AND mode-independent: backend /healthz (app is up) AND a TCP probe
+      # that Caddy is listening on :80 (catches a dead web tier — the original
+      # bug). Avoids TLS/SNI so it works identically on localhost and a real
+      # domain. bash is present (OME base); sh lacks /dev/tcp.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:4001/healthz && bash -c '< /dev/tcp/127.0.0.1/80' || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 30s
+
+volumes:
+  caddy_data:
+  caddy_config:

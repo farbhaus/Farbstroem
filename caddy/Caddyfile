@@ -27,14 +27,14 @@
 	# it as mixed content from an https page. handle_path strips /livekit
 	# so the upstream sees /rtc/v1 etc. unchanged.
 	handle_path /livekit/* {
-		reverse_proxy stream-livekit:7880 {
+		reverse_proxy localhost:7880 {
 			header_up Host {upstream_hostport}
 		}
 	}
 
 	# OME — LLHLS + WebRTC signaling (must be HTTP/1.1, unbuffered)
 	handle /live/* {
-		reverse_proxy stream-ome:3333 {
+		reverse_proxy localhost:3333 {
 			transport http {
 				versions 1.1
 			}
@@ -47,5 +47,5 @@
 	redir /admin /admin/ permanent
 
 	# Everything else → backend (API + WebSocket + static files)
-	reverse_proxy stream-backend:4001
+	reverse_proxy localhost:4001
 }

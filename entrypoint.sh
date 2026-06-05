@@ -1,48 +1,20 @@
 #!/bin/bash
 set -euo pipefail
 
-SITE_ADDRESS="${SITE_ADDRESS:-localhost}"
+# Exported so the COPY'd /etc/caddy/Caddyfile ({$SITE_ADDRESS:localhost}) and the
+# derived URLs below all resolve from one knob.
+export SITE_ADDRESS="${SITE_ADDRESS:-localhost}"
 
-mkdir -p /etc/caddy /data /var/log/supervisor
+mkdir -p /data /var/log/supervisor
 
-# Generate Caddyfile with localhost upstreams (single-container mode)
-cat > /etc/caddy/Caddyfile <<EOF
-${SITE_ADDRESS} {
-	encode gzip zstd
+# The backend runs unprivileged (supervisord `user=app`) and owns the SQLite DB
+# + uploads under /data. /data is a bind mount/volume, so fix ownership here at
+# runtime — a build-time chown wouldn't survive the mount.
+chown -R app:app /data
 
-	@prod not host localhost
-	header @prod {
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		X-Frame-Options "DENY"
-		X-Content-Type-Options "nosniff"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "interest-cohort=()"
-		Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: https:; font-src 'self' data:; script-src 'self' 'unsafe-inline' https:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-		-Server
-	}
-
-	handle_path /livekit/* {
-		reverse_proxy localhost:7880 {
-			header_up Host {upstream_hostport}
-		}
-	}
-
-	handle /live/* {
-		reverse_proxy localhost:3333 {
-			transport http {
-				versions 1.1
-			}
-			flush_interval -1
-		}
-	}
-
-	redir /admin /admin/ permanent
-
-	reverse_proxy localhost:4001
-}
-EOF
-
-# Generate LiveKit config pointing at local Valkey
+# Generate LiveKit config pointing at local Valkey. Keys are inlined into the
+# YAML here (entrypoint still has the full env), so the livekit process itself
+# needs no key secrets in its environment — supervisord blanks them for it.
 LIVEKIT_API_KEY="${LIVEKIT_API_KEY:-devkey}"
 LIVEKIT_API_SECRET="${LIVEKIT_API_SECRET:-secret}"
 cat > /livekit.yaml <<EOF
@@ -61,5 +33,14 @@ logging:
 EOF
 
 export OME_HOST_IP="${DOMAIN:-localhost}"
+
+# Caddy always fronts this container over HTTPS (auto internal-CA cert on
+# localhost, auto Let's Encrypt on a real domain) and proxies LiveKit at
+# /livekit, so every browser-facing URL is fully determined by SITE_ADDRESS.
+# Derive them here — SITE_ADDRESS is the single knob to point this container at
+# a domain, and this overrides any stale per-flow value from .env (e.g. the
+# bare `cargo run` dev default of http://localhost:4001).
+export PUBLIC_ORIGIN="https://${SITE_ADDRESS}"
+export LIVEKIT_URL="wss://${SITE_ADDRESS}/livekit"
 
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf

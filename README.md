@@ -9,12 +9,12 @@ flowchart TB
     Encoder["Encoder<br/>OBS · hardware"]
     Browser["Browser<br/>OvenPlayer · LiveKit SDK · WebSocket"]
 
-    subgraph host["Docker host — stream-net"]
-        Caddy["stream-caddy<br/>TLS + routing"]
-        Backend["stream-backend<br/>Rust/Axum + SQLite"]
-        OME["stream-ome<br/>OvenMediaEngine"]
-        LK["stream-livekit<br/>SFU"]
-        Valkey[("stream-valkey")]
+    subgraph host["Single container — zcolor/farbstroem (supervisord)"]
+        Caddy["Caddy<br/>TLS + routing"]
+        Backend["backend<br/>Rust/Axum + SQLite"]
+        OME["OvenMediaEngine"]
+        LK["LiveKit<br/>SFU"]
+        Valkey[("Valkey")]
     end
 
     Encoder -->|"SRT · RTMP"| OME
@@ -29,15 +29,17 @@ flowchart TB
     LK --- Valkey
 ```
 
-All services run on a single Docker bridge network (`stream-net`) and reference each other by container name.
+The whole stack ships as **one image** (`zcolor/farbstroem`); the five processes run under `supervisord` and reach each other over `localhost`. Caddy owns the single TLS origin and routes by path.
 
-| Container | Image | Purpose |
+| Process | Source | Purpose |
 |---|---|---|
-| `stream-caddy` | `caddy:2-alpine` | TLS + routing (`/live/*` → OME, everything else → backend) |
-| `stream-ome` | `airensoft/ovenmediaengine:latest` | Broadcast ingest (SRT/RTMP/WHIP) + viewer delivery (WebRTC/LLHLS) |
-| `stream-backend` | built from `backend/Dockerfile` | Rust/Axum API, WebSocket hub, SQLite, static file serving |
-| `stream-livekit` | `livekit/livekit-server:latest` | SFU for participant conference |
-| `stream-valkey` | `valkey/valkey:8-alpine` | Required by LiveKit (Valkey is the BSD-3 fork of Redis 7.2) |
+| Caddy | `caddy:2` binary | TLS + routing (`/live/*` → OME, `/livekit/*` → LiveKit, everything else → backend) |
+| OvenMediaEngine | `airensoft/ovenmediaengine` base image | Broadcast ingest (SRT/RTMP/WHIP) + viewer delivery (WebRTC/LLHLS) |
+| backend | built from source (`backend/`), runs as `app` | Rust/Axum API, WebSocket hub, SQLite, static file serving |
+| LiveKit | `livekit/livekit-server` binary | SFU for participant conference |
+| Valkey | built from source, runs as `valkey` | Required by LiveKit (Valkey is the BSD-3 fork of Redis 7.2) |
+
+The image is self-contained: the [Dockerfile](Dockerfile) compiles the Rust backend and the TypeScript frontend internally, so deploy hosts need neither the source nor a build toolchain.
 
 ## Tech stack
 
@@ -112,13 +114,14 @@ for k in JWT_SECRET OME_WEBHOOK_SECRET OME_API_TOKEN LIVEKIT_API_SECRET; do
 done
 sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=devpassword123|" .env   # ≥12 chars
 
-docker compose up -d --build                 # full stack on localhost
+docker compose up -d --build                 # build + start the single container on localhost
 cd frontend && npm install && npm run watch  # rebuilds www/dist/ on every .ts save
 ```
 
-The backend bind-mounts `./www`, so a browser refresh picks up `tsc` rebuilds — no Docker
-rebuild for frontend changes. (Production hosts run `npm ci && npm run build` once so
-`www/dist/` exists; `deploy.sh` does this for you.)
+`docker-compose.override.yml` (auto-merged locally) builds the image from source and
+bind-mounts `./www`, so a browser refresh picks up `tsc` rebuilds — no Docker rebuild for
+frontend changes. (The published image bakes `www/dist/` in, built inside the Dockerfile —
+production hosts need no Node.)
 
 ## Production deployment
 
@@ -128,12 +131,12 @@ One command on a **fresh VPS where only Farbstroem runs**:
 sudo ./deploy.sh stream.yourdomain.com
 ```
 
-That's it. The script installs missing prerequisites (Docker + Compose, Node, openssl), generates `.env` with all secrets, opens the firewall, builds the frontend, pulls the published backend image, brings the stack up, and prints the admin password once. The containerized Caddy provisions Let's Encrypt and serves `stream.yourdomain.com` — app, `/live/*` (OME), and LiveKit (proxied same-origin at `/livekit/*`) — no host web server to configure.
+That's it. The script installs missing prerequisites (Docker + Compose, openssl), generates `.env` with all secrets, opens the firewall, pulls the published single-container image, brings it up, and prints the admin password once. The frontend is baked into the image, so no Node/build toolchain is needed on the host. The containerized Caddy provisions Let's Encrypt and serves `stream.yourdomain.com` — app, `/live/*` (OME), and LiveKit (proxied same-origin at `/livekit/*`) — no host web server to configure.
 
 **Before running:**
 - Point DNS at the VPS for `stream.yourdomain.com` (needed for Let's Encrypt).
 - Run as root / with `sudo` (installs packages, opens the firewall).
-- Prereq auto-install is apt-based; on other distros install Docker/Node/openssl first.
+- Prereq auto-install is apt-based; on other distros install Docker + openssl first.
 
 **Re-running is safe** — an existing `.env` is reused and secrets are not rotated, so a redeploy keeps sessions alive. Flags:
 
@@ -150,7 +153,7 @@ The script targets a clean box: if something already holds ports 80/443, it stop
 sudo ./deploy.sh 127.0.0.1
 ```
 
-Brings the full stack up on the local machine for an end-to-end check of the script itself. On linux/amd64 the published backend image is pulled (instant); on ARM hosts (e.g. Apple Silicon Macs) the script builds the backend from source first. Caddy serves the site over its internal self-signed cert, so the browser will warn once. Use the dotted IP — the script's hostname check rejects bare `localhost`.
+Brings the container up on the local machine for an end-to-end check of the script itself. On linux/amd64 the published image is pulled (instant); on ARM hosts (e.g. Apple Silicon Macs) the script builds it from source first. Caddy serves the site over its internal self-signed cert, so the browser will warn once. Use the dotted IP — the script's hostname check rejects bare `localhost`.
 
 ### Manual / advanced configuration
 
@@ -163,13 +166,16 @@ Skip `deploy.sh` and configure `.env` by hand (`cp .env.example .env`). Required
 | `LIVEKIT_API_KEY` | — | any identifier (the LiveKit JWT `iss`) |
 | `PUBLIC_ORIGIN` | — | exact browser origin, e.g. `https://stream.yourdomain.com` (WebAuthn RP — no path) |
 
-The containerized Caddy ([caddy/Caddyfile](caddy/Caddyfile)) owns **all** routing — app, `/live/*` → OME, and LiveKit (proxied same-origin at `/livekit/*`). For a standalone host where Caddy gets its own Let's Encrypt certs, set:
+The containerized Caddy ([caddy/Caddyfile](caddy/Caddyfile)) owns **all** routing — app, `/live/*` → OME, and LiveKit (proxied same-origin at `/livekit/*`). For a standalone host where Caddy gets its own Let's Encrypt certs, you only set **one** value:
 
 ```bash
 SITE_ADDRESS=stream.yourdomain.com
-LIVEKIT_URL=wss://stream.yourdomain.com/livekit
-PUBLIC_ORIGIN=https://stream.yourdomain.com
 ```
+
+`entrypoint.sh` derives the browser-facing URLs from it at startup
+(`PUBLIC_ORIGIN=https://stream.yourdomain.com`,
+`LIVEKIT_URL=wss://stream.yourdomain.com/livekit`), so they always match the
+Caddy-served origin — no need to keep three values in sync.
 
 To run behind an existing reverse proxy, set `SITE_ADDRESS=:80` plus `HTTP_PORT`/`HTTPS_PORT` overrides so the published ports don't collide with the front, terminate TLS at your proxy, and forward `stream.yourdomain.com` to the stack's HTTP port. Then `docker compose -f docker-compose.yml up -d`.
 
@@ -179,15 +185,19 @@ Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 4
 
 ```
 .
-├── backend/            Rust/Axum backend
-├── frontend/           TypeScript sources (`tsc` only, no bundler) for admin/viewer/landing SPAs
-├── caddy/Caddyfile     Container Caddy config (SITE_ADDRESS envar-driven)
-├── livekit/            LiveKit server config
-├── ome/                OvenMediaEngine config
-├── www/                Static HTML/CSS + compiled JS (dist/) served by the backend
-├── docker-compose.yml
-├── .env.example        Required env vars, documented inline
-└── docs/               Architecture notes, security model, design system
+├── Dockerfile                  Single-container image: builds backend + frontend, assembles all 5 services
+├── entrypoint.sh               Runtime: derive URLs from SITE_ADDRESS, chown /data, gen livekit.yaml, exec supervisord
+├── supervisord.conf            Process supervision (users, start order, secret scoping)
+├── backend/                    Rust/Axum backend
+├── frontend/                   TypeScript sources (`tsc` only, no bundler) for admin/viewer/landing SPAs
+├── caddy/Caddyfile             Caddy config (SITE_ADDRESS envar-driven), baked into the image
+├── ome/                        OvenMediaEngine config (Server.xml)
+├── www/                        Static HTML/CSS + compiled JS (dist/, built into the image)
+├── docker-compose.yml          Base (deploy: pulls zcolor/farbstroem)
+├── docker-compose.override.yml Local dev (build from source + ./www mount)
+├── deploy.sh                   One-command production deploy to a fresh VPS
+├── .env.example                Required env vars, documented inline
+└── docs/                       Architecture notes, security model, design system
 ```
 
 ## Tests

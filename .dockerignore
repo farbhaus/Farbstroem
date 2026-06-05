@@ -1,0 +1,11 @@
+# Keep the build context small and free of host artifacts / secrets.
+.git
+.github
+data
+.env
+*.md
+deploy.sh
+**/node_modules
+backend/target
+# www/dist is rebuilt by the frontend-builder stage; don't bake a stale host copy.
+www/dist

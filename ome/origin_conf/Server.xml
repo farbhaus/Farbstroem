@@ -57,7 +57,7 @@
         <Publishers>
             <LLHLS>
                 <!-- Port 3333: OME multiplexes LLHLS (HTTP) and WebRTC signaling (WebSocket) on the same port -->
-                <!-- Caddy proxies /live/* → stream-ome:3333 to handle both protocols -->
+                <!-- Caddy proxies /live/* → localhost:3333 to handle both protocols -->
                 <Port>3333</Port>
                 <TLSPort>3334</TLSPort>
                 <WorkerCount>2</WorkerCount>
@@ -119,7 +119,10 @@
                 Backend responds with accept/deny JSON.
             -->
             <AdmissionWebhooks>
-                <ControlServerUrl>http://stream-backend:4001/api/webhook/admission</ControlServerUrl>
+                <!-- Single-container: the backend runs on localhost, not a
+                     Docker service name. Overridable for multi-container with
+                     OME_WEBHOOK_URL=http://stream-backend:4001/api/webhook/admission -->
+                <ControlServerUrl>${env:OME_WEBHOOK_URL:http://localhost:4001/api/webhook/admission}</ControlServerUrl>
                 <SecretKey>${env:OME_WEBHOOK_SECRET:default}</SecretKey>
                 <Timeout>5000</Timeout>
                 <Enables>
