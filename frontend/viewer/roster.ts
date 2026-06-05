@@ -49,29 +49,38 @@ export function renderRoster(): void {
   const { roster } = viewerStore.get();
   const self = getParticipantId();
   const inRoom = roster.filter((p) => p.id !== self);
-  // Admitted participants with no live WS presence are native SRT (Farbplay)
-  // viewers — they never join the WS roster, so surface them here (deduped
-  // against the presence list) and tag them so the host can kick them.
-  const presentIds = new Set(roster.map((p) => p.id));
-  const srtViewers = admitted.filter((p) => p.id !== self && !presentIds.has(p.id));
-
-  // Participant-count badge: everyone in the room (WS presence incl. self) plus
-  // connected SRT viewers. Set here (not in ws.ts) so it tracks both the
-  // presence roster and the admitted SRT list.
-  const numEl = document.getElementById('participant-num');
-  if (numEl) numEl.textContent = String(roster.length + srtViewers.length);
 
   const inEl = document.getElementById('roster-inroom');
   const inCount = document.getElementById('roster-inroom-count');
   if (inEl && inCount) {
-    const total = inRoom.length + srtViewers.length;
-    inCount.textContent = String(total);
-    const rows = [
-      ...inRoom.map((p) => rosterRow(p.id, p.name, p.role)),
-      ...srtViewers.map((p) => rosterRow(p.id, p.name, 'SRT')),
-    ];
+    inCount.textContent = String(inRoom.length);
     inEl.innerHTML =
-      total === 0 ? `<div class="roster-empty">Just you for now.</div>` : rows.join('');
+      inRoom.length === 0
+        ? `<div class="roster-empty">Just you for now.</div>`
+        : inRoom.map((p) => rosterRow(p.id, p.name, p.role)).join('');
+  }
+
+  // Connected Farbplay (SRT) viewers: admitted participants with a live SSE
+  // connection but no WS presence. Shown in a dedicated host-only section (the
+  // markup is `.host-only`, and non-presenters never receive the list anyway).
+  const presentIds = new Set(roster.map((p) => p.id));
+  const srtViewers = admitted.filter((p) => p.id !== self && !presentIds.has(p.id));
+  const sEl = document.getElementById('roster-srt');
+  const sCount = document.getElementById('roster-srt-count');
+  if (sEl && sCount) {
+    sCount.textContent = String(srtViewers.length);
+    sEl.innerHTML =
+      srtViewers.length === 0
+        ? `<div class="roster-empty">No app viewers.</div>`
+        : srtViewers
+            .map(
+              (p) => `
+        <div class="roster-row" data-id="${esc(p.id)}">
+          <span class="roster-name">${esc(p.name)}</span>
+          <button class="btn-mini danger" data-action="roster-kick" data-id="${esc(p.id)}">Kick</button>
+        </div>`,
+            )
+            .join('');
   }
 
   const wEl = document.getElementById('roster-waiting');

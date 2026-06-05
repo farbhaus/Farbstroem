@@ -849,19 +849,6 @@ async fn send_to_presenters_in_room(rooms: &WsRooms, slug: &str, msg: &str) {
     }
 }
 
-/// Send a message to every connected non-presenter in the room. Used to push
-/// the admitted SRT-viewer list to viewers without leaking waiting/kicked names.
-async fn send_to_non_presenters_in_room(rooms: &WsRooms, slug: &str, msg: &str) {
-    let rooms_guard = rooms.read().await;
-    if let Some(room) = rooms_guard.get(slug) {
-        for participant in room.values() {
-            if participant.role != "presenter" {
-                let _ = participant.tx.send(Message::Text(msg.to_string().into()));
-            }
-        }
-    }
-}
-
 /// Send a message to a specific participant and close their connection.
 async fn send_to_participant_and_close(
     rooms: &WsRooms,
@@ -1161,32 +1148,18 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
                         .map(|(id, name)| json!({"id": id, "name": name}))
                         .collect::<Vec<_>>()
                 };
-                let admitted_json = to_json(&admitted);
 
-                // Presenters get the full moderation view (waiting + kicked +
-                // admitted SRT viewers + new-arrival toasts).
-                let presenter_msg = json!({
+                // Presenter-only: waiting + kicked + the connected Farbplay (SRT)
+                // viewer list, rendered as a dedicated host-only roster section.
+                let msg = json!({
                     "type": "moderation:update",
                     "waiting": to_json(&waiting),
                     "kicked": to_json(&kicked),
-                    "admitted": admitted_json,
+                    "admitted": to_json(&admitted),
                     "newWaiting": new_waiting_names,
                 })
                 .to_string();
-                send_to_presenters_in_room(&WS_ROOMS, &slug, &presenter_msg).await;
-
-                // Everyone else gets only the admitted SRT-viewer list (so they
-                // appear in every participant's roster/count) — waiting and
-                // kicked stay presenter-only so viewers never see those names.
-                let viewer_msg = json!({
-                    "type": "moderation:update",
-                    "waiting": [],
-                    "kicked": [],
-                    "admitted": admitted_json,
-                    "newWaiting": [],
-                })
-                .to_string();
-                send_to_non_presenters_in_room(&WS_ROOMS, &slug, &viewer_msg).await;
+                send_to_presenters_in_room(&WS_ROOMS, &slug, &msg).await;
             }
         });
     }
