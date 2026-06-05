@@ -95,6 +95,9 @@ export type WsMessage =
       type: 'moderation:update';
       waiting: { id: string; name: string }[];
       kicked: { id: string; name: string }[];
+      // Admitted, non-kicked participants. The roster shows the ones not in the
+      // live WS presence list — i.e. native SRT (Farbplay) viewers.
+      admitted: { id: string; name: string }[];
       newWaiting: string[];
     }
   | { type: 'room:live' }

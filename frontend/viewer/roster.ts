@@ -16,6 +16,10 @@ interface ModParticipant {
 
 let waiting: ModParticipant[] = [];
 let kicked: ModParticipant[] = [];
+// Admitted, non-kicked participants (presenter-only). We render the ones with
+// no live WS presence — native SRT (Farbplay) viewers, which never open a WS —
+// so the host can see and kick them.
+let admitted: ModParticipant[] = [];
 
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
@@ -27,30 +31,47 @@ function isPresenter(): boolean {
   return viewerStore.get().role === 'presenter';
 }
 
+// One in-room roster row. `roleLabel` is shown verbatim (e.g. 'viewer', 'SRT').
+function rosterRow(id: string, name: string, roleLabel: string): string {
+  return `
+        <div class="roster-row" data-id="${esc(id)}">
+          <span class="roster-name">${esc(name)}</span>
+          <span class="roster-role">${esc(roleLabel)}</span>
+          ${isPresenter() ? `<button class="btn-mini danger" data-action="roster-kick" data-id="${esc(id)}">Kick</button>` : ''}
+        </div>`;
+}
+
 export function applyHostMode(): void {
   document.body.classList.toggle('has-host', isPresenter());
 }
 
 export function renderRoster(): void {
   const { roster } = viewerStore.get();
-  const inRoom = roster.filter((p) => p.id !== getParticipantId());
+  const self = getParticipantId();
+  const inRoom = roster.filter((p) => p.id !== self);
+  // Admitted participants with no live WS presence are native SRT (Farbplay)
+  // viewers — they never join the WS roster, so surface them here (deduped
+  // against the presence list) and tag them so the host can kick them.
+  const presentIds = new Set(roster.map((p) => p.id));
+  const srtViewers = admitted.filter((p) => p.id !== self && !presentIds.has(p.id));
+
+  // Participant-count badge: everyone in the room (WS presence incl. self) plus
+  // connected SRT viewers. Set here (not in ws.ts) so it tracks both the
+  // presence roster and the admitted SRT list.
+  const numEl = document.getElementById('participant-num');
+  if (numEl) numEl.textContent = String(roster.length + srtViewers.length);
+
   const inEl = document.getElementById('roster-inroom');
   const inCount = document.getElementById('roster-inroom-count');
   if (inEl && inCount) {
-    inCount.textContent = String(inRoom.length);
+    const total = inRoom.length + srtViewers.length;
+    inCount.textContent = String(total);
+    const rows = [
+      ...inRoom.map((p) => rosterRow(p.id, p.name, p.role)),
+      ...srtViewers.map((p) => rosterRow(p.id, p.name, 'SRT')),
+    ];
     inEl.innerHTML =
-      inRoom.length === 0
-        ? `<div class="roster-empty">Just you for now.</div>`
-        : inRoom
-            .map(
-              (p) => `
-        <div class="roster-row" data-id="${esc(p.id)}">
-          <span class="roster-name">${esc(p.name)}</span>
-          <span class="roster-role">${esc(p.role)}</span>
-          ${isPresenter() ? `<button class="btn-mini danger" data-action="roster-kick" data-id="${esc(p.id)}">Kick</button>` : ''}
-        </div>`,
-            )
-            .join('');
+      total === 0 ? `<div class="roster-empty">Just you for now.</div>` : rows.join('');
   }
 
   const wEl = document.getElementById('roster-waiting');
@@ -92,11 +113,15 @@ export function renderRoster(): void {
   }
 }
 
-export function applyModerationUpdate(
-  next: { waiting: ModParticipant[]; kicked: ModParticipant[]; newWaiting: string[] },
-): void {
+export function applyModerationUpdate(next: {
+  waiting: ModParticipant[];
+  kicked: ModParticipant[];
+  admitted: ModParticipant[];
+  newWaiting: string[];
+}): void {
   waiting = next.waiting;
   kicked = next.kicked;
+  admitted = next.admitted;
   renderRoster();
 
   // Toast on new arrivals (presenter-only by construction — viewers never

@@ -5,6 +5,7 @@ pub mod db;
 pub mod error;
 pub mod events;
 pub mod livekit;
+pub mod presence;
 pub mod routes;
 pub mod state;
 pub mod tasks;
