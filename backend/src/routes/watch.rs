@@ -1,11 +1,21 @@
-//! Farbplay ⇄ Farbstroem room-link SRT integration (see GitHub #165).
+//! Farbplay ⇄ Farbstroem room-link SRT integration (see GitHub #165). The
+//! waiting-room/kick admission gate is documented inline below.
 //!
 //! Native SRT viewers (Farbplay) connect from a shared room link
-//! `https://<host>/watch/<slug>` instead of a raw `srt://` URL. The app prepends
-//! `/api` to the path and `GET`s `/api/watch/<slug>`, expecting SRT connection
-//! details with a short-lived, HMAC-signed `streamid` (OME SignedPolicy). It
-//! re-fetches on every (re)connect, so a ~30 s TTL is plenty — the token only
-//! needs to survive the SRT handshake.
+//! `https://<host>/watch/<slug>` instead of a raw `srt://` URL. The flow mirrors
+//! the browser viewer: the app first `join`s the room
+//! (`POST /api/public/rooms/:slug/join`) to become a `participants` row, waits
+//! on the admission SSE if the room has a waiting room, then `GET`s
+//! `/api/watch/<slug>?participantId=&token=` for a short-lived, HMAC-signed
+//! `streamid` (OME SignedPolicy). It re-fetches on every (re)connect, so a ~30 s
+//! TTL is plenty — the token only needs to survive the SRT handshake.
+//!
+//! This endpoint is **admission-gated**: the signed streamid is minted only for
+//! an admitted, non-kicked participant. Missing/invalid credentials → 403, and a
+//! kicked/not-admitted participant → 403 — so a kicked viewer cannot reconnect
+//! (the reconnect backstop behind the SSE self-disconnect; contract O1/O2).
+//! Password is enforced at `join`, not here. Direct `srt://…` URLs (power users)
+//! bypass rooms entirely and are unaffected.
 //!
 //! Security caveat: in Farbstroem the OME stream name *is* the ingest stream key
 //! (`OutputStreamName=${OriginStreamName}`), so the signed streamid necessarily
@@ -38,7 +48,9 @@ const TTL_SECONDS: u64 = 30;
 
 #[derive(Deserialize)]
 struct WatchQuery {
-    password: Option<String>,
+    #[serde(rename = "participantId")]
+    participant_id: Option<String>,
+    token: Option<String>,
 }
 
 /// Mint an OME SignedPolicy streamid for SRT playback.
@@ -68,37 +80,60 @@ fn sign_streamid(secret: &str, stream_name: &str, expire_ms: u128) -> Result<Str
     ))
 }
 
-/// GET /:slug — return SRT connection details for a room (public).
+/// GET /:slug?participantId=&token= — admission-gated SRT connection details.
 ///
-/// 404 for unknown / expired / ended rooms or rooms with no stream key.
-/// 403 when the room has a password and a matching `?password=` is not supplied.
+/// Requires `participantId` + `token` from a prior `join` (contract O1). Mints
+/// the signed streamid only for an admitted, non-kicked participant:
+/// - missing `participantId`/`token` → 403
+/// - no matching participant (wrong token, wrong slug) → 404
+/// - room ended/expired → 404 (folded into the SQL filter)
+/// - kicked → 403; not yet admitted → 403
+/// - room has no stream key → 404
 async fn watch(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
     Query(query): Query<WatchQuery>,
 ) -> Result<Json<Value>, AppError> {
+    // Join is always required for the room-link flow (contract O1). Password is
+    // checked at join, not here.
+    let participant_id = query
+        .participant_id
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| AppError::Forbidden("Participant credentials required".into()))?;
+    let token = query
+        .token
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| AppError::Forbidden("Participant credentials required".into()))?;
+
     let conn = state.db.get()?;
     let slug_clone = slug.clone();
-    // Filter ended/expired rooms in SQL: both collapse to "no row" → 404, which
-    // is exactly what the contract wants for unknown *and* expired rooms.
-    // `expires_at` is stored as a UTC "YYYY-MM-DD HH:MM:SS" string (see
-    // rooms::normalize_datetime), so it compares directly against CURRENT_TIMESTAMP.
-    let (room_name, password_hash, key_token) = tokio::task::spawn_blocking(move || {
+    // Look up the participant by (id, token) within this room (same pattern as
+    // rooms_public::participant_status), joined to the room's stream key. Ended/
+    // expired rooms are filtered in SQL so they collapse to "no row" → 404, the
+    // same as an unknown room or a bad token. `expires_at` is a UTC
+    // "YYYY-MM-DD HH:MM:SS" string (see rooms::normalize_datetime), so it
+    // compares directly against CURRENT_TIMESTAMP.
+    let (is_admitted, is_kicked, room_name, key_token) = tokio::task::spawn_blocking(move || {
         let mut stmt = conn.prepare(
-            "SELECT r.name, r.password_hash, sk.key_token \
-             FROM rooms r \
+            "SELECT p.is_admitted, p.is_kicked, r.name, sk.key_token \
+             FROM participants p \
+             JOIN rooms r ON r.id = p.room_id \
              LEFT JOIN stream_keys sk ON sk.id = r.stream_key_id \
-             WHERE r.slug = ?1 \
+             WHERE p.id = ?1 AND p.token = ?2 AND r.slug = ?3 \
                AND r.status != 'ended' \
                AND (r.expires_at IS NULL OR r.expires_at > CURRENT_TIMESTAMP)",
         )?;
-        stmt.query_row(rusqlite::params![slug_clone], |row| {
-            Ok((
-                row.get::<_, String>(0)?,         // name
-                row.get::<_, Option<String>>(1)?, // password_hash
-                row.get::<_, Option<String>>(2)?, // stream key_token
-            ))
-        })
+        stmt.query_row(
+            rusqlite::params![participant_id, token, slug_clone],
+            |row| {
+                Ok((
+                    row.get::<_, i32>(0)?,            // is_admitted
+                    row.get::<_, i32>(1)?,            // is_kicked
+                    row.get::<_, String>(2)?,         // room name
+                    row.get::<_, Option<String>>(3)?, // stream key_token
+                ))
+            },
+        )
         .map_err(|e| match e {
             rusqlite::Error::QueryReturnedNoRows => AppError::NotFound("Room not found".into()),
             _ => AppError::Internal(e.to_string()),
@@ -107,25 +142,20 @@ async fn watch(
     .await
     .map_err(|e| AppError::Internal(e.to_string()))??;
 
+    // Kicked viewers cannot reconnect (the reconnect backstop behind the SSE
+    // self-disconnect; contract O2).
+    if is_kicked == 1 {
+        return Err(AppError::Forbidden(
+            "You have been kicked from this room".into(),
+        ));
+    }
+    // Guard: a not-yet-admitted participant waits on the SSE, not here.
+    if is_admitted == 0 {
+        return Err(AppError::Forbidden("Not yet admitted".into()));
+    }
+
     // 404 if no stream key is assigned — there is nothing to watch.
     let stream_name = key_token.ok_or_else(|| AppError::NotFound("Room not found".into()))?;
-
-    // 403 if the room is password-protected and the query password is missing
-    // or wrong. (Farbplay can't supply a password, so password rooms are not
-    // reachable via the bare link — intentional, see #165.)
-    if let Some(hash) = password_hash.filter(|h| !h.is_empty()) {
-        let provided = query.password.unwrap_or_default();
-        if provided.is_empty() {
-            return Err(AppError::Forbidden("Password required".into()));
-        }
-        let valid = tokio::task::spawn_blocking(move || bcrypt::verify(provided, &hash))
-            .await
-            .map_err(|e| AppError::Internal(e.to_string()))?
-            .map_err(|_| AppError::Forbidden("Wrong password".into()))?;
-        if !valid {
-            return Err(AppError::Forbidden("Wrong password".into()));
-        }
-    }
 
     let expire_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)

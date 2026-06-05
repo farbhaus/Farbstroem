@@ -101,9 +101,16 @@ is also shown in each button's hover tooltip.
 
 ### Native SRT playback (Farbplay room link)
 
-The native HDR SRT viewer [Farbplay] connects from a room link instead of a raw SRT URL.
-It `GET`s `https://<host>/api/watch/<slug>` (the `/watch/<slug>` path with `/api` prepended),
-which returns the SRT target plus a short-lived, HMAC-signed `streamid`:
+The native HDR SRT viewer [Farbplay] connects from a room link instead of a raw SRT URL, and
+mirrors the browser viewer's lifecycle (waiting room + kick). The flow:
+
+1. **Join** — `POST /api/public/rooms/<slug>/join {name}` → `{participant_id, token, admitted, …}`
+   (creates a `participants` row; password, if any, is checked here).
+2. **Wait** — if not yet admitted, open the admission SSE
+   `GET /api/public/rooms/<slug>/waiting/events/<pid>?token=` and show a waiting screen until the
+   `admitted` event.
+3. **Play** — `GET https://<host>/api/watch/<slug>?participantId=<pid>&token=<token>` returns the
+   SRT target plus a short-lived, HMAC-signed `streamid`:
 
 ```jsonc
 {
@@ -118,8 +125,13 @@ which returns the SRT target plus a short-lived, HMAC-signed `streamid`:
 OME's `<SignedPolicy>` (in `ome/origin_conf/Server.xml`, scoped to the SRT publisher) validates
 the signature + `url_expire` on connect, so each token expires ~30 s after minting; the app
 re-fetches on every (re)connect. The signing key is `OME_SIGNED_POLICY_SECRET` (shared between the
-backend and OME). Returns `404` for unknown/expired rooms and `403` for password-protected rooms
-(Farbplay can't supply a password, so password rooms are not reachable via the bare link).
+backend and OME).
+
+The `/api/watch` endpoint is **admission-gated**: the streamid is minted only for an admitted,
+non-kicked participant. Missing `participantId`/`token` or a kicked/not-yet-admitted participant →
+**403**; unknown/expired/ended room, wrong token/slug, or a room with no stream key → **404**.
+Kick and room-end ride the existing SSE (`kicked` / `room_ended`) for an instant self-disconnect;
+the gated GET (403/404) + 30 s TTL is the reconnect backstop, so a kicked viewer cannot reconnect.
 
 > **Security note:** SignedPolicy here provides *expiry / replay-limiting*, not secrecy. The OME
 > stream name is the ingest stream key (`OutputStreamName=${OriginStreamName}`), so the key appears
