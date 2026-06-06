@@ -2,7 +2,7 @@
 #
 #   make deploy   start on a deploy host (pulls the published image)
 #   make update   pull the newest image and recreate (live sessions survive)
-#   make dev      build from source + bind-mount ./www for live frontend edits
+#   make dev      build frontend + image from source, bind-mount ./www for live edits
 #   make logs     follow all services' logs
 #   make status   per-service supervisord state inside the container
 #   make down     stop and remove the container
@@ -12,7 +12,7 @@
 BASE := -f docker-compose.yml
 DEV  := -f docker-compose.yml -f docker-compose.dev.yml
 
-.PHONY: deploy update dev logs status down
+.PHONY: deploy update dev frontend-build logs status down
 
 deploy:
 	docker compose $(BASE) up -d
@@ -21,7 +21,13 @@ update:
 	docker compose $(BASE) pull
 	docker compose $(BASE) up -d
 
-dev:
+# The dev overlay bind-mounts ./www over the image's baked /www, so www/dist
+# must exist on the host first — build it (tsc) before bringing the stack up,
+# else /admin serves a blank page (missing /dist/admin/main.js).
+frontend-build:
+	cd frontend && npm ci && npm run build
+
+dev: frontend-build
 	docker compose $(DEV) up -d --build
 
 logs:

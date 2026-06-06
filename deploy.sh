@@ -271,10 +271,18 @@ if [[ -z "$DOMAIN" ]]; then
   read -rp "Production domain (e.g. stream.example.com): " DOMAIN
 fi
 [[ -n "$DOMAIN" ]] || die "a production domain is required (needed for TLS)."
-# Must be a bare FQDN (no scheme, path, port, spaces; at least one dot) — it
-# flows into SITE_ADDRESS, PUBLIC_ORIGIN and the Caddy site address; a bad
-# value silently breaks TLS or panics the backend (build_webauthn).
-if [[ ! "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]; then
+# DOMAIN flows into SITE_ADDRESS, PUBLIC_ORIGIN and the Caddy site address.
+# Accepted: `localhost` (local dev — Caddy uses its internal CA, passkeys work
+# because localhost is a valid WebAuthn RP ID) or a bare FQDN with at least one
+# dot (no scheme, path, port, spaces). Bare IPs are rejected: Let's Encrypt
+# won't issue for them and an IP has no domain, so build_webauthn would panic.
+if [[ "$DOMAIN" == "localhost" ]]; then
+  : # ok — supported local-dev value
+elif [[ "$DOMAIN" == *://* || "$DOMAIN" == */* || "$DOMAIN" =~ [[:space:]] ]]; then
+  die "'$DOMAIN' is not a bare hostname. Use e.g. stream.example.com — no https://, no path, no port."
+elif [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || "$DOMAIN" == *:* ]]; then
+  die "bare IPs aren't supported (no Let's Encrypt TLS, no passkeys). Use 'localhost' for local dev or a real domain like stream.example.com."
+elif [[ ! "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]; then
   die "'$DOMAIN' is not a bare hostname. Use e.g. stream.example.com — no https://, no path, no port."
 fi
 
@@ -323,6 +331,14 @@ fi
 
 if [[ -f .env ]]; then
   info "Reusing existing .env (secrets unchanged)"
+  # The reused .env keeps its own SITE_ADDRESS — the positional DOMAIN does NOT
+  # overwrite it (idempotency: a redeploy must not silently change the host).
+  # Warn so `./deploy.sh new.example.com` over an old .env isn't a silent no-op.
+  existing_site="$( { grep -E '^SITE_ADDRESS=' .env 2>/dev/null || true; } | head -1 | cut -d= -f2-)"
+  if [[ -n "$existing_site" && "$existing_site" != "$DOMAIN" ]]; then
+    info "NOTE: .env already targets '$existing_site' — keeping it (ignoring '$DOMAIN')."
+    info "      To switch host: edit SITE_ADDRESS/PUBLIC_ORIGIN/LIVEKIT_URL in .env, or re-run with --regenerate."
+  fi
   # Backfill secrets introduced in later versions so upgrading an existing
   # deployment picks them up without a manual edit or a full secret rotation.
   # OME_SIGNED_POLICY_SECRET (Farbplay SRT room-link flow) is read by both the
