@@ -143,13 +143,19 @@ the gated GET (403/404) + 30 s TTL is the reconnect backstop, so a kicked viewer
 ## Local development
 
 **Just run it locally** — `deploy.sh` accepts `localhost`, so the one-command path
-works for dev too. It generates `.env` with all required secrets, builds/pulls the
-image, and starts the stack on `localhost` (Caddy serves it over its internal
-self-signed cert — the browser warns once):
+works for dev too (and doubles as an end-to-end check of the script itself). It
+generates `.env` with all required secrets, builds/pulls the image, and starts the
+stack on `localhost`:
 
 ```bash
 sudo ./deploy.sh localhost
 ```
+
+On linux/amd64 the published image is pulled (instant); on ARM hosts (e.g. Apple
+Silicon Macs) it's built from source first. Caddy serves the site over its internal
+self-signed cert, so the browser warns once. Use `localhost` — bare IPs (e.g.
+`127.0.0.1`) are rejected: Let's Encrypt won't issue for them and an IP has no domain
+for the WebAuthn relying-party ID.
 
 This uses the frontend baked into the image — fine for just running the app. For
 **active frontend development** (live `tsc` rebuilds without a Docker rebuild), use
@@ -207,14 +213,6 @@ curl -fsSL https://raw.githubusercontent.com/farbhaus/Farbstrom/main/install.sh 
 ```
 
 `install.sh` fetches just `docker-compose.yml`, `.env.example`, and `deploy.sh` into `/opt/farbstroem` and hands off to `deploy.sh`; everything after `--` is forwarded (e.g. `--behind-proxy …`).
-
-### Quick local smoke test
-
-```bash
-sudo ./deploy.sh localhost
-```
-
-Brings the container up on the local machine for an end-to-end check of the script itself. On linux/amd64 the published image is pulled (instant); on ARM hosts (e.g. Apple Silicon Macs) the script builds it from source first. Caddy serves the site over its internal self-signed cert, so the browser will warn once. Use `localhost` — bare IPs (e.g. `127.0.0.1`) are rejected: Let's Encrypt won't issue for them and an IP has no domain for the WebAuthn relying-party ID.
 
 ### Manual / advanced configuration
 
