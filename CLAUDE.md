@@ -27,25 +27,37 @@ Hot-reload during development (requires `watchexec-cli`):
 watchexec -r -e rs -- cargo run
 ```
 
-### Full stack (Docker Compose — repo root)
+### Full stack (single-container — repo root)
+
+The whole stack — Caddy, the Rust backend, OvenMediaEngine, LiveKit, and Valkey
+— ships as **one** image (`zcolor/farbstroem`) run by `supervisord`. There is a
+single compose service, `farbstroem`.
 
 ```bash
-# Local dev — docker-compose.override.yml is auto-merged and builds the
-# backend from ./backend.
-docker compose up -d                     # start all 5 services
-docker compose up -d --build stream-backend  # rebuild after Rust changes
-docker compose down
+# Local dev — opt into docker-compose.dev.yml (build from source + ./www mount).
+# A thin Makefile wraps the two-file invocations.
+make dev                                 # build + start (== -f docker-compose.yml -f docker-compose.dev.yml up -d --build)
+make logs                                # all services' logs (interleaved)
+make status                              # per-service supervisord state
+make down
 
-# Deploy hosts — pull the published backend image instead of building.
-# -f selects ONLY the base file so the dev override is not auto-merged.
-docker compose -f docker-compose.yml up -d
+# Deploy hosts — a plain `docker compose up -d` uses ONLY the base file and
+# pulls the published image (no accidental source build). Equivalent: make deploy.
+docker compose up -d                     # start (pulls zcolor/farbstroem)
+make update                              # pull newest image + recreate
 ```
 
-The backend image (`zcolor/farbstroem-backend`) is published to Docker Hub
-by `.github/workflows/docker.yml` on every push to `main` (tags `:latest`
-and `:sha-<short>`, linux/amd64). Deploy hosts pin a tag via
-`BACKEND_TAG` in `.env`. Requires repo secrets `DOCKERHUB_USERNAME` and
-`DOCKERHUB_TOKEN`.
+The image (`zcolor/farbstroem`) is published to Docker Hub by
+`.github/workflows/docker-single.yml` on every push to `main` (tags `:latest`
+and `:sha-<short>`) and on a `v*` release tag (adds `:vX.Y.Z` + `:X.Y` for
+reproducible prod pinning), linux/amd64. It is self-contained — the Dockerfile compiles
+the Rust backend AND the TypeScript frontend internally, so deploy hosts need
+neither the source nor a Node/Rust toolchain. Deploy hosts pin a tag via
+`FARBSTROEM_TAG` in `.env`. Requires repo secrets `DOCKERHUB_USERNAME` and
+`DOCKERHUB_TOKEN`. (`docker.yml` still publishes the backend-only image
+`zcolor/farbstroem-backend` for `main`'s legacy multi-container compose.)
+
+One-command production deploy to a fresh VPS: `./deploy.sh your.domain.com`.
 
 ### Environment setup
 
@@ -60,6 +72,7 @@ cp .env.example .env
 |---|---|---|
 | `JWT_SECRET` | 32 | HMAC secret for admin JWTs |
 | `OME_WEBHOOK_SECRET` | 32 | HMAC-SHA1 key for OME admission webhook verification |
+| `OME_SIGNED_POLICY_SECRET` | 32 | HMAC-SHA1 key for OME SignedPolicy SRT-playback tokens (`/api/watch/:slug`). Must match `<SignedPolicy><SecretKey>` in `ome/origin_conf/Server.xml`. |
 | `OME_API_TOKEN` | 32 | Auth token for calls to the OME REST API |
 | `LIVEKIT_API_SECRET` | 32 | HMAC secret for LiveKit access tokens |
 | `ADMIN_PASSWORD` | 12 | Bcrypt-hashed once at startup |
@@ -72,35 +85,56 @@ cp .env.example .env
 | `PORT` | `4001` | Axum bind port |
 | `DB_PATH` | `/data/stream.db` | SQLite file |
 | `DATA_PATH` | `/data` | Uploads and branding |
-| `OME_API_URL` | `http://stream-ome:8081/v1` | OME admin API |
-| `LIVEKIT_INTERNAL_URL` | `http://stream-livekit:7880` | LiveKit HTTP signaling |
-| `LIVEKIT_URL` | `ws://localhost:7880` | WebSocket URL sent to browser clients |
-| `PUBLIC_ORIGIN` | `https://stream.zemariacolor.com` | WebAuthn RP origin/ID — must match the browser origin exactly. `http://localhost:4001` for local dev. |
+| `OME_API_URL` | `http://localhost:8081/v1` | OME admin API |
+| `LIVEKIT_INTERNAL_URL` | `http://localhost:7880` | LiveKit HTTP signaling |
+| `LIVEKIT_URL` | `ws://localhost:7880` | WebSocket URL sent to browser clients. In the container, **derived from `PUBLIC_HOST`** by `entrypoint.sh` (`wss://<PUBLIC_HOST>/livekit`). |
+| `PUBLIC_ORIGIN` | `http://localhost:4001` | WebAuthn RP origin/ID — must match the browser origin exactly. In the container, **derived from `PUBLIC_HOST`** (`https://<PUBLIC_HOST>`). |
+| `SITE_ADDRESS` | `localhost` | Caddy site address for the container's own Caddy. Set to your domain for standalone TLS, or `:80` (plain HTTP) to run behind an external TLS proxy. |
+| `PUBLIC_HOST` | `$SITE_ADDRESS` | Browser-facing host that `PUBLIC_ORIGIN`/`LIVEKIT_URL` derive from. Defaults to `SITE_ADDRESS` (standalone). **Required** when `SITE_ADDRESS=:80` — a bare port is not a valid host, so without it the backend panics. |
+| `WEB_BIND` | `0.0.0.0` | Host interface the published HTTP/HTTPS ports bind to. Set to `127.0.0.1` when behind an external proxy so the plain-HTTP port isn't internet-reachable (Docker bypasses ufw). |
+| `SRT_PUBLIC_HOST` | host of `PUBLIC_ORIGIN` | SRT host returned by `/api/watch/:slug`. |
+| `SRT_PUBLIC_PORT` | `9998` | SRT playback UDP port returned by `/api/watch/:slug`. |
+| `SRT_LATENCY_MS` | `500` | SRT latency advertised to clients. |
 | `STREAM_DISABLE_RATE_LIMIT` | unset | Set to `1` to disable rate limiting (integration tests do this). |
 
 Generate secrets with `openssl rand -hex 32`.
 
 ## Architecture
 
+All five processes run inside **one container** under `supervisord`, talking to
+each other over `localhost`. Caddy owns the single TLS origin and routes by path.
+
 ```
 Encoder (SRT/RTMP/WHIP)
-  └─→ stream-ome (OvenMediaEngine)
-        ├─ admission webhook → stream-backend (HMAC-SHA1 verified)
+  └─→ OvenMediaEngine (localhost, in-container)
+        ├─ admission webhook → backend localhost:4001 (HMAC-SHA1 verified)
         └─→ Browser (OvenPlayer via LLHLS/WebRTC, routed through Caddy /live/*)
 
-stream-backend (Rust/Axum, :4001)
+backend (Rust/Axum, localhost:4001)
   ├─ HTTP API   /api/*        — rooms, participants, chat, stream keys, admin auth
   ├─ WebSocket  /ws/room/:slug — presence, chat, pointer overlay, kick events
-  ├─ Static     /admin/, /watch/:slug, /  — serves www/ files
+  ├─ Static     /admin/, /watch/:slug, /  — serves /www files
   └─ SQLite WAL  /data/stream.db
 
-Browser (viewer page)
-  ├─ OvenPlayer — stream video
-  ├─ LiveKit JS SDK — camera/mic/screen share ↔ stream-livekit
-  └─ WebSocket — chat, presence, pointer ↔ stream-backend
+Browser (viewer page) — one origin, fronted by Caddy:
+  ├─ OvenPlayer — stream video        (Caddy /live/*  → localhost:3333)
+  ├─ LiveKit JS SDK — cam/mic/screen  (Caddy /livekit/* → localhost:7880, wss)
+  └─ WebSocket — chat, presence       (Caddy /* → localhost:4001)
 ```
 
-**Services in docker-compose:** `stream-caddy` (TLS + routing), `stream-backend`, `stream-ome`, `stream-livekit` (SFU, backed by `stream-valkey`).
+**Single container (`farbstroem`), processes under supervisord** (start order):
+Valkey → backend (`user=app`) → OvenMediaEngine + LiveKit → Caddy (TLS + routing).
+Caddy/OME/LiveKit run as root (privileged ports / TURN); the backend and Valkey
+drop to unprivileged users. `entrypoint.sh` generates `livekit.yaml`, chowns
+`/data`, and derives the browser-facing URLs from `PUBLIC_HOST` (which defaults
+to `SITE_ADDRESS`); the Caddyfile
+([`caddy/Caddyfile`](caddy/Caddyfile)) and supervisor config
+([`supervisord.conf`](supervisord.conf)) are baked into the image.
+
+> Legacy: `main` still carries the 5-service `docker-compose.yml`
+> (`stream-caddy`/`stream-backend`/`stream-ome`/`stream-livekit`/`stream-valkey`)
+> and the backend-only image. This branch supersedes it with the single
+> container; the multi-container path is kept only for `main` compatibility.
 
 ## Backend structure
 
@@ -174,6 +208,8 @@ Conventions:
 
 **Moderation audit.** Kick and mute are logged via `tracing::info!` with `room_slug`, `actor_id`, `target_id` for after-the-fact audits. If LiveKit `remove_participant` fails the backend retries once after 250 ms and `error!`s on the second failure — the DB `is_kicked=1` flag and WS force-close happen first, so UI state is correct even when LiveKit is momentarily unreachable.
 
+**Farbplay room-link SRT playback** (`src/routes/watch.rs`, GitHub #165). `GET /api/watch/:slug?participantId=&token=` lets the native SRT viewer (Farbplay) connect from a room link instead of a raw `srt://` URL. The flow mirrors the browser viewer: Farbplay first `POST /api/public/rooms/:slug/join`s to become a `participants` row (password is checked there, not here), waits on the existing admission SSE (`…/waiting/events/:pid`) if the room has a waiting room, then calls this **admission-gated** endpoint. It returns `{srt: {host, port, streamid, latency}, ttlSeconds, title}` where `streamid` is `default/live/<key_token>?policy=<b64url>&signature=<b64url-hmac-sha1>`, signed with `OME_SIGNED_POLICY_SECRET` and expiring after ~30 s (`url_expire`). **OME signs the `srt://`-prefixed URL** (`srt://default/live/<key>?policy=…`, scheme + vhost as host), so the backend must HMAC that form even though the client sends only the path. OME validates it via the `<SignedPolicy>` block (scoped to the SRT publisher only). The signed streamid is minted **only for an admitted, non-kicked participant**: missing `participantId`/`token` or kicked/not-yet-admitted → **403**; unknown participant / wrong token / wrong slug / ended / expired / no stream key → **404**. A kicked viewer therefore can't reconnect (the backstop behind the SSE self-disconnect; no server-side SRT sever today — contract O1/O2). **Security caveat:** this gives expiry/replay-limiting, *not* secrecy — Farbstroem's OME stream name *is* the ingest stream key (`OutputStreamName=${OriginStreamName}`), so the key is in the streamid in plaintext (and is already handed to web viewers on join). Decoupling the playback identity from the ingest key is a separate follow-up.
+
 ## CI
 
 GitHub Actions runs on push/PR (`.github/workflows/ci.yml`):
@@ -202,10 +238,9 @@ Thin areas in the integration suite worth regression coverage:
 Non-obvious facts that aren't derivable from reading the code.
 
 **LiveKit**
-- `LIVEKIT_KEYS` must be `"key: secret"` with a **space after the colon**. Without it LiveKit silently boots with no auth and only logs "Could not parse keys". In docker-compose the line is quoted: `"LIVEKIT_KEYS=${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"`.
+- `entrypoint.sh` generates `/livekit.yaml` with a `keys:` map (`KEY: SECRET`) — the **space after the colon** is required (YAML), else LiveKit boots with no auth and only logs "Could not parse keys". The backend must mint tokens with the same `LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`. Keys are inlined into the YAML so the LiveKit process needs no key secrets in its env (`supervisord.conf` strips them with `env -u`).
 - No upstream Rust SDK — `src/livekit.rs` is hand-rolled (AccessToken JWT + RoomService over `reqwest`) against `LIVEKIT_INTERNAL_URL` (HTTP, not WSS).
-- Caddy `/livekit/*` block needs `header_up Host {upstream_hostport}` for WebSocket signaling to work through the proxy.
-- Keep the UDP RTC range narrow (50000-50100) — Docker writes one iptables rule per port; wide ranges make `compose up/down` take minutes.
+- Caddy `/livekit/*` block needs `header_up Host {upstream_hostport}` for WebSocket signaling to work through the proxy ([`caddy/Caddyfile`](caddy/Caddyfile)).
 
 **OvenPlayer**
 - `ovenplayer.js` does NOT bundle `hls.js` — load it separately or LLHLS fails silently.
@@ -224,8 +259,12 @@ Non-obvious facts that aren't derivable from reading the code.
 **Timezones**
 - `expires_at` is stored as a UTC ISO string. Admin `datetime-local` is converted both ways. Rooms created before this fix may be off by the UTC offset — re-save them in admin to correct.
 
-**Docker / compose**
-- The backend is a baked binary — `docker restart` does NOT pick up code changes. Use `docker compose up -d --build stream-backend`.
+**Docker (single container)**
+- Everything is baked into the image — `docker restart` does NOT pick up code/config changes. Rebuild: `make dev` (selects `docker-compose.dev.yml`, builds from source). `Server.xml`, `caddy/Caddyfile`, `supervisord.conf`, and the compiled `www/dist` are all baked in, so editing them on the host needs a rebuild too (except `./www` while the dev overlay's bind mount is active).
 - `$` in `.env` values must be doubled (`$$`) — Compose interpolates `$VAR`.
-- `stream-ome` `depends_on` `stream-backend` (`condition: service_healthy`) is load-bearing: every ingest is HMAC-verified at `/api/webhook/admission`. If the backend is down, ingests fail closed (no unauthorised streaming).
-- `stream-valkey` runs Valkey (BSD-3 fork of Redis 7.2). LiveKit talks to it as a plain RESP server (see `livekit/livekit.yaml`), so the swap from upstream Redis is invisible to callers.
+- Start order is supervisord **priority**, not `depends_on`: Valkey → backend → OME/LiveKit → Caddy, so the admission webhook (backend, `localhost:4001`) is up before OME accepts ingests. Admission is fail-closed — if the backend is down, ingests are denied (no unauthorised streaming).
+- The OME admission webhook URL is `localhost:4001` (env-overridable `OME_WEBHOOK_URL` in `Server.xml`); LiveKit's Redis is `localhost:6379` (generated `livekit.yaml`) — no Docker service names resolve inside the single container.
+- Privilege & secrets: Caddy/OME/LiveKit run as root (privileged ports / TURN); the backend (`user=app`) and Valkey (`user=valkey`) drop privileges. `supervisord.conf` removes the backend-only secrets (`JWT_SECRET`, `ADMIN_PASSWORD`, `LIVEKIT_API_KEY/SECRET`) from the third-party processes via `env -u` — add any new such secret to those four `-u` lists.
+- Persist Caddy's `caddy_data` volume (`/root/.local/share/caddy`): it holds the internal CA + Let's Encrypt certs. Losing it re-issues certs on every recreate (Let's Encrypt rate limits) / regenerates the local CA.
+- Keep the UDP RTC range narrow (50000-50100) — Docker writes one iptables rule per port; wide ranges make `compose up/down` take minutes.
+- Valkey is the BSD-3 fork of Redis 7.2; LiveKit talks to it as a plain RESP server, so the swap from upstream Redis is invisible.

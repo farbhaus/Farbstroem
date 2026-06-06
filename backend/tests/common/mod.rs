@@ -16,6 +16,7 @@ pub fn test_config() -> AppConfig {
     AppConfig {
         jwt_secret: "test-secret-that-is-at-least-thirty-two-characters-long".into(),
         ome_webhook_secret: "test-webhook-secret".into(),
+        ome_signed_policy_secret: "test-signed-policy-secret-32-chars-min".into(),
         ome_api_url: "http://localhost:9999".into(),
         ome_api_token: "test:token".into(),
         livekit_api_key: "test-lk-key".into(),
@@ -26,6 +27,9 @@ pub fn test_config() -> AppConfig {
         db_path,
         data_path: "/tmp/zstream-test".into(),
         public_origin: "http://localhost:4001".into(),
+        srt_public_host: "stream.example.com".into(),
+        srt_public_port: 9998,
+        srt_latency_ms: 500,
     }
 }
 

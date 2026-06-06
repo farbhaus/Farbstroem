@@ -9,6 +9,7 @@ pub mod rate_limit;
 pub mod rooms;
 pub mod rooms_public;
 pub mod stream_keys;
+pub mod watch;
 pub mod webhook;
 
 use axum::Router;
@@ -24,6 +25,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .nest("/api/ome", ome::router())
         .nest("/api/public/rooms", rooms_public::router())
         .nest("/api/public/rooms", files::router())
+        .nest("/api/watch", watch::router())
         .nest("/api/webhook/admission", webhook::router())
         .nest("/api/branding", branding::public_router())
         .nest("/api/admin/branding", branding::admin_router())
