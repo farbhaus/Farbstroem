@@ -81,12 +81,12 @@ impl AppConfig {
             ome_webhook_secret,
             ome_signed_policy_secret,
             ome_api_url: env::var("OME_API_URL")
-                .unwrap_or_else(|_| "http://stream-ome:8081/v1".into()),
+                .unwrap_or_else(|_| "http://localhost:8081/v1".into()),
             ome_api_token,
             livekit_api_key,
             livekit_api_secret,
             livekit_internal_url: env::var("LIVEKIT_INTERNAL_URL")
-                .unwrap_or_else(|_| "http://stream-livekit:7880".into()),
+                .unwrap_or_else(|_| "http://localhost:7880".into()),
             livekit_url: env::var("LIVEKIT_URL").unwrap_or_else(|_| "ws://localhost:7880".into()),
             port: env::var("PORT")
                 .ok()

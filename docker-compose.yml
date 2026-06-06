@@ -1,151 +1,64 @@
-networks:
-  stream-net:
-
-volumes:
-  caddy_data:
-  caddy_config:
-
+# Single-container deployment — BASE file. A plain `docker compose up -d` uses
+# ONLY this file and pulls the published image (the deploy-host path; also
+# `make deploy`). Local dev opts into docker-compose.dev.yml to build from source
+# and bind-mount ./www:  make dev  (or  -f docker-compose.yml -f docker-compose.dev.yml).
 services:
-  stream-caddy:
-    # Tags are overridable so operators can pin a known-good version in .env
-    # (mirrors BACKEND_TAG). Defaults track the floating upstream tag — fine
-    # for dev, but production hosts should pin in .env to avoid surprise
-    # upgrades on `docker compose pull`.
-    image: caddy:${CADDY_TAG:-2-alpine}
-    container_name: stream-caddy
+  farbstroem:
+    image: zcolor/farbstroem:${FARBSTROEM_TAG:-latest}
+    container_name: farbstroem
     restart: unless-stopped
-    networks: [stream-net]
     ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
-      - "${HTTPS_PORT:-443}:443/udp"
+      # WEB_BIND scopes who can reach the HTTP/HTTPS ports. Default 0.0.0.0
+      # (standalone: this container is the public TLS edge). Behind an external
+      # reverse proxy (e.g. a host Caddy on the same box) set WEB_BIND=127.0.0.1
+      # in .env so the plain-HTTP port isn't world-reachable, bypassing TLS.
+      # NOTE: Docker's published ports bypass ufw, so this bind is the control.
+      - "${WEB_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"
+      - "${WEB_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443"
+      - "${WEB_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443/udp"
+      - "1935:1935"
+      - "9999:9999/udp"
+      - "9998:9998/udp"
+      - "3478:3478"
+      - "10000-10009:10000-10009/udp"
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    environment:
-      - SITE_ADDRESS=${SITE_ADDRESS:-localhost}
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost/"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    depends_on:
-      stream-backend:
-        condition: service_healthy
-      stream-ome:
-        condition: service_healthy
-
-  stream-valkey:
-    # Valkey is the Linux Foundation BSD-3 fork of Redis 7.2 — Redis itself
-    # relicensed to SSPL/RSALv2 starting at 7.4. LiveKit uses it as a plain
-    # RESP coordination backend, so the swap is drop-in.
-    image: valkey/valkey:${VALKEY_TAG:-8-alpine}
-    container_name: stream-valkey
-    restart: unless-stopped
-    networks: [stream-net]
-    command: valkey-server --save "" --loglevel warning
-    healthcheck:
-      test: ["CMD", "valkey-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
-
-  stream-livekit:
-    image: livekit/livekit-server:${LIVEKIT_TAG:-latest}
-    container_name: stream-livekit
-    restart: unless-stopped
-    networks: [stream-net]
-    volumes:
-      - ./livekit/livekit.yaml:/livekit.yaml
-    environment:
-      - "LIVEKIT_KEYS=${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
-    command: --config /livekit.yaml
-    ports:
-      # Signaling — loopback only. Browsers reach it via Caddy (wss://<domain>
-      # /livekit → stream-livekit:7880 on stream-net); the backend uses the
-      # internal DNS name. Publishing it on all interfaces would expose plaintext
-      # WS signaling to the internet, bypassing Caddy's TLS. 127.0.0.1 keeps
-      # direct access for local debugging (incl. via SSH tunnel on a host).
-      - "127.0.0.1:7880:7880"
-      - "7881:7881"                    # TCP media fallback (client↔SFU direct)
-      - "50000-50100:50000-50100/udp"  # WebRTC media (client↔SFU direct)
-    healthcheck:
-      # LiveKit alpine image ships BusyBox which includes nc.
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 7880 || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 10s
-    depends_on:
-      stream-valkey:
-        condition: service_healthy
-
-  stream-ome:
-    image: airensoft/ovenmediaengine:${OME_TAG:-latest}
-    container_name: stream-ome
-    restart: unless-stopped
-    networks: [stream-net]
-    # Explicit env list — OME only needs these four (see
-    # ome/origin_conf/Server.xml: ${env:OME_API_TOKEN},
-    # ${env:OME_HOST_IP}, ${env:OME_WEBHOOK_SECRET},
-    # ${env:OME_SIGNED_POLICY_SECRET}). The previous
-    # `env_file: .env` was over-scoped and leaked JWT_SECRET, LIVEKIT_*,
-    # ADMIN_PASSWORD into a third-party container.
-    environment:
-      - OME_HOST_IP=${DOMAIN:-localhost}
-      - OME_API_TOKEN=${OME_API_TOKEN}
-      - OME_WEBHOOK_SECRET=${OME_WEBHOOK_SECRET}
-      - OME_SIGNED_POLICY_SECRET=${OME_SIGNED_POLICY_SECRET}
-    volumes:
-      - ./ome/origin_conf:/opt/ovenmediaengine/bin/origin_conf
-    ports:
-      - "1935:1935"                    # RTMP ingest
-      - "9999:9999/udp"                # SRT ingest
-      - "9998:9998/udp"                # SRT playback
-      - "3478:3478"                    # TURN
-      - "10000-10009:10000-10009/udp"  # ICE candidates
-    healthcheck:
-      # OME's Ubuntu base has bash, so /dev/tcp probe works; the API port 8081
-      # is used by stream-backend for OME status polling, so this mirrors
-      # production reachability.
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8081' || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    depends_on:
-      stream-backend:
-        condition: service_healthy
-
-  stream-backend:
-    image: zcolor/farbstroem-backend:${BACKEND_TAG:-latest}
-    container_name: stream-backend
-    restart: unless-stopped
-    networks: [stream-net]
+      - ./data:/data
+      # Caddy's auto-HTTPS material (internal CA + Let's Encrypt certs). Persist
+      # it so recreates don't re-issue certs (Let's Encrypt rate limits) or
+      # regenerate the local CA. (www/dist is baked into the image; the local
+      # override re-adds ./www for live editing.)
+      - caddy_data:/root/.local/share/caddy
+      - caddy_config:/root/.config/caddy
+      # Host /proc for the admin dashboard's resource metrics (PROC_PATH).
+      - /proc:/host/proc:ro
+    # .env supplies secrets plus SITE_ADDRESS / DOMAIN (default: localhost).
+    # Browser-facing URLs (PUBLIC_ORIGIN, LIVEKIT_URL) are intentionally NOT set
+    # here — entrypoint.sh derives them from SITE_ADDRESS so they always match
+    # the Caddy-served origin. To deploy on a domain, set SITE_ADDRESS=your.domain
+    # in .env. The vars below are internal (container-local) and never reach the
+    # browser, so they stay hardcoded to localhost.
     env_file: .env
     environment:
       - PORT=4001
       - DB_PATH=/data/stream.db
       - DATA_PATH=/data
-      - OME_API_URL=http://stream-ome:8081/v1
-      - LIVEKIT_INTERNAL_URL=http://stream-livekit:7880
+      - OME_API_URL=http://localhost:8081/v1
+      - LIVEKIT_INTERNAL_URL=http://localhost:7880
       - PROC_PATH=/host/proc
-    volumes:
-      - ./data:/data
-      - ./www:/www
-      - /proc:/host/proc:ro
     healthcheck:
-      # /healthz is a static "ok" that does not touch the DB pool, so a stuck
-      # pool still leaves the container marked unhealthy via the 4001 listener
-      # failing rather than timing out on SQLite.
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:4001/healthz || exit 1"]
-      interval: 10s
-      timeout: 3s
+      # Honest AND mode-independent: backend /healthz (app is up) AND a TCP probe
+      # that Caddy is listening on :80 (catches a dead web tier — the original
+      # bug). Avoids TLS/SNI so it works identically on localhost and a real
+      # domain. bash is present (OME base); sh lacks /dev/tcp.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:4001/healthz && bash -c '< /dev/tcp/127.0.0.1/80' || exit 1"]
+      interval: 15s
+      timeout: 5s
       retries: 3
-      start_period: 15s
-    depends_on:
-      stream-valkey:
-        condition: service_healthy
+      start_period: 30s
+
+volumes:
+  caddy_data:
+  caddy_config:
