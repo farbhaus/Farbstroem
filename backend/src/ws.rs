@@ -849,6 +849,19 @@ async fn send_to_presenters_in_room(rooms: &WsRooms, slug: &str, msg: &str) {
     }
 }
 
+/// Send a message to every connected non-presenter in the room. Used to push
+/// the Farbplay (SRT) viewer list to viewers without leaking waiting/kicked names.
+async fn send_to_non_presenters_in_room(rooms: &WsRooms, slug: &str, msg: &str) {
+    let rooms_guard = rooms.read().await;
+    if let Some(room) = rooms_guard.get(slug) {
+        for participant in room.values() {
+            if participant.role != "presenter" {
+                let _ = participant.tx.send(Message::Text(msg.to_string().into()));
+            }
+        }
+    }
+}
+
 /// Send a message to a specific participant and close their connection.
 async fn send_to_participant_and_close(
     rooms: &WsRooms,
@@ -1060,7 +1073,11 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
                     }
                 };
                 let slug_clone = slug.clone();
-                type ModRows = (Vec<(String, String)>, Vec<(String, String)>);
+                type ModRows = (
+                    Vec<(String, String)>,
+                    Vec<(String, String)>,
+                    Vec<(String, String)>,
+                );
                 let rows_res = tokio::task::spawn_blocking(move || -> rusqlite::Result<ModRows> {
                     let mut waiting = Vec::new();
                     let mut stmt = conn.prepare(
@@ -1086,10 +1103,26 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
                     })? {
                         kicked.push(row?);
                     }
-                    Ok((waiting, kicked))
+                    // Admitted, non-kicked participants. The frontend renders the
+                    // ones that aren't in the live WS presence roster (i.e. native
+                    // SRT/Farbplay viewers, which never open a WS) so the host can
+                    // see and kick them. Browser viewers are deduped client-side.
+                    let mut admitted = Vec::new();
+                    let mut stmt = conn.prepare(
+                        "SELECT p.id, p.name FROM participants p \
+                         JOIN rooms r ON r.id = p.room_id \
+                         WHERE r.slug = ?1 AND p.is_admitted = 1 AND p.is_kicked = 0 \
+                         ORDER BY p.joined_at ASC",
+                    )?;
+                    for row in stmt.query_map([&slug_clone], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })? {
+                        admitted.push(row?);
+                    }
+                    Ok((waiting, kicked, admitted))
                 })
                 .await;
-                let (waiting, kicked) = match rows_res {
+                let (waiting, kicked, mut admitted) = match rows_res {
                     Ok(Ok(v)) => v,
                     Ok(Err(e)) => {
                         tracing::error!("moderation:update query failed: {e}");
@@ -1100,6 +1133,15 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
                         continue;
                     }
                 };
+
+                // Scope the admitted list to participants with a live SSE
+                // connection — i.e. currently-connected native SRT (Farbplay)
+                // viewers. Without this, every admitted row ever created leaks in
+                // (participant rows persist after disconnect), so the host would
+                // see every past viewer. Browser viewers signal presence over WS
+                // instead and are deduped client-side.
+                let present = crate::presence::present_ids(&slug);
+                admitted.retain(|(id, _)| present.contains(id));
 
                 // Diff against previous snapshot to find new arrivals.
                 let waiting_ids: Vec<String> = waiting.iter().map(|(id, _)| id.clone()).collect();
@@ -1114,20 +1156,37 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
                         .collect()
                 };
 
-                let msg = json!({
+                let to_json = |v: &[(String, String)]| {
+                    v.iter()
+                        .map(|(id, name)| json!({"id": id, "name": name}))
+                        .collect::<Vec<_>>()
+                };
+                let admitted_json = to_json(&admitted);
+
+                // Presenters get the full moderation view (waiting + kicked +
+                // the connected Farbplay/SRT viewer list + new-arrival toasts).
+                let presenter_msg = json!({
                     "type": "moderation:update",
-                    "waiting": waiting
-                        .iter()
-                        .map(|(id, name)| json!({"id": id, "name": name}))
-                        .collect::<Vec<_>>(),
-                    "kicked": kicked
-                        .iter()
-                        .map(|(id, name)| json!({"id": id, "name": name}))
-                        .collect::<Vec<_>>(),
+                    "waiting": to_json(&waiting),
+                    "kicked": to_json(&kicked),
+                    "admitted": admitted_json,
                     "newWaiting": new_waiting_names,
                 })
                 .to_string();
-                send_to_presenters_in_room(&WS_ROOMS, &slug, &msg).await;
+                send_to_presenters_in_room(&WS_ROOMS, &slug, &presenter_msg).await;
+
+                // Everyone else gets only the Farbplay (SRT) viewer list so it
+                // shows in every participant's roster + count. Waiting and kicked
+                // stay presenter-only so viewers never see those names.
+                let viewer_msg = json!({
+                    "type": "moderation:update",
+                    "waiting": [],
+                    "kicked": [],
+                    "admitted": admitted_json,
+                    "newWaiting": [],
+                })
+                .to_string();
+                send_to_non_presenters_in_room(&WS_ROOMS, &slug, &viewer_msg).await;
             }
         });
     }

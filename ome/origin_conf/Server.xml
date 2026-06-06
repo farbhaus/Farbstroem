@@ -133,6 +133,28 @@
                 </Enables>
             </AdmissionWebhooks>
 
+            <!--
+                SignedPolicy — gates SRT *playback* (port 9998) for the Farbplay
+                room-link flow (GitHub #165). The backend's /api/watch/<slug>
+                endpoint mints a short-lived, HMAC-SHA1-signed streamid; OME
+                validates the signature + url_expire here and rejects expired or
+                forged tokens.
+
+                Scoped to <Publishers>srt only: browser playback (LLHLS/WebRTC)
+                and all ingest (Providers, gated by the admission webhook above)
+                are unaffected. SecretKey must match OME_SIGNED_POLICY_SECRET in
+                the backend env.
+            -->
+            <SignedPolicy>
+                <PolicyQueryKeyName>policy</PolicyQueryKeyName>
+                <SignatureQueryKeyName>signature</SignatureQueryKeyName>
+                <SecretKey>${env:OME_SIGNED_POLICY_SECRET:default}</SecretKey>
+                <Enables>
+                    <Providers></Providers>
+                    <Publishers>srt</Publishers>
+                </Enables>
+            </SignedPolicy>
+
             <Applications>
                 <Application>
                     <Name>live</Name>

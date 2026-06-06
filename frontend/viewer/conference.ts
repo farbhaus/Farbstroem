@@ -196,14 +196,16 @@ export function updateFocusAspect(): void {
 // preferred is an explicit hint (e.g. the share just started) — useful when
 // the call site knows the natural target.
 export function requestAutoFocus(preferred?: TileId): void {
-  const { focusOverride, streamKey, focusedTile, displayFile } = viewerStore.get();
+  const { focusOverride, streamKey, focusedTile, displayFile, deliveryMode } = viewerStore.get();
   if (focusOverride) return;
+  // App-only (SRT) rooms have no browser broadcast tile to focus.
+  const hasBrowserBroadcast = !!streamKey && deliveryMode !== 'srt';
   let target: TileId | null;
   if (preferred && findTileEl(preferred)) {
     target = preferred;
   } else if (activeScreenShareTrack) {
     target = 'share';
-  } else if (streamKey || displayFile) {
+  } else if (hasBrowserBroadcast || displayFile) {
     // 'stream' tile now hosts either the live broadcast or the
     // presenter-displayed file.
     target = 'stream';

@@ -255,6 +255,15 @@ fi
 
 if [[ -f .env ]]; then
   info "Reusing existing .env (secrets unchanged)"
+  # Backfill secrets introduced in later versions so upgrading an existing
+  # deployment picks them up without a manual edit or a full secret rotation.
+  # OME_SIGNED_POLICY_SECRET (Farbplay SRT room-link flow) is read by both the
+  # backend (env_file) and OME (compose interpolation), so a single value in
+  # .env keeps them in sync once both containers are recreated below.
+  if ! grep -qE "^OME_SIGNED_POLICY_SECRET=.+" .env; then
+    info "Adding OME_SIGNED_POLICY_SECRET to existing .env"
+    set_env OME_SIGNED_POLICY_SECRET "$(gen_secret)"
+  fi
 else
   info "Generating .env for $DOMAIN"
   cp .env.example .env
@@ -271,6 +280,7 @@ else
   set_env LIVEKIT_API_KEY    "API$(gen_token)"
   set_env JWT_SECRET         "$(gen_secret)"
   set_env OME_WEBHOOK_SECRET "$(gen_secret)"
+  set_env OME_SIGNED_POLICY_SECRET "$(gen_secret)"
   set_env OME_API_TOKEN      "$(gen_secret)"
   set_env LIVEKIT_API_SECRET "$(gen_secret)"
   set_env ADMIN_PASSWORD     "$ADMIN_PASSWORD"

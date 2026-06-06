@@ -139,6 +139,14 @@ export function initPlayer(): void {
 function initLivePlayer(): void {
   if (player) return;
   const { deliveryMode, streamKey } = viewerStore.get();
+  // App-only delivery: the broadcast is watched in the native Farbplay app over
+  // SRT (H.265). Don't mount a browser player — the room is conference/chat only
+  // here. The "watch in Farbplay" placeholder is shown by refreshStatusOverlay.
+  if (deliveryMode === 'srt') {
+    mode = null;
+    enablePlayerControls(false);
+    return;
+  }
   if (!streamKey) {
     mode = null;
     enablePlayerControls(false);
@@ -281,10 +289,13 @@ function handleFileError(): void {
 // The unified stage tile (#tile-stream) is visible whenever there's
 // something to show: a live stream key OR a presenter-displayed file.
 function updateStageVisibility(): void {
-  const { streamKey, displayFile } = viewerStore.get();
+  const { streamKey, displayFile, deliveryMode } = viewerStore.get();
   const tile = document.getElementById('tile-stream');
   if (!tile) return;
-  if (streamKey || displayFile) tile.classList.remove('hidden');
+  // App-only (SRT) rooms have no browser broadcast — the tile only appears for
+  // a presenter-displayed file.
+  const hasBrowserBroadcast = !!streamKey && deliveryMode !== 'srt';
+  if (hasBrowserBroadcast || displayFile) tile.classList.remove('hidden');
   else tile.classList.add('hidden');
 }
 
