@@ -142,26 +142,42 @@ the gated GET (403/404) + 30 s TTL is the reconnect backstop, so a kicked viewer
 
 ## Local development
 
-No deploy script for dev. Fill the secrets (the backend refuses empty/short ones — the
-rest of the `.env.example` defaults are already correct for localhost), then run the
-stack plus the frontend watcher in a side terminal:
+**Just run it locally** — `deploy.sh` accepts `localhost`, so the one-command path
+works for dev too (and doubles as an end-to-end check of the script itself). It
+generates `.env` with all required secrets, builds/pulls the image, and starts the
+stack on `localhost`:
 
 ```bash
-cp .env.example .env
-for k in JWT_SECRET OME_WEBHOOK_SECRET OME_API_TOKEN LIVEKIT_API_SECRET; do
-  sed -i "s|^$k=.*|$k=$(openssl rand -hex 32)|" .env
-done
-sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=devpassword123|" .env   # ≥12 chars
+sudo ./deploy.sh localhost
+```
 
-make dev                                     # build + start the single container on localhost
+On linux/amd64 the published image is pulled (instant); on ARM hosts (e.g. Apple
+Silicon Macs) it's built from source first. Caddy serves the site over its internal
+self-signed cert, so the browser warns once. Use `localhost` — bare IPs (e.g.
+`127.0.0.1`) are rejected: Let's Encrypt won't issue for them and an IP has no domain
+for the WebAuthn relying-party ID.
+
+This uses the frontend baked into the image — fine for just running the app. For
+**active frontend development** (live `tsc` rebuilds without a Docker rebuild), use
+the dev overlay instead. Generate `.env` once, then run `make dev` plus the watcher
+in a side terminal:
+
+```bash
+./deploy.sh --init-env localhost            # write .env with all secrets, start nothing
+# (or fill .env by hand — the backend refuses empty/short secrets)
+
+make dev                                     # build frontend + start the container on localhost
 cd frontend && npm install && npm run watch  # rebuilds www/dist/ on every .ts save
 ```
 
 `make dev` selects `docker-compose.dev.yml` (`-f docker-compose.yml -f docker-compose.dev.yml
 up -d --build`), which builds the image from source and bind-mounts `./www`, so a browser
-refresh picks up `tsc` rebuilds — no Docker rebuild for frontend changes. The dev overlay is
-**not** auto-merged, so a plain `docker compose up -d` is always the deploy path (pulls the
-published image; `www/dist/` is baked in, so production hosts need no Node).
+refresh picks up `tsc` rebuilds — no Docker rebuild for frontend changes. Because the bind
+mount shadows the image's baked `www/dist/`, `make dev` first runs `npm ci && npm run build`
+(the `frontend-build` target) so the dist exists on the host — otherwise `/admin` would serve
+a blank page. The watcher above then keeps it fresh. The dev overlay is **not** auto-merged,
+so a plain `docker compose up -d` is always the deploy path (pulls the published image;
+`www/dist/` is baked in, so production hosts need no Node).
 
 ## Production deployment
 
@@ -197,14 +213,6 @@ curl -fsSL https://raw.githubusercontent.com/farbhaus/Farbstrom/main/install.sh 
 ```
 
 `install.sh` fetches just `docker-compose.yml`, `.env.example`, and `deploy.sh` into `/opt/farbstroem` and hands off to `deploy.sh`; everything after `--` is forwarded (e.g. `--behind-proxy …`).
-
-### Quick local smoke test
-
-```bash
-sudo ./deploy.sh 127.0.0.1
-```
-
-Brings the container up on the local machine for an end-to-end check of the script itself. On linux/amd64 the published image is pulled (instant); on ARM hosts (e.g. Apple Silicon Macs) the script builds it from source first. Caddy serves the site over its internal self-signed cert, so the browser will warn once. Use the dotted IP — the script's hostname check rejects bare `localhost`.
 
 ### Manual / advanced configuration
 
