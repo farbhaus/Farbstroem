@@ -153,15 +153,18 @@ for k in JWT_SECRET OME_WEBHOOK_SECRET OME_API_TOKEN LIVEKIT_API_SECRET; do
 done
 sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=devpassword123|" .env   # ≥12 chars
 
-make dev                                     # build + start the single container on localhost
+make dev                                     # build frontend + start the container on localhost
 cd frontend && npm install && npm run watch  # rebuilds www/dist/ on every .ts save
 ```
 
 `make dev` selects `docker-compose.dev.yml` (`-f docker-compose.yml -f docker-compose.dev.yml
 up -d --build`), which builds the image from source and bind-mounts `./www`, so a browser
-refresh picks up `tsc` rebuilds — no Docker rebuild for frontend changes. The dev overlay is
-**not** auto-merged, so a plain `docker compose up -d` is always the deploy path (pulls the
-published image; `www/dist/` is baked in, so production hosts need no Node).
+refresh picks up `tsc` rebuilds — no Docker rebuild for frontend changes. Because the bind
+mount shadows the image's baked `www/dist/`, `make dev` first runs `npm ci && npm run build`
+(the `frontend-build` target) so the dist exists on the host — otherwise `/admin` would serve
+a blank page. The watcher above then keeps it fresh. The dev overlay is **not** auto-merged,
+so a plain `docker compose up -d` is always the deploy path (pulls the published image;
+`www/dist/` is baked in, so production hosts need no Node).
 
 ## Production deployment
 
@@ -201,10 +204,10 @@ curl -fsSL https://raw.githubusercontent.com/farbhaus/Farbstrom/main/install.sh 
 ### Quick local smoke test
 
 ```bash
-sudo ./deploy.sh 127.0.0.1
+sudo ./deploy.sh localhost
 ```
 
-Brings the container up on the local machine for an end-to-end check of the script itself. On linux/amd64 the published image is pulled (instant); on ARM hosts (e.g. Apple Silicon Macs) the script builds it from source first. Caddy serves the site over its internal self-signed cert, so the browser will warn once. Use the dotted IP — the script's hostname check rejects bare `localhost`.
+Brings the container up on the local machine for an end-to-end check of the script itself. On linux/amd64 the published image is pulled (instant); on ARM hosts (e.g. Apple Silicon Macs) the script builds it from source first. Caddy serves the site over its internal self-signed cert, so the browser will warn once. Use `localhost` — bare IPs (e.g. `127.0.0.1`) are rejected: Let's Encrypt won't issue for them and an IP has no domain for the WebAuthn relying-party ID.
 
 ### Manual / advanced configuration
 
