@@ -8,9 +8,14 @@ services:
     container_name: farbstroem
     restart: unless-stopped
     ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
-      - "${HTTPS_PORT:-443}:443/udp"
+      # WEB_BIND scopes who can reach the HTTP/HTTPS ports. Default 0.0.0.0
+      # (standalone: this container is the public TLS edge). Behind an external
+      # reverse proxy (e.g. a host Caddy on the same box) set WEB_BIND=127.0.0.1
+      # in .env so the plain-HTTP port isn't world-reachable, bypassing TLS.
+      # NOTE: Docker's published ports bypass ufw, so this bind is the control.
+      - "${WEB_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"
+      - "${WEB_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443"
+      - "${WEB_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443/udp"
       - "1935:1935"
       - "9999:9999/udp"
       - "9998:9998/udp"

@@ -34,13 +34,16 @@ EOF
 
 export OME_HOST_IP="${DOMAIN:-localhost}"
 
-# Caddy always fronts this container over HTTPS (auto internal-CA cert on
-# localhost, auto Let's Encrypt on a real domain) and proxies LiveKit at
-# /livekit, so every browser-facing URL is fully determined by SITE_ADDRESS.
-# Derive them here — SITE_ADDRESS is the single knob to point this container at
-# a domain, and this overrides any stale per-flow value from .env (e.g. the
-# bare `cargo run` dev default of http://localhost:4001).
-export PUBLIC_ORIGIN="https://${SITE_ADDRESS}"
-export LIVEKIT_URL="wss://${SITE_ADDRESS}/livekit"
+# Browser-facing URLs. In the standalone model Caddy is this container's own TLS
+# edge, so SITE_ADDRESS (the Caddy site address, e.g. stream.example.com) is also
+# the public host — PUBLIC_HOST defaults to it and the single-knob deploy needs
+# nothing more. When the container instead runs behind an external TLS reverse
+# proxy, SITE_ADDRESS is just an internal listen address (e.g. ":80") and is NOT
+# a usable hostname; set PUBLIC_HOST to the real browser-facing domain in that
+# case. Either way the derived values override any stale per-flow .env value
+# (e.g. the bare `cargo run` dev default of http://localhost:4001).
+export PUBLIC_HOST="${PUBLIC_HOST:-$SITE_ADDRESS}"
+export PUBLIC_ORIGIN="https://${PUBLIC_HOST}"
+export LIVEKIT_URL="wss://${PUBLIC_HOST}/livekit"
 
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf

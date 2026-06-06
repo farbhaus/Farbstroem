@@ -85,9 +85,11 @@ cp .env.example .env
 | `DATA_PATH` | `/data` | Uploads and branding |
 | `OME_API_URL` | `http://localhost:8081/v1` | OME admin API |
 | `LIVEKIT_INTERNAL_URL` | `http://localhost:7880` | LiveKit HTTP signaling |
-| `LIVEKIT_URL` | `ws://localhost:7880` | WebSocket URL sent to browser clients. In the container, **derived from `SITE_ADDRESS`** by `entrypoint.sh` (`wss://<SITE_ADDRESS>/livekit`). |
-| `PUBLIC_ORIGIN` | `http://localhost:4001` | WebAuthn RP origin/ID — must match the browser origin exactly. In the container, **derived from `SITE_ADDRESS`** (`https://<SITE_ADDRESS>`). |
-| `SITE_ADDRESS` | `localhost` | The single knob for the container: Caddy site address + the source for the two derived URLs above. Set to your domain to deploy. |
+| `LIVEKIT_URL` | `ws://localhost:7880` | WebSocket URL sent to browser clients. In the container, **derived from `PUBLIC_HOST`** by `entrypoint.sh` (`wss://<PUBLIC_HOST>/livekit`). |
+| `PUBLIC_ORIGIN` | `http://localhost:4001` | WebAuthn RP origin/ID — must match the browser origin exactly. In the container, **derived from `PUBLIC_HOST`** (`https://<PUBLIC_HOST>`). |
+| `SITE_ADDRESS` | `localhost` | Caddy site address for the container's own Caddy. Set to your domain for standalone TLS, or `:80` (plain HTTP) to run behind an external TLS proxy. |
+| `PUBLIC_HOST` | `$SITE_ADDRESS` | Browser-facing host that `PUBLIC_ORIGIN`/`LIVEKIT_URL` derive from. Defaults to `SITE_ADDRESS` (standalone). **Required** when `SITE_ADDRESS=:80` — a bare port is not a valid host, so without it the backend panics. |
+| `WEB_BIND` | `0.0.0.0` | Host interface the published HTTP/HTTPS ports bind to. Set to `127.0.0.1` when behind an external proxy so the plain-HTTP port isn't internet-reachable (Docker bypasses ufw). |
 | `STREAM_DISABLE_RATE_LIMIT` | unset | Set to `1` to disable rate limiting (integration tests do this). |
 
 Generate secrets with `openssl rand -hex 32`.
@@ -119,7 +121,8 @@ Browser (viewer page) — one origin, fronted by Caddy:
 Valkey → backend (`user=app`) → OvenMediaEngine + LiveKit → Caddy (TLS + routing).
 Caddy/OME/LiveKit run as root (privileged ports / TURN); the backend and Valkey
 drop to unprivileged users. `entrypoint.sh` generates `livekit.yaml`, chowns
-`/data`, and derives the browser-facing URLs from `SITE_ADDRESS`; the Caddyfile
+`/data`, and derives the browser-facing URLs from `PUBLIC_HOST` (which defaults
+to `SITE_ADDRESS`); the Caddyfile
 ([`caddy/Caddyfile`](caddy/Caddyfile)) and supervisor config
 ([`supervisord.conf`](supervisord.conf)) are baked into the image.
 

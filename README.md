@@ -177,7 +177,18 @@ SITE_ADDRESS=stream.yourdomain.com
 `LIVEKIT_URL=wss://stream.yourdomain.com/livekit`), so they always match the
 Caddy-served origin — no need to keep three values in sync.
 
-To run behind an existing reverse proxy, set `SITE_ADDRESS=:80` plus `HTTP_PORT`/`HTTPS_PORT` overrides so the published ports don't collide with the front, terminate TLS at your proxy, and forward `stream.yourdomain.com` to the stack's HTTP port. Then `docker compose -f docker-compose.yml up -d`.
+To run behind an existing reverse proxy (e.g. a host Caddy that already terminates TLS), terminate TLS at your proxy and forward `stream.yourdomain.com` to the stack's HTTP port, with these `.env` values:
+
+```bash
+SITE_ADDRESS=:80                        # container Caddy serves plain HTTP, no in-container TLS
+PUBLIC_HOST=stream.yourdomain.com       # browser-facing host (SITE_ADDRESS isn't one now) → PUBLIC_ORIGIN/LIVEKIT_URL
+HTTP_PORT=8880                          # avoid colliding with the front's :80/:443
+HTTPS_PORT=8444
+WEB_BIND=127.0.0.1                      # bind the web ports to loopback — Docker bypasses ufw, so without this
+                                        # the plain-HTTP port is reachable from the internet, bypassing your TLS
+```
+
+`PUBLIC_HOST` is required here: with `SITE_ADDRESS=:80` the container has no usable hostname, so the backend can't derive a valid `PUBLIC_ORIGIN` and panics without it. Then `docker compose -f docker-compose.yml up -d` and point your proxy at `127.0.0.1:8880`.
 
 Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 443 1935 3478 7881`, udp `443 9999 9998 10000-10009 50000-50100`. The 50000-50100/udp LiveKit range is deliberately narrow — wider ranges create thousands of iptables rules and make `docker compose up/down` take minutes.
 

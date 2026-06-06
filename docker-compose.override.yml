@@ -1,9 +1,9 @@
 # Local development override — auto-merged by `docker compose` when present.
 #
 # Builds the single-container image from source instead of pulling the published
-# zcolor/farbstroem image, and bind-mounts ./www so frontend edits (after
-# `cd frontend && npm run build`) show up without a rebuild. Local changes take
-# effect with:
+# zcolor/farbstroem image, and bind-mounts ./www so frontend edits
+# (after `cd frontend && npm install && npm run build`) show up without a rebuild.
+# Local changes take effect with:
 #
 #   docker compose up -d --build
 #
