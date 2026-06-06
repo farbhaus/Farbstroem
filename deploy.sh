@@ -14,15 +14,25 @@
 # LiveKit (proxied same-origin at /livekit/*). One domain, one cert, no host
 # web server to configure.
 #
-# Flags: --regenerate  (start a fresh .env, rotating secrets)
-#        --yes          (skip confirmation prompts)
+# Usage:
+#   ./deploy.sh stream.yourdomain.com           standalone deploy (container does TLS)
+#   ./deploy.sh --update                         pull the newest image + recreate
+#   ./deploy.sh --behind-proxy lk.example.com    deploy behind an external TLS proxy
+#   ./deploy.sh --init-env stream.example.com    write .env only, don't start anything
+#
+# Flags: --regenerate          start a fresh .env, rotating secrets
+#        --yes / -y            skip confirmation prompts
+#        --update              reuse .env, pull newest image, recreate (no secret
+#                              rotation, so live sessions survive); rollback by
+#                              pinning FARBSTROEM_TAG=sha-<short> in .env first
+#        --behind-proxy HOST   container serves plain HTTP on 127.0.0.1:HTTP_PORT;
+#                              an external proxy (e.g. host Caddy) terminates TLS
+#                              and forwards HOST → it. Skips firewall + the 80/443
+#                              free-port check. HOST is the browser-facing domain.
+#        --init-env            generate/refresh .env and exit (no image, no start)
 #
 # Re-running is safe: an existing .env is reused as-is (secrets are NOT rotated,
 # so live sessions survive a redeploy). Use --regenerate to start fresh.
-#
-# Behind an existing reverse proxy / other services? This one-click script is
-# the wrong tool — configure .env by hand instead (see README, "Manual
-# configuration").
 #
 set -euo pipefail
 umask 077          # secrets written to .env must not be world-readable
@@ -39,15 +49,30 @@ fi
 # --- args -------------------------------------------------------------------
 REGENERATE=0
 ASSUME_YES=0
+UPDATE=0           # --update: pull newest image + recreate, reuse .env
+INIT_ENV_ONLY=0    # --init-env: write .env and stop (no image, no start)
+BEHIND_PROXY=""    # --behind-proxy HOST: external TLS proxy fronts the container
 DOMAIN=""
-for arg in "$@"; do
-  case "$arg" in
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --regenerate) REGENERATE=1 ;;
     --yes|-y) ASSUME_YES=1 ;;
-    -*) echo "FATAL: unknown option: $arg" >&2; exit 1 ;;
-    *) DOMAIN="$arg" ;;
+    --update) UPDATE=1 ;;
+    --init-env) INIT_ENV_ONLY=1 ;;
+    --behind-proxy)
+      shift
+      [[ -n "${1:-}" && "$1" != -* ]] || { echo "FATAL: --behind-proxy needs the public host, e.g. --behind-proxy stream.example.com" >&2; exit 1; }
+      BEHIND_PROXY="$1" ;;
+    --behind-proxy=*) BEHIND_PROXY="${1#*=}" ;;
+    -*) echo "FATAL: unknown option: $1" >&2; exit 1 ;;
+    *) DOMAIN="$1" ;;
   esac
+  shift
 done
+
+# In behind-proxy mode the public host comes from --behind-proxy, so a positional
+# domain is optional; mirror it into DOMAIN so the shared .env logic has one name.
+[[ -n "$BEHIND_PROXY" && -z "$DOMAIN" ]] && DOMAIN="$BEHIND_PROXY"
 
 # Privilege prefix for host-level changes (installing packages, firewall).
 SUDO=""
@@ -144,6 +169,27 @@ ensure_image() {
   $DOCKER build -t "$image" .
 }
 
+# wait_healthy [timeout_s] — block until the container's Docker healthcheck
+# reports `healthy`, so the script only claims success once the web tier is
+# actually serving. On timeout, dump recent logs and fail (non-zero exit) rather
+# than print a misleading "deployed". The compose healthcheck has a start_period
+# during which the status is `starting`; we simply keep waiting through it.
+wait_healthy() {
+  local timeout="${1:-90}" elapsed=0 status
+  info "Waiting for the container to become healthy (up to ${timeout}s)…"
+  while (( elapsed < timeout )); do
+    status="$($DOCKER inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' farbstroem 2>/dev/null || echo missing)"
+    case "$status" in
+      healthy) info "Container is healthy."; return 0 ;;
+      none)    info "Container has no healthcheck — skipping health wait."; return 0 ;;
+    esac
+    sleep 3; elapsed=$((elapsed + 3))
+  done
+  echo "FATAL: container did not become healthy within ${timeout}s. Recent logs:" >&2
+  $DOCKER compose -f docker-compose.yml logs --tail 40 farbstroem >&2 2>/dev/null || true
+  return 1
+}
+
 # Ports the stack needs reachable from the internet. Single source of truth
 # for both open_firewall and the printed summary.
 FW_TCP=(80 443 1935 3478 7881)
@@ -178,28 +224,47 @@ open_firewall() {
 info "Checking prerequisites"
 command -v curl    >/dev/null 2>&1 || install_apt curl ca-certificates
 command -v openssl >/dev/null 2>&1 || install_apt openssl
-command -v docker  >/dev/null 2>&1 || install_docker
 
-# Docker present but no Compose v2 plugin (e.g. distro docker.io): add it.
-if command -v docker >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1; then
-  have_apt && install_apt docker-compose-plugin
-fi
-
-# Resolve how to call docker: a freshly added docker group doesn't apply to
-# this shell, so fall back to sudo if the daemon isn't reachable unprivileged.
+# --init-env only writes .env (openssl-only); skip all Docker setup for it.
 DOCKER="docker"
-if ! docker info >/dev/null 2>&1; then
-  if [[ -n "$SUDO" ]] && $SUDO docker info >/dev/null 2>&1; then
-    DOCKER="$SUDO docker"
-    info "Using '$DOCKER' (re-login, or 'newgrp docker', to drop sudo for docker)"
+if [[ $INIT_ENV_ONLY -eq 0 ]]; then
+  command -v docker  >/dev/null 2>&1 || install_docker
+
+  # Docker present but no Compose v2 plugin (e.g. distro docker.io): add it.
+  if command -v docker >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1; then
+    have_apt && install_apt docker-compose-plugin
   fi
+
+  # Resolve how to call docker: a freshly added docker group doesn't apply to
+  # this shell, so fall back to sudo if the daemon isn't reachable unprivileged.
+  if ! docker info >/dev/null 2>&1; then
+    if [[ -n "$SUDO" ]] && $SUDO docker info >/dev/null 2>&1; then
+      DOCKER="$SUDO docker"
+      info "Using '$DOCKER' (re-login, or 'newgrp docker', to drop sudo for docker)"
+    fi
+  fi
+
+  # Re-verify; fail clearly if an install didn't take.
+  for c in openssl docker; do
+    command -v "$c" >/dev/null 2>&1 || die "$c still missing after install attempt — install it manually and re-run."
+  done
+  $DOCKER compose version >/dev/null 2>&1 || die "Docker Compose v2 still unavailable — install the Compose plugin and re-run."
 fi
 
-# Re-verify; fail clearly if an install didn't take.
-for c in openssl docker; do
-  command -v "$c" >/dev/null 2>&1 || die "$c still missing after install attempt — install it manually and re-run."
-done
-$DOCKER compose version >/dev/null 2>&1 || die "Docker Compose v2 still unavailable — install the Compose plugin and re-run."
+# --- update mode ------------------------------------------------------------
+# Pull the newest image (or the FARBSTROEM_TAG pinned in .env) and recreate.
+# Secrets are untouched, so live sessions survive. Rollback = pin a previous
+# FARBSTROEM_TAG=sha-<short> in .env, then re-run --update.
+if [[ $UPDATE -eq 1 ]]; then
+  [[ -f .env ]] || die "--update needs an existing .env (run a normal deploy first)."
+  info "Pulling newest image"
+  $DOCKER compose -f docker-compose.yml pull
+  info "Recreating the container"
+  $DOCKER compose -f docker-compose.yml up -d
+  wait_healthy || die "update failed — the container is not healthy (see logs above)."
+  info "Update complete."
+  exit 0
+fi
 
 # --- domain -----------------------------------------------------------------
 if [[ -z "$DOMAIN" ]]; then
@@ -216,10 +281,13 @@ fi
 # Fail fast (don't emit a cryptic Docker port-bind error) if something already
 # holds 80/443 — UNLESS it's our own already-running stack (a redeploy), which
 # must stay idempotent.
-if http_ports_busy && ! stack_running; then
-  die "ports 80/443 are already in use — this one-click script expects a fresh VPS where only Farbström runs.
-       Free 80/443, or if this host already has a reverse proxy, configure .env by
-       hand and point the proxy at the stack (see README, 'Manual configuration')."
+# Skipped when we won't bind 80/443: --init-env (writes .env only) and
+# --behind-proxy (the external proxy is SUPPOSED to hold them; the container
+# binds 127.0.0.1:HTTP_PORT instead).
+if [[ $INIT_ENV_ONLY -eq 0 && -z "$BEHIND_PROXY" ]] && http_ports_busy && ! stack_running; then
+  die "ports 80/443 are already in use — standalone deploy expects a fresh VPS where only Farbström runs.
+       Free 80/443, or if this host already runs a reverse proxy, deploy behind it:
+       ./deploy.sh --behind-proxy $DOMAIN"
 fi
 
 # --- .env handling ----------------------------------------------------------
@@ -269,13 +337,26 @@ else
   cp .env.example .env
   ADMIN_PASSWORD="$(gen_password)"
   set_env DOMAIN             "$DOMAIN"
-  # Container Caddy provisions Let's Encrypt for the domain itself.
-  set_env SITE_ADDRESS       "$DOMAIN"
-  # LiveKit is proxied same-origin by the container Caddy at /livekit/*, so the
-  # browser sees one wss origin — no separate subdomain, DNS record, or cert.
+  if [[ -n "$BEHIND_PROXY" ]]; then
+    # Behind an external TLS proxy: the container's own Caddy serves plain HTTP
+    # on loopback, the proxy terminates TLS. SITE_ADDRESS is just a listen addr
+    # (":80"), so PUBLIC_HOST carries the real browser-facing host; WEB_BIND
+    # keeps the plain-HTTP port off the internet (Docker bypasses ufw).
+    set_env SITE_ADDRESS       ":80"
+    set_env PUBLIC_HOST        "$DOMAIN"
+    set_env WEB_BIND           "127.0.0.1"
+    set_env HTTP_PORT          "8880"
+    set_env HTTPS_PORT         "8444"
+  else
+    # Standalone: the container Caddy provisions Let's Encrypt for the domain.
+    set_env SITE_ADDRESS       "$DOMAIN"
+  fi
+  # LiveKit is proxied same-origin at /livekit/*, so the browser sees one wss
+  # origin — no separate subdomain, DNS record, or cert. PUBLIC_ORIGIN is the
+  # WebAuthn relying party and must match the browser origin exactly. In the
+  # container both are re-derived from PUBLIC_HOST/SITE_ADDRESS by entrypoint.sh;
+  # these literals keep a hand-run `cargo run` / non-container use correct too.
   set_env LIVEKIT_URL        "wss://$DOMAIN/livekit"
-  # WebAuthn relying party: must exactly match the browser's origin or passkey
-  # registration/login fails. The .env.example default is a placeholder.
   set_env PUBLIC_ORIGIN      "https://$DOMAIN"
   set_env LIVEKIT_API_KEY    "API$(gen_token)"
   set_env JWT_SECRET         "$(gen_secret)"
@@ -285,6 +366,17 @@ else
   set_env LIVEKIT_API_SECRET "$(gen_secret)"
   set_env ADMIN_PASSWORD     "$ADMIN_PASSWORD"
   chmod 600 .env
+fi
+
+# --- init-env mode ----------------------------------------------------------
+# Stop here: .env is written but nothing is pulled or started. For hosts that
+# bring the stack up themselves (e.g. behind an existing proxy with their own
+# orchestration).
+if [[ $INIT_ENV_ONLY -eq 1 ]]; then
+  info ".env ready at $(pwd)/.env"
+  [[ -n "$ADMIN_PASSWORD" ]] && { echo; echo "  ADMIN PASSWORD (shown once — save it now): $ADMIN_PASSWORD"; }
+  echo "  Start when ready:  docker compose -f docker-compose.yml up -d"
+  exit 0
 fi
 
 # --- prepare image + data dir -----------------------------------------------
@@ -298,14 +390,21 @@ ensure_image
 # starts), which works for a root-owned bind mount on a fresh VPS.
 
 # --- firewall ---------------------------------------------------------------
-open_firewall
+# Skipped behind a proxy: the container binds 127.0.0.1 for HTTP/HTTPS, so there
+# is nothing host-public to open; the front proxy owns 80/443 exposure.
+if [[ -n "$BEHIND_PROXY" ]]; then
+  info "Behind a proxy — skipping host firewall (web ports bound to 127.0.0.1)."
+else
+  open_firewall
+fi
 
 # --- deploy -----------------------------------------------------------------
-# -f docker-compose.yml selects ONLY the base file so the dev override
-# (docker-compose.override.yml, which builds from source) is NOT merged. The
+# -f docker-compose.yml selects ONLY the base file so the dev overlay
+# (docker-compose.dev.yml, which builds from source) is NOT merged. The
 # single-container image is already local (pulled or built by ensure_image).
 info "Starting stack"
 $DOCKER compose -f docker-compose.yml up -d
+wait_healthy || die "deploy failed — the container is not healthy (see logs above)."
 
 # --- summary ----------------------------------------------------------------
 echo
@@ -324,7 +423,19 @@ if [[ -n "$ADMIN_PASSWORD" ]]; then
     echo "  override is cleared (break-glass). TOTP/passkeys are unaffected."
   fi
 fi
-cat <<EOF
+if [[ -n "$BEHIND_PROXY" ]]; then
+  cat <<EOF
+
+  Next steps (behind an external TLS proxy):
+   - Point your proxy for $DOMAIN at the container's HTTP port:
+       reverse_proxy 127.0.0.1:8880      (Caddy syntax)
+   - The proxy terminates TLS; the container serves plain HTTP on loopback only.
+   - Update later:  ./deploy.sh --update
+   - Check health:  $DOCKER compose -f docker-compose.yml ps
+
+EOF
+else
+  cat <<EOF
 
   Next steps:
    - Point DNS at this host for:
@@ -332,8 +443,10 @@ cat <<EOF
      (The container Caddy provisions Let's Encrypt on first hit.)
    - Firewall: handled above (or listed there if no host firewall is active —
      open those on your VPS provider's cloud firewall if you have one).
+   - Update later:  ./deploy.sh --update
    - Check health:
        $DOCKER compose -f docker-compose.yml ps
        $DOCKER compose -f docker-compose.yml logs -f farbstroem
 
 EOF
+fi

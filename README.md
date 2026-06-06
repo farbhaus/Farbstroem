@@ -153,14 +153,15 @@ for k in JWT_SECRET OME_WEBHOOK_SECRET OME_API_TOKEN LIVEKIT_API_SECRET; do
 done
 sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=devpassword123|" .env   # ≥12 chars
 
-docker compose up -d --build                 # build + start the single container on localhost
+make dev                                     # build + start the single container on localhost
 cd frontend && npm install && npm run watch  # rebuilds www/dist/ on every .ts save
 ```
 
-`docker-compose.override.yml` (auto-merged locally) builds the image from source and
-bind-mounts `./www`, so a browser refresh picks up `tsc` rebuilds — no Docker rebuild for
-frontend changes. (The published image bakes `www/dist/` in, built inside the Dockerfile —
-production hosts need no Node.)
+`make dev` selects `docker-compose.dev.yml` (`-f docker-compose.yml -f docker-compose.dev.yml
+up -d --build`), which builds the image from source and bind-mounts `./www`, so a browser
+refresh picks up `tsc` rebuilds — no Docker rebuild for frontend changes. The dev overlay is
+**not** auto-merged, so a plain `docker compose up -d` is always the deploy path (pulls the
+published image; `www/dist/` is baked in, so production hosts need no Node).
 
 ## Production deployment
 
@@ -181,10 +182,21 @@ That's it. The script installs missing prerequisites (Docker + Compose, openssl)
 
 | Flag | Effect |
 |---|---|
+| `--update` | Pull the newest image and recreate (secrets untouched — live sessions survive). Roll back by pinning `FARBSTROEM_TAG=sha-<short>` (or `vX.Y.Z`) in `.env` first, then `--update`. |
+| `--behind-proxy HOST` | Deploy behind an external TLS proxy: the container serves plain HTTP on `127.0.0.1:8880`, presets `SITE_ADDRESS=:80` / `PUBLIC_HOST=HOST` / `WEB_BIND=127.0.0.1`, and skips the firewall + 80/443 free-port check. |
+| `--init-env [HOST]` | Generate/refresh `.env` and exit without starting anything (openssl-only; no Docker needed). |
 | `--regenerate` | Rewrite `.env` from scratch (rotates secrets) |
 | `--yes` | Skip confirmation prompts (unattended) |
 
-The script targets a clean box: if something already holds ports 80/443, it stops and points you at manual configuration (below) rather than failing cryptically.
+The script waits for the container's healthcheck before reporting success, and on a clean box stops early if something already holds 80/443 (use `--behind-proxy` to deploy behind an existing front proxy instead).
+
+**Even simpler — zero-checkout bootstrap.** Both the repo and the `zcolor/farbstroem` image are public, so a fresh host needs no git clone:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/farbhaus/Farbstrom/main/install.sh | bash -s -- stream.yourdomain.com
+```
+
+`install.sh` fetches just `docker-compose.yml`, `.env.example`, and `deploy.sh` into `/opt/farbstroem` and hands off to `deploy.sh`; everything after `--` is forwarded (e.g. `--behind-proxy …`).
 
 ### Quick local smoke test
 
@@ -243,9 +255,11 @@ Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 4
 ├── caddy/Caddyfile             Caddy config (SITE_ADDRESS envar-driven), baked into the image
 ├── ome/                        OvenMediaEngine config (Server.xml)
 ├── www/                        Static HTML/CSS + compiled JS (dist/, built into the image)
-├── docker-compose.yml          Base (deploy: pulls zcolor/farbstroem)
-├── docker-compose.override.yml Local dev (build from source + ./www mount)
-├── deploy.sh                   One-command production deploy to a fresh VPS
+├── docker-compose.yml          Base (deploy: pulls zcolor/farbstroem) — plain `docker compose up -d`
+├── docker-compose.dev.yml      Opt-in dev overlay (build from source + ./www mount) — `make dev`
+├── Makefile                    Thin wrappers: make deploy / dev / update / logs / status / down
+├── deploy.sh                   Production deploy: standalone, --behind-proxy, --update, --init-env
+├── install.sh                  Zero-checkout bootstrap (curl … | bash -s -- domain)
 ├── .env.example                Required env vars, documented inline
 └── docs/                       Architecture notes, security model, design system
 ```

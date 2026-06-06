@@ -1,0 +1,30 @@
+# Local development overlay — OPT-IN (not auto-merged).
+#
+# Named `docker-compose.dev.yml` (not `…override.yml`) on purpose: deploy hosts
+# run a plain `docker compose up -d` and get ONLY the base file (pulls the
+# published zcolor/farbstroem image), with no way to accidentally build from
+# source. Developers opt into this overlay explicitly.
+#
+# It builds the image from source and bind-mounts ./www so frontend edits
+# (after `cd frontend && npm install && npm run build`) show up without a
+# rebuild. Use it via the Makefile (`make dev`) or by selecting both files:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#
+# Tip: `export COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml` makes a
+# bare `docker compose …` pick up both for the rest of your shell session.
+services:
+  farbstroem:
+    build:
+      context: .
+      # Honor the component pins from .env for local source builds. (Defaults
+      # live in the Dockerfile and are what CI bakes into the published image.)
+      args:
+        OME_VERSION: ${OME_TAG:-v0.20.5}
+        LIVEKIT_VERSION: ${LIVEKIT_TAG:-v1.12.0}
+        CADDY_VERSION: ${CADDY_TAG:-2.11.3}
+        VALKEY_VERSION: ${VALKEY_TAG:-8.1.7}
+    volumes:
+      # Live frontend assets over the copy baked into the image. Requires
+      # www/dist to exist on the host (cd frontend && npm run build).
+      - ./www:/www

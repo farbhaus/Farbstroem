@@ -34,22 +34,23 @@ The whole stack — Caddy, the Rust backend, OvenMediaEngine, LiveKit, and Valke
 single compose service, `farbstroem`.
 
 ```bash
-# Local dev — docker-compose.override.yml is auto-merged: it builds the image
-# from source (./Dockerfile) and bind-mounts ./www for live frontend edits.
-docker compose up -d                     # build + start the container
-docker compose up -d --build             # rebuild after backend/frontend/config changes
-docker compose logs -f                   # all services' logs (interleaved)
-docker exec farbstroem supervisorctl status   # per-service state
-docker compose down
+# Local dev — opt into docker-compose.dev.yml (build from source + ./www mount).
+# A thin Makefile wraps the two-file invocations.
+make dev                                 # build + start (== -f docker-compose.yml -f docker-compose.dev.yml up -d --build)
+make logs                                # all services' logs (interleaved)
+make status                              # per-service supervisord state
+make down
 
-# Deploy hosts — pull the published image instead of building.
-# -f selects ONLY the base file so the dev override is not auto-merged.
-docker compose -f docker-compose.yml up -d
+# Deploy hosts — a plain `docker compose up -d` uses ONLY the base file and
+# pulls the published image (no accidental source build). Equivalent: make deploy.
+docker compose up -d                     # start (pulls zcolor/farbstroem)
+make update                              # pull newest image + recreate
 ```
 
 The image (`zcolor/farbstroem`) is published to Docker Hub by
 `.github/workflows/docker-single.yml` on every push to `main` (tags `:latest`
-and `:sha-<short>`, linux/amd64). It is self-contained — the Dockerfile compiles
+and `:sha-<short>`) and on a `v*` release tag (adds `:vX.Y.Z` + `:X.Y` for
+reproducible prod pinning), linux/amd64. It is self-contained — the Dockerfile compiles
 the Rust backend AND the TypeScript frontend internally, so deploy hosts need
 neither the source nor a Node/Rust toolchain. Deploy hosts pin a tag via
 `FARBSTROEM_TAG` in `.env`. Requires repo secrets `DOCKERHUB_USERNAME` and
@@ -259,7 +260,7 @@ Non-obvious facts that aren't derivable from reading the code.
 - `expires_at` is stored as a UTC ISO string. Admin `datetime-local` is converted both ways. Rooms created before this fix may be off by the UTC offset — re-save them in admin to correct.
 
 **Docker (single container)**
-- Everything is baked into the image — `docker restart` does NOT pick up code/config changes. Rebuild: `docker compose up -d --build` (the override builds from source). `Server.xml`, `caddy/Caddyfile`, `supervisord.conf`, and the compiled `www/dist` are all baked in, so editing them on the host needs a rebuild too (except `./www` while the local override's bind mount is active).
+- Everything is baked into the image — `docker restart` does NOT pick up code/config changes. Rebuild: `make dev` (selects `docker-compose.dev.yml`, builds from source). `Server.xml`, `caddy/Caddyfile`, `supervisord.conf`, and the compiled `www/dist` are all baked in, so editing them on the host needs a rebuild too (except `./www` while the dev overlay's bind mount is active).
 - `$` in `.env` values must be doubled (`$$`) — Compose interpolates `$VAR`.
 - Start order is supervisord **priority**, not `depends_on`: Valkey → backend → OME/LiveKit → Caddy, so the admission webhook (backend, `localhost:4001`) is up before OME accepts ingests. Admission is fail-closed — if the backend is down, ingests are denied (no unauthorised streaming).
 - The OME admission webhook URL is `localhost:4001` (env-overridable `OME_WEBHOOK_URL` in `Server.xml`); LiveKit's Redis is `localhost:6379` (generated `livekit.yaml`) — no Docker service names resolve inside the single container.

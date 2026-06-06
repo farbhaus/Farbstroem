@@ -1,7 +1,7 @@
-# Single-container deployment — BASE file (deploy hosts: pulls the published
-# image). Local dev auto-merges docker-compose.override.yml, which builds from
-# source and bind-mounts ./www for live frontend edits. Deploy hosts select the
-# base only:  docker compose -f docker-compose.yml up -d
+# Single-container deployment — BASE file. A plain `docker compose up -d` uses
+# ONLY this file and pulls the published image (the deploy-host path; also
+# `make deploy`). Local dev opts into docker-compose.dev.yml to build from source
+# and bind-mount ./www:  make dev  (or  -f docker-compose.yml -f docker-compose.dev.yml).
 services:
   farbstroem:
     image: zcolor/farbstroem:${FARBSTROEM_TAG:-latest}

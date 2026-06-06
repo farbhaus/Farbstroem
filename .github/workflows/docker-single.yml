@@ -10,6 +10,9 @@ name: Docker Build (single-container)
 on:
   push:
     branches: [main]
+    # Release tags publish an immutable :vX.Y.Z (for reproducible prod pinning /
+    # rollback) alongside :latest + :sha-<short>.
+    tags: ['v*.*.*']
   # PR validation only when an input to the single-container image changes.
   pull_request:
     branches: [main, dev]
@@ -34,11 +37,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Publish only on a push to main. PRs and dev pushes build-validate only.
+      # Publish on a push to main or a release tag (v*). PRs and dev pushes
+      # build-validate only.
       - name: Decide whether to publish
         id: pub
         run: |
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          if [ "${{ github.event_name }}" = "push" ] && { [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = "true" ]; }; then
             echo "push=true" >> "$GITHUB_OUTPUT"
           else
             echo "push=false" >> "$GITHUB_OUTPUT"
@@ -61,6 +65,8 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
 
       - uses: docker/build-push-action@v6
         with:
