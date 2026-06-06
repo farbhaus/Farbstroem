@@ -142,16 +142,23 @@ the gated GET (403/404) + 30 s TTL is the reconnect backstop, so a kicked viewer
 
 ## Local development
 
-No deploy script for dev. Fill the secrets (the backend refuses empty/short ones — the
-rest of the `.env.example` defaults are already correct for localhost), then run the
-stack plus the frontend watcher in a side terminal:
+**Just run it locally** — `deploy.sh` accepts `localhost`, so the one-command path
+works for dev too. It generates `.env` with all required secrets, builds/pulls the
+image, and starts the stack on `localhost` (Caddy serves it over its internal
+self-signed cert — the browser warns once):
 
 ```bash
-cp .env.example .env
-for k in JWT_SECRET OME_WEBHOOK_SECRET OME_API_TOKEN LIVEKIT_API_SECRET; do
-  sed -i "s|^$k=.*|$k=$(openssl rand -hex 32)|" .env
-done
-sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=devpassword123|" .env   # ≥12 chars
+sudo ./deploy.sh localhost
+```
+
+This uses the frontend baked into the image — fine for just running the app. For
+**active frontend development** (live `tsc` rebuilds without a Docker rebuild), use
+the dev overlay instead. Generate `.env` once, then run `make dev` plus the watcher
+in a side terminal:
+
+```bash
+./deploy.sh --init-env localhost            # write .env with all secrets, start nothing
+# (or fill .env by hand — the backend refuses empty/short secrets)
 
 make dev                                     # build frontend + start the container on localhost
 cd frontend && npm install && npm run watch  # rebuilds www/dist/ on every .ts save
