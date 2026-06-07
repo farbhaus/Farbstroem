@@ -156,6 +156,11 @@ export function sizeStage(): void {
   const stage = document.getElementById('stage');
   if (!stage) return;
   if (document.body.classList.contains('has-focus')) {
+    // Grid mode sets an inline grid-template-columns (repeat(...)); an inline
+    // style outranks the focus-mode stylesheet rule, so leaving it set would
+    // override `var(--strip-w) 1fr` and make the strip + focused tile collide.
+    // Clear it so the focus / strip-hidden CSS governs (grid mode re-sets it).
+    stage.style.gridTemplateColumns = '';
     sizeFocusPanels(stage);
     fitFocusedTile(stage);
     return;
