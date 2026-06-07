@@ -270,7 +270,18 @@ export async function initLiveKit(): Promise<void> {
   if (!res.ok) throw new Error('Could not get LiveKit token');
   const { token: lkToken, url: lkUrl } = (await res.json()) as LivekitTokenResponse;
 
-  const room = new LivekitClient.Room({ audioCaptureDefaults: audioCaptureOpts() });
+  // Screen-share defaults tuned for detail-heavy colour-grading review (GH #171).
+  // UHD30 @ 16 Mbps VP9, maintain-resolution under congestion (drop framerate,
+  // not sharpness), single non-simulcast layer so the SFU can't forward a low one.
+  const room = new LivekitClient.Room({
+    audioCaptureDefaults: audioCaptureOpts(),
+    publishDefaults: {
+      videoCodec: 'vp9',
+      screenShareEncoding: { maxBitrate: 16_000_000, maxFramerate: 30 },
+      degradationPreference: 'maintain-resolution',
+      screenShareSimulcastLayers: [],
+    },
+  });
   livekitRoom = room;
 
   room.on(LivekitClient.RoomEvent.ParticipantConnected, () => syncConferenceTiles());
@@ -665,7 +676,10 @@ async function toggleScreenShare(): Promise<void> {
       if (next) await initLiveKit();
       else return;
     }
-    await livekitRoom!.localParticipant.setScreenShareEnabled(next);
+    await livekitRoom!.localParticipant.setScreenShareEnabled(
+      next,
+      next ? { resolution: { width: 3840, height: 2160 }, contentHint: 'detail' } : undefined,
+    );
     if (next) {
       const pub = livekitRoom!.localParticipant.getTrackPublication(
         LivekitClient.Track.Source.ScreenShare,
