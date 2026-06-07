@@ -230,6 +230,10 @@ function showScreenShare(track: LkTrack, label: string): void {
   document.body.classList.add('sharing-screen');
   requestAutoFocus('share');
   updateFocusAspect();
+  // requestAutoFocus no-ops when the focus target is unchanged (e.g. the user
+  // is already in grid mode), so re-flow the grid explicitly to account for
+  // the share tile's visibility flip.
+  requestAnimationFrame(sizeStage);
 }
 
 function hideScreenShare(): void {
@@ -246,6 +250,9 @@ function hideScreenShare(): void {
     viewerStore.set({ focusOverride: false });
   }
   requestAutoFocus();
+  // Re-flow the grid even when requestAutoFocus no-ops (already in grid) — the
+  // hidden share tile must give up its cell so the remaining tiles re-centre.
+  requestAnimationFrame(sizeStage);
 }
 
 // ---- LiveKit init ----
