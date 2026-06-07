@@ -987,6 +987,21 @@ pub fn spawn_event_listeners(state: Arc<AppState>) {
         });
     }
 
+    // delivery:changed
+    {
+        let mut rx = state.events.delivery_mode_changed.subscribe();
+        tokio::spawn(async move {
+            while let Ok(event) = rx.recv().await {
+                let msg = json!({
+                    "type": "delivery:changed",
+                    "deliveryMode": event.mode,
+                })
+                .to_string();
+                broadcast_to_room(&WS_ROOMS, &event.slug, &msg).await;
+            }
+        });
+    }
+
     // file:shared
     {
         let mut rx = state.events.file_shared.subscribe();

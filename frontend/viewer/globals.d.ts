@@ -40,8 +40,29 @@ interface AudioCaptureOptions {
   deviceId?: string;
 }
 
+// Subset of LiveKit's VideoEncoding / publish defaults we configure for the
+// screen-share track. See conference.ts initLiveKit().
+interface VideoEncoding {
+  maxBitrate: number;
+  maxFramerate?: number;
+}
+
+interface TrackPublishDefaults {
+  videoCodec?: 'vp8' | 'vp9' | 'h264' | 'av1';
+  screenShareEncoding?: VideoEncoding;
+  degradationPreference?: 'maintain-framerate' | 'maintain-resolution' | 'balanced';
+  screenShareSimulcastLayers?: unknown[];
+}
+
+// Subset of LiveKit's ScreenShareCaptureOptions passed to setScreenShareEnabled.
+interface ScreenShareCaptureOptions {
+  resolution?: { width: number; height: number };
+  contentHint?: 'detail' | 'motion' | 'text' | 'none';
+}
+
 interface RoomOptions {
   audioCaptureDefaults?: AudioCaptureOptions;
+  publishDefaults?: TrackPublishDefaults;
 }
 
 interface LivekitClientNS {
@@ -88,7 +109,7 @@ interface LkPublication {
 interface LkLocalParticipant {
   setCameraEnabled(on: boolean): Promise<void>;
   setMicrophoneEnabled(on: boolean, options?: AudioCaptureOptions): Promise<void>;
-  setScreenShareEnabled(on: boolean): Promise<void>;
+  setScreenShareEnabled(on: boolean, options?: ScreenShareCaptureOptions): Promise<void>;
   getTrackPublication(source: string): LkPublication | undefined;
 }
 

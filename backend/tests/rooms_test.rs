@@ -606,3 +606,69 @@ async fn rotate_presenter_key_deletes_existing_presenters() {
     assert_eq!(pres_exists, 0, "presenter should be removed");
     assert_eq!(viewer_exists, 1, "viewer should remain");
 }
+
+// ---------------------------------------------------------------------------
+// Detaching a stream key resets a live room (GitHub #173)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn detaching_stream_key_resets_live_room_to_pending() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+    let token = common::admin_token(&state);
+    let (name, val) = auth_header(&token);
+
+    let (key_id, _) = common::seed_stream_key(&state, "Key A");
+    let room_id = common::seed_room(&state, "Live Room", "live-room-abc123");
+    // Attach the key, then force the room live as the webhook would.
+    {
+        let conn = state.db.get().unwrap();
+        conn.execute(
+            "UPDATE rooms SET stream_key_id=?1, status='live' WHERE id=?2",
+            rusqlite::params![key_id, room_id],
+        )
+        .unwrap();
+    }
+
+    let res = server
+        .put(&format!("/api/rooms/{}", room_id))
+        .add_header(name, val)
+        .json(&json!({ "stream_key_id": null }))
+        .await;
+    assert_eq!(res.status_code(), 200);
+
+    let body: Value = res.json();
+    assert!(body["stream_key_id"].is_null());
+    assert_eq!(body["status"], "pending");
+}
+
+#[tokio::test]
+async fn detaching_stream_key_leaves_ended_room_ended() {
+    let state = common::test_state();
+    let server = common::test_app(state.clone());
+    let token = common::admin_token(&state);
+    let (name, val) = auth_header(&token);
+
+    let (key_id, _) = common::seed_stream_key(&state, "Key B");
+    let room_id = common::seed_room(&state, "Ended Room", "ended-room-abc123");
+    {
+        let conn = state.db.get().unwrap();
+        conn.execute(
+            "UPDATE rooms SET stream_key_id=?1, status='ended', \
+             ended_at=CURRENT_TIMESTAMP WHERE id=?2",
+            rusqlite::params![key_id, room_id],
+        )
+        .unwrap();
+    }
+
+    let res = server
+        .put(&format!("/api/rooms/{}", room_id))
+        .add_header(name, val)
+        .json(&json!({ "stream_key_id": null }))
+        .await;
+    assert_eq!(res.status_code(), 200);
+
+    let body: Value = res.json();
+    assert!(body["stream_key_id"].is_null());
+    assert_eq!(body["status"], "ended");
+}
