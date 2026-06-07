@@ -4,7 +4,7 @@
 # and bind-mount ./www:  make dev  (or  -f docker-compose.yml -f docker-compose.dev.yml).
 services:
   farbstroem:
-    image: zcolor/farbstroem:${FARBSTROEM_TAG:-latest}
+    image: farbhaus/farbstroem:${FARBSTROEM_TAG:-latest}
     container_name: farbstroem
     restart: unless-stopped
     ports:

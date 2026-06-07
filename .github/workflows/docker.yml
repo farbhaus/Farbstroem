@@ -14,7 +14,7 @@ on:
       - '.github/workflows/docker.yml'
 
 env:
-  IMAGE: zcolor/farbstroem-backend
+  IMAGE: farbhaus/farbstroem-backend
 
 jobs:
   build:

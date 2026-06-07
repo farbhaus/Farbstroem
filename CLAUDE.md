@@ -30,7 +30,7 @@ watchexec -r -e rs -- cargo run
 ### Full stack (single-container — repo root)
 
 The whole stack — Caddy, the Rust backend, OvenMediaEngine, LiveKit, and Valkey
-— ships as **one** image (`zcolor/farbstroem`) run by `supervisord`. There is a
+— ships as **one** image (`farbhaus/farbstroem`) run by `supervisord`. There is a
 single compose service, `farbstroem`.
 
 ```bash
@@ -43,11 +43,11 @@ make down
 
 # Deploy hosts — a plain `docker compose up -d` uses ONLY the base file and
 # pulls the published image (no accidental source build). Equivalent: make deploy.
-docker compose up -d                     # start (pulls zcolor/farbstroem)
+docker compose up -d                     # start (pulls farbhaus/farbstroem)
 make update                              # pull newest image + recreate
 ```
 
-The image (`zcolor/farbstroem`) is published to Docker Hub by
+The image (`farbhaus/farbstroem`) is published to Docker Hub by
 `.github/workflows/docker-single.yml` on every push to `main` (tags `:latest`
 and `:sha-<short>`) and on a `v*` release tag (adds `:vX.Y.Z` + `:X.Y` for
 reproducible prod pinning), linux/amd64. It is self-contained — the Dockerfile compiles
@@ -55,7 +55,7 @@ the Rust backend AND the TypeScript frontend internally, so deploy hosts need
 neither the source nor a Node/Rust toolchain. Deploy hosts pin a tag via
 `FARBSTROEM_TAG` in `.env`. Requires repo secrets `DOCKERHUB_USERNAME` and
 `DOCKERHUB_TOKEN`. (`docker.yml` still publishes the backend-only image
-`zcolor/farbstroem-backend` for `main`'s legacy multi-container compose.)
+`farbhaus/farbstroem-backend` for `main`'s legacy multi-container compose.)
 
 One-command production deploy to a fresh VPS: `./deploy.sh your.domain.com`.
 

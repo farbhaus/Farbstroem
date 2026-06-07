@@ -5,7 +5,7 @@
 # published image, so a rebuild can't silently pull a new major. Override per
 # build with --build-arg (the local docker-compose.override.yml wires these from
 # .env: CADDY_TAG / LIVEKIT_TAG / OME_TAG / VALKEY_TAG). NOTE: deploy hosts that
-# PULL zcolor/farbstroem get whatever CI baked — pin the whole image there with
+# PULL farbhaus/farbstroem get whatever CI baked — pin the whole image there with
 # FARBSTROEM_TAG; the *_TAG vars only affect a local/source build.
 ARG OME_VERSION=v0.20.5
 ARG LIVEKIT_VERSION=v1.12.0

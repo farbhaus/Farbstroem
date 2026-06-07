@@ -3,7 +3,7 @@
 # install.sh — zero-checkout bootstrap for a Farbström deploy host.
 #
 # Fetches just the deploy artifacts (no source tree) into a target directory and
-# hands off to deploy.sh. Both the repo and the zcolor/farbstroem image are
+# hands off to deploy.sh. Both the repo and the farbhaus/farbstroem image are
 # public, so this needs no credentials.
 #
 #   curl -fsSL https://raw.githubusercontent.com/farbhaus/Farbstrom/main/install.sh \

@@ -9,7 +9,7 @@ flowchart TB
     Encoder["Encoder<br/>OBS · hardware"]
     Browser["Browser<br/>OvenPlayer · LiveKit SDK · WebSocket"]
 
-    subgraph host["Single container — zcolor/farbstroem (supervisord)"]
+    subgraph host["Single container — farbhaus/farbstroem (supervisord)"]
         Caddy["Caddy<br/>TLS + routing"]
         Backend["backend<br/>Rust/Axum + SQLite"]
         OME["OvenMediaEngine"]
@@ -29,7 +29,7 @@ flowchart TB
     LK --- Valkey
 ```
 
-The whole stack ships as **one image** (`zcolor/farbstroem`); the five processes run under `supervisord` and reach each other over `localhost`. Caddy owns the single TLS origin and routes by path.
+The whole stack ships as **one image** (`farbhaus/farbstroem`); the five processes run under `supervisord` and reach each other over `localhost`. Caddy owns the single TLS origin and routes by path.
 
 | Process | Source | Purpose |
 |---|---|---|
@@ -206,7 +206,7 @@ That's it. The script installs missing prerequisites (Docker + Compose, openssl)
 
 The script waits for the container's healthcheck before reporting success, and on a clean box stops early if something already holds 80/443 (use `--behind-proxy` to deploy behind an existing front proxy instead).
 
-**Even simpler — zero-checkout bootstrap.** Both the repo and the `zcolor/farbstroem` image are public, so a fresh host needs no git clone:
+**Even simpler — zero-checkout bootstrap.** Both the repo and the `farbhaus/farbstroem` image are public, so a fresh host needs no git clone:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/farbhaus/Farbstrom/main/install.sh | bash -s -- stream.yourdomain.com
@@ -263,7 +263,7 @@ Firewall ports (the script opens these via ufw/firewalld when active): tcp `80 4
 ├── caddy/Caddyfile             Caddy config (SITE_ADDRESS envar-driven), baked into the image
 ├── ome/                        OvenMediaEngine config (Server.xml)
 ├── www/                        Static HTML/CSS + compiled JS (dist/, built into the image)
-├── docker-compose.yml          Base (deploy: pulls zcolor/farbstroem) — plain `docker compose up -d`
+├── docker-compose.yml          Base (deploy: pulls farbhaus/farbstroem) — plain `docker compose up -d`
 ├── docker-compose.dev.yml      Opt-in dev overlay (build from source + ./www mount) — `make dev`
 ├── Makefile                    Thin wrappers: make deploy / dev / update / logs / status / down
 ├── deploy.sh                   Production deploy: standalone, --behind-proxy, --update, --init-env

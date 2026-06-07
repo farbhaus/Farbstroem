@@ -164,7 +164,7 @@ ensure_image() {
   # silently abort the script on this assignment.
   local tag image
   tag="$( { grep -E '^FARBSTROEM_TAG=' .env 2>/dev/null || true; } | cut -d= -f2-)"
-  image="zcolor/farbstroem:${tag:-latest}"
+  image="farbhaus/farbstroem:${tag:-latest}"
   info "No published image for this platform/tag — building from source ($image)"
   $DOCKER build -t "$image" .
 }

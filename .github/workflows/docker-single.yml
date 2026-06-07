@@ -29,7 +29,7 @@ on:
       - '.github/workflows/docker-single.yml'
 
 env:
-  IMAGE: zcolor/farbstroem
+  IMAGE: farbhaus/farbstroem
 
 jobs:
   build:
