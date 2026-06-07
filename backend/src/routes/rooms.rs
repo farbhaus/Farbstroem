@@ -315,6 +315,9 @@ async fn update_room(
     // Build dynamic SET clauses
     let mut set_clauses: Vec<String> = Vec::new();
     let mut params: Vec<Box<dyn rusqlite::types::ToSql + Send>> = Vec::new();
+    // Detaching the key from a live room must also clear its live status (set
+    // below, after the param-bearing clauses, so it doesn't disturb `?N`).
+    let mut reset_live_on_detach = false;
 
     if let Some(name) = body.get("name").and_then(|v| v.as_str()) {
         set_clauses.push(format!("name = ?{}", set_clauses.len() + 1));
@@ -359,6 +362,7 @@ async fn update_room(
             .get("stream_key_id")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
+        reset_live_on_detach = val.is_none();
         set_clauses.push(format!("stream_key_id = ?{}", set_clauses.len() + 1));
         params.push(Box::new(val));
     }
@@ -377,6 +381,16 @@ async fn update_room(
             set_clauses.push(format!("password_hash = ?{}", set_clauses.len() + 1));
             params.push(Box::new(Some(hashed)));
         }
+    }
+
+    // The OME poller only flips live -> pending for rooms that still JOIN a
+    // stream key, so detaching the key from a live room would otherwise leave
+    // it (and the admin "live" badge) stuck at 'live' forever. No bind param,
+    // and pushed last so it doesn't shift the `?N` numbering above. The CASE
+    // guard leaves ended/scheduled rooms untouched.
+    if reset_live_on_detach {
+        set_clauses
+            .push("status = CASE WHEN status = 'live' THEN 'pending' ELSE status END".into());
     }
 
     if set_clauses.is_empty() {
@@ -419,8 +433,10 @@ async fn update_room(
         return Ok(Json(room));
     }
 
-    // Add id as the last parameter
-    let id_param_idx = set_clauses.len() + 1;
+    // Add id as the last parameter. Index off params.len(), not
+    // set_clauses.len(): the live-status CASE clause adds a set clause with no
+    // bind param, so the two counts can differ.
+    let id_param_idx = params.len() + 1;
     let sql = format!(
         "UPDATE rooms SET {} WHERE id = ?{}",
         set_clauses.join(", "),
@@ -497,6 +513,9 @@ async fn update_room(
                         });
             }
             (true, false) => {
+                // Mirror the OME poller's live -> pending transition for viewers
+                // in the room (the DB status was reset above).
+                let _ = state.events.room_pending.send(slug_for_event.clone());
                 let _ = state.events.stream_key_removed.send(slug_for_event);
             }
             _ => {}
