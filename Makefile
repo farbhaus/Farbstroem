@@ -17,7 +17,7 @@ DEV  := -f docker-compose.yml -f docker-compose.dev.yml
 deploy:
 	docker compose $(BASE) up -d
 
-update:
+update: frontend-build
 	docker compose $(BASE) pull
 	docker compose $(BASE) up -d
 
