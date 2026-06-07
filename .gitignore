@@ -16,3 +16,6 @@ backend/target/
 # Frontend build artifacts
 frontend/node_modules/
 www/dist/
+
+# Debug logs
+logs-dumps
