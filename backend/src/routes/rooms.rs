@@ -522,6 +522,21 @@ async fn update_room(
         }
     }
 
+    // Delivery-mode change: tell viewers so they re-layout (browser broadcast
+    // tile vs. call-grid only), mirroring the stream-key events above.
+    if let Some(dm) = body.get("delivery_mode").and_then(|v| v.as_str()) {
+        if let Some(slug) = room.get("slug").and_then(|v| v.as_str()) {
+            let _ =
+                state
+                    .events
+                    .delivery_mode_changed
+                    .send(crate::events::DeliveryModeChangedEvent {
+                        slug: slug.to_string(),
+                        mode: dm.to_string(),
+                    });
+        }
+    }
+
     Ok(Json(room))
 }
 

@@ -43,7 +43,7 @@ import {
 } from './screens.js';
 import { consumePresession, isPresenter, slug, updateSavedStreamKey } from './session.js';
 import { getState, setState, viewerStore } from './state.js';
-import type { RoomStatus } from './types.js';
+import type { DeliveryMode, RoomStatus } from './types.js';
 import {
   closeWs,
   configureWs,
@@ -145,6 +145,26 @@ function handleStreamRemoved(): void {
   // If the viewer had pinned the stream tile, that target no longer exists.
   if (getState().focusedTile === 'stream') setState({ focusOverride: false });
   syncConferenceTiles();
+  requestAutoFocus();
+}
+
+// Admin switched the room's delivery mode. Re-derive the stream tile's
+// presence the same way showApp does — an SRT room is call-only in the
+// browser, webrtc/llhls shows and auto-pins the broadcast — then re-layout.
+function handleDeliveryModeChanged(mode: DeliveryMode): void {
+  setState({ deliveryMode: mode });
+  const hasBrowserBroadcast = !!getState().streamKey && mode !== 'srt';
+  if (hasBrowserBroadcast) {
+    document.getElementById('tile-stream')?.classList.remove('hidden');
+    initPlayer();
+  } else {
+    destroyPlayer();
+    document.getElementById('tile-stream')?.classList.add('hidden');
+    // The stream tile is gone — drop a stale pin so auto-focus can fall back.
+    if (getState().focusedTile === 'stream') setState({ focusOverride: false });
+  }
+  syncConferenceTiles();
+  sizeStage();
   requestAutoFocus();
 }
 
@@ -263,6 +283,7 @@ function init(): void {
     onRoomEnded: () => showEnded(),
     onStreamAssigned: handleStreamAssigned,
     onStreamRemoved: handleStreamRemoved,
+    onDeliveryModeChanged: handleDeliveryModeChanged,
     onKicked: () => {
       document.getElementById('app')?.classList.remove('visible');
       showKicked();

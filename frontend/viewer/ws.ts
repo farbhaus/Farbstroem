@@ -19,7 +19,7 @@ import {
   updateSavedStreamKey,
 } from './session.js';
 import { viewerStore } from './state.js';
-import type { RosterEntry, WsClientMessage, WsMessage } from './types.js';
+import type { DeliveryMode, RosterEntry, WsClientMessage, WsMessage } from './types.js';
 
 let ws: WebSocket | null = null;
 let wsReconnect = true;
@@ -31,6 +31,7 @@ let onRoomPending: () => void = () => {};
 let onRoomEnded: () => void = () => {};
 let onStreamAssigned: (key: string) => void = () => {};
 let onStreamRemoved: () => void = () => {};
+let onDeliveryModeChanged: (mode: DeliveryMode) => void = () => {};
 let onKicked: () => void = () => {};
 
 export interface WsHandlers {
@@ -40,6 +41,7 @@ export interface WsHandlers {
   onRoomEnded: () => void;
   onStreamAssigned: (key: string) => void;
   onStreamRemoved: () => void;
+  onDeliveryModeChanged: (mode: DeliveryMode) => void;
   onKicked: () => void;
 }
 
@@ -50,6 +52,7 @@ export function configureWs(h: WsHandlers): void {
   onRoomEnded = h.onRoomEnded;
   onStreamAssigned = h.onStreamAssigned;
   onStreamRemoved = h.onStreamRemoved;
+  onDeliveryModeChanged = h.onDeliveryModeChanged;
   onKicked = h.onKicked;
 }
 
@@ -131,6 +134,9 @@ function handleMessage(msg: WsMessage): void {
       return;
     case 'stream:assigned':
       onStreamAssigned(msg.streamKey);
+      return;
+    case 'delivery:changed':
+      onDeliveryModeChanged(msg.deliveryMode);
       return;
     case 'stream:removed':
       onStreamRemoved();

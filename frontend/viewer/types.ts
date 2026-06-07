@@ -105,6 +105,7 @@ export type WsMessage =
   | { type: 'room:ended' }
   | { type: 'stream:assigned'; streamKey: string }
   | { type: 'stream:removed' }
+  | { type: 'delivery:changed'; deliveryMode: DeliveryMode }
   | { type: 'participants:update'; participants: RosterEntry[] }
   | { type: 'chat:history'; messages: ChatHistoryItem[] }
   | {

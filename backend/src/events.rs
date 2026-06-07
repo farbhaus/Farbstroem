@@ -55,6 +55,16 @@ pub struct StreamKeyAssignedEvent {
     pub stream_key: String,
 }
 
+/// Emitted when an admin changes a room's delivery mode. Connected viewers
+/// re-evaluate their layout (browser broadcast tile vs. call-grid only) the
+/// same way attaching/detaching a stream key does — an SRT room is call-only
+/// in the browser, while webrtc/llhls shows and auto-pins the stream tile.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeliveryModeChangedEvent {
+    pub slug: String,
+    pub mode: String,
+}
+
 #[derive(Clone)]
 pub struct EventChannels {
     pub room_live: broadcast::Sender<String>,
@@ -62,6 +72,7 @@ pub struct EventChannels {
     pub room_ended: broadcast::Sender<String>,
     pub stream_key_assigned: broadcast::Sender<StreamKeyAssignedEvent>,
     pub stream_key_removed: broadcast::Sender<String>,
+    pub delivery_mode_changed: broadcast::Sender<DeliveryModeChangedEvent>,
     pub file_shared: broadcast::Sender<FileSharedEvent>,
     pub file_unshared: broadcast::Sender<FileUnsharedEvent>,
     pub participant_kicked: broadcast::Sender<KickedEvent>,
@@ -77,6 +88,7 @@ impl EventChannels {
             room_ended: broadcast::channel(64).0,
             stream_key_assigned: broadcast::channel(64).0,
             stream_key_removed: broadcast::channel(64).0,
+            delivery_mode_changed: broadcast::channel(64).0,
             file_shared: broadcast::channel(64).0,
             file_unshared: broadcast::channel(64).0,
             participant_kicked: broadcast::channel(64).0,
